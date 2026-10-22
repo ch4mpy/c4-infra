@@ -138,34 +138,9 @@ network, `https://infra.c4-soft.com/` for the shared services, and one site per 
 
 ### One-time setup
 
-1. Order the VPS (Ubuntu LTS; 8 GB of RAM for the shared stack and a few applications) and note
-   its IP.
-2. DNS: an `A` record pointing at that IP for `infra.c4-soft.com`, and one per application host
-   (Caddy needs them to get the certificates).
-3. Generate an SSH key pair for this workflow (`ssh-keygen -t ed25519 -f c4-infra-demo`) and
-   prepare the host, as root (see the header of [`demo/vps-bootstrap.sh`](demo/vps-bootstrap.sh)
-   for an image without root SSH, such as OVH's):
-   ```bash
-   ssh root@<vps-ip> 'bash -s' < demo/vps-bootstrap.sh "$(cat c4-infra-demo.pub)"
-   ```
-   Each application's workflow has its own key: run the script again with it (keys are appended).
-4. In this repository, create the `demo` environment:
-
-   | Kind | Name | Value |
-   |---|---|---|
-   | variable | `INFRA_HOST` | optional, defaults to `infra.c4-soft.com` |
-   | variable | `KC_ADMIN_USERNAME` | optional, defaults to `admin` |
-   | secret | `VPS_HOST` | the VPS IP or host name |
-   | secret | `VPS_SSH_KEY` | the private key generated above |
-   | secret | `VPS_KNOWN_HOSTS` | optional but recommended: `ssh-keyscan -H <vps-ip>` run from a machine you trust |
-   | secret | `KC_ADMIN_PASSWORD` | Keycloak admin console (`/auth/admin/`) |
-   | secret | `KC_DB_PASSWORD` | Keycloak's database |
-   | secret | `RABBITMQ_ADMIN_PASSWORD` | broker administrator `admin` |
-   | secret | `MAILPIT_SMTP_PASSWORD` | SMTP password of user `mailpit`, which the applications render into their realms |
-   | secret | `MAILPIT_UI_PASSWORD_HASH` | bcrypt hash protecting `/mailpit/` (user `demo`): `docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'` |
-   | secret | `GRAFANA_ADMIN_PASSWORD` | Grafana `admin` user (anonymous access is off on the demo host) |
-
-5. Push to `main` (or run the workflow manually), then deploy the applications.
+Step by step in [docs/demo-setup.md](docs/demo-setup.md): VPS and DNS, deployment key, host
+preparation, host key, passwords (three of them fixed by the first deployment), the GitHub `demo`
+environment, first deployment and checks. Not set up yet (postponed on 2026-10-21).
 
 ### What an application's deployment does
 

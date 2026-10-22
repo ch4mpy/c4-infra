@@ -1,0 +1,140 @@
+# Setting up the demo host
+
+Status: **not set up yet**. Postponed on 2026-10-21 (OVH's administration console was down); until
+then, only the dev stack is in use. Follow these steps once, in order, when the VPS is available.
+
+The demo host runs the shared stack of [demo/](../demo/) (Caddy, Keycloak on PostgreSQL, Mailpit,
+RabbitMQ, Grafana LGTM), deployed by [deploy-demo.yml](../.github/workflows/deploy-demo.yml) on
+every push to `main` that isn't only Markdown. The applications deploy themselves on top of it
+afterwards ([migration.md](migration.md), "On the demo host").
+
+## 0. Before anything
+
+- The repository's `main` holds what is to be deployed: the workflow runs on a push to `main` (or
+  by hand), and fails at its deploy job until the `demo` environment of step 6 exists.
+- If the VPS already runs an application's own demo stack (Hurura'a's or Tickee's Caddy on ports
+  80 and 443), that application moves onto the shared stack in the same maintenance window: the
+  two can't hold the same ports.
+
+## 1. VPS and DNS
+
+1. Order an Ubuntu LTS VPS (8 GB of RAM for the shared stack and a few applications) and note its
+   IP address.
+2. DNS: an `A` record pointing at that IP for `infra.c4-soft.com`, and one per application host
+   (`faito.c4-soft.com`, `hururaa.c4-soft.com`…). Caddy needs them to get its Let's Encrypt
+   certificates.
+3. If OVH's network firewall is enabled for the VPS, open ports 80 and 443 there (SSH, 22, too).
+
+## 2. Deployment key
+
+A key pair for this repository's workflow only (each application gets its own later):
+
+```bash
+ssh-keygen -t ed25519 -f c4-infra-demo -C c4-infra-demo -N ""
+```
+
+## 3. Prepare the host
+
+OVH's images give no SSH access to root, but an `ubuntu` sudoer. Copy the script over and run it
+with sudo, so that sudo can ask for its password:
+
+```bash
+scp demo/vps-bootstrap.sh ubuntu@<vps-ip>:/tmp/
+ssh -t ubuntu@<vps-ip> "sudo bash /tmp/vps-bootstrap.sh '$(cat c4-infra-demo.pub)'"
+```
+
+It installs Docker from its official repository and `unattended-upgrades`, opens 22, 80 and 443
+only (`ufw`), and creates the `deploy` user (member of the `docker` group, key-only SSH) with
+`~/c4-infra`. It ends with `Done. The workflows can now deploy as deploy@<ip>`.
+
+Each application's workflow key is added later by running the same script again with that key
+(keys are appended, never replaced).
+
+## 4. Host key
+
+From a machine you trust (not through an unknown network):
+
+```bash
+ssh-keyscan -H <vps-ip> > c4-infra-demo.known_hosts
+```
+
+It becomes the `VPS_KNOWN_HOSTS` secret: a host answering with another key then fails the
+deployment instead of receiving its secrets.
+
+## 5. Passwords
+
+Generate them, e.g. `openssl rand -base64 32`, and **store them in a password manager first**:
+
+| Secret | Used for | Note |
+| --- | --- | --- |
+| `KC_ADMIN_PASSWORD` | Keycloak's administrator `admin` (`/auth/admin/`) | read on Keycloak's first start only |
+| `KC_DB_PASSWORD` | Keycloak's database | set when the database volume is created |
+| `RABBITMQ_ADMIN_PASSWORD` | the broker's administrator `admin` | set when RabbitMQ's volume is created |
+| `MAILPIT_SMTP_PASSWORD` | SMTP user `mailpit` | the applications render it into their realms |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana's `admin` user | |
+| `MAILPIT_UI_PASSWORD_HASH` | `/mailpit/`, user `demo` | the bcrypt hash of a password of your choice (below) |
+
+```bash
+docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext '<Mailpit UI password>'
+```
+
+The first three are fixed by the first deployment: the services don't read them again. Changing
+the secret afterwards breaks the stack unless the value is changed in the service as well
+(Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`). Don't replace
+Keycloak's temporary administrator either, as its console suggests: the registrations log in with
+it (intent 0006).
+
+## 6. GitHub environment `demo`
+
+In this repository (`ch4mpy/c4-infra`). `gh secret set` reads the value on its standard input,
+so nothing lands in the shell's history:
+
+```bash
+R=ch4mpy/c4-infra
+gh api -X PUT repos/$R/environments/demo
+gh secret set VPS_HOST --env demo -R $R --body '<vps-ip>'
+gh secret set VPS_SSH_KEY --env demo -R $R < c4-infra-demo
+gh secret set VPS_KNOWN_HOSTS --env demo -R $R < c4-infra-demo.known_hosts
+for s in KC_ADMIN_PASSWORD KC_DB_PASSWORD RABBITMQ_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD \
+    MAILPIT_UI_PASSWORD_HASH GRAFANA_ADMIN_PASSWORD; do
+  gh secret set $s --env demo -R $R   # paste the value, then Enter
+done
+```
+
+Optional variables: `INFRA_HOST` (defaults to `infra.c4-soft.com`) and `KC_ADMIN_USERNAME`
+(defaults to `admin`), e.g. `gh variable set INFRA_HOST --env demo -R $R --body infra.c4-soft.com`.
+A required reviewer on the environment (repository settings) makes each deployment wait for an
+approval.
+
+Then delete the local copies of the private key and the known-hosts file, or keep them in the
+password manager.
+
+## 7. First deployment
+
+```bash
+gh workflow run deploy-demo.yml -R ch4mpy/c4-infra   # or push to main
+gh run watch -R ch4mpy/c4-infra
+```
+
+- The `build` job builds the Keycloak image and pushes it to GHCR, tagged with the content of
+  `keycloak/` (skipped when that tag exists).
+- The `deploy` job writes the host's `.env` (failing by name if a secret is missing), copies
+  `demo/` and `register-app.sh` to `~/c4-infra`, pulls the images and waits up to 300 s for every
+  service to be healthy, reloads Caddy, and installs the nightly backup of Keycloak's database
+  (03:15, host time, `~/backups/`).
+- The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
+  migrations.
+
+## 8. Check
+
+- `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD`.
+- `https://infra.c4-soft.com/mailpit/` (user `demo`) and `https://infra.c4-soft.com/grafana/`
+  (user `admin`; anonymous access is off).
+- On the host: `ssh deploy@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l'`.
+
+## 9. Then, the applications
+
+Each application adapts its own deployment ([migration.md](migration.md), "On the demo host"):
+its key added to the host (step 3 again), its DNS record, its compose project on the `c4-infra`
+network with unique container names, its Caddy site, and its call to `register-app.sh`. Faito
+has no demo deployment yet.
