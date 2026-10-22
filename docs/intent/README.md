@@ -48,3 +48,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
 | 0001 | [The dev stack is reachable from the local network](0001-dev-stack-reachable-from-the-network/intent.md) | bug | specified | 2026-10-21 | 2026-10-21 |
+| 0002 | [Deploying to the demo host gives every application's workflow the whole host](0002-demo-deployment-access/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
