@@ -1,11 +1,11 @@
 # Spec: A theme change restarts the Keycloak every application uses
 
 - Intent: [0005](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: standard (no risk rule applies: authentication itself doesn't change, only how themes are loaded)
 - Policies applied: none yet; standing constraints: README design
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO)
 
 ## Summary
 
@@ -79,3 +79,4 @@ None.
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (the intent's criterion narrowed by a decision, demo behaviour stated as kept, dev/demo setting shared with 0003), PA-1 decided
 - v1 — 2026-10-21 — draft: second coherence review (the environment named in `.env` rather than told by the proxy, criterion AC-4)
+- v1 — 2026-10-21 — approved by the PO: every point of attention decided
