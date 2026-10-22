@@ -2,6 +2,9 @@
 # Grafana LGTM for every application of the machine. Started by ./up.sh; each application then
 # registers its realm, its RabbitMQ virtual host and its reverse-proxy server with ./register-app.sh
 # and runs its own database(s) in its own compose project. See README.md.
+# Every port is published on the loopback only (127.0.0.1), with no setting to open it: nothing of
+# the stack answers from the local network. The workstation reaches it through host.docker.internal,
+# which up.sh checks resolves to 127.0.0.1.
 name: c4-infra
 
 networks:
@@ -21,8 +24,8 @@ services:
     container_name: c4-infra.reverse-proxy
     restart: unless-stopped
     ports:
-      - 80:80
-      - 443:443
+      - 127.0.0.1:80:80
+      - 127.0.0.1:443:443
     # the directory, not its files: git and register-app.sh replace files with new inodes, which a
     # single-file bind mount never shows to the running container
     command: ['nginx', '-c', '/etc/nginx/c4-infra/nginx.conf', '-g', 'daemon off;']
@@ -107,8 +110,8 @@ services:
     container_name: c4-infra.mailpit
     restart: unless-stopped
     ports:
-      - 1025:1025
-      - 8025:8025
+      - 127.0.0.1:1025:1025
+      - 127.0.0.1:8025:8025
     volumes:
       - mailpit_data:/data
       - ./certs/:/opt/mailpit/certs/:ro
@@ -132,8 +135,8 @@ services:
     hostname: rabbitmq
     restart: unless-stopped
     ports:
-      - 5672:5672
-      - 15672:15672
+      - 127.0.0.1:5672:5672
+      - 127.0.0.1:15672:15672
     environment:
       # the administrator only: each application has its own virtual host and user (register-app.sh)
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER}
@@ -159,9 +162,9 @@ services:
     container_name: c4-infra.grafana-lgtm
     restart: unless-stopped
     ports:
-      - 3000:3000
-      - 4317:4317
-      - 4318:4318
+      - 127.0.0.1:3000:3000
+      - 127.0.0.1:4317:4317
+      - 127.0.0.1:4318:4318
     environment:
       GF_SERVER_ROOT_URL: https://${INFRA_HOST}/grafana
       GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
