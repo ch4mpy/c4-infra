@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# 0002: on a stand-in demo host, one account per application (AC-1 to AC-4, AC-7):
+# 0002: on a stand-in demo host, one account per application (AC-1 to AC-4, AC-7, AC-8):
 #
 #   - the accounts as docs/demo-setup.md prepares them (stand_in_accounts: vps-bootstrap.sh c4-infra,
 #     then app hururaa and app faito, keys generated inside the stand-in), the shared stack deployed
 #     as c4-infra over ssh (demo/deploy.sh, which installs c4-app);
 #   - Hurura'a's fixture (tests/fixtures/0002/hururaa/, its .env holding a marker) rsynced to
 #     ~hururaa/hururaa/ and deployed with Hurura'a's key: sudo c4-app register, sudo c4-app up;
-#   - AC-2: with Faito's key, Faito's fixture rsynced to ~faito/faito/, then sudo c4-app pull,
-#     register (routes file, RabbitMQ user) and up succeed: faito.gateway runs, the reverse proxy
-#     reaches it, its site belongs to c4-infra;
-#   - AC-3: through sudo c4-app register, Hurura'a's realm file with --reset-realms, Hurura'a's
-#     RabbitMQ user, a themes directory holding tickee (keycloak/themes/tickee, placed beforehand,
-#     unchanged), the two hostile routes files, a path outside ~/faito/, a symbolic link in it: each
-#     refused; a faito-realm.json whose "realm" field says public-facing imports realm faito, and no
-#     public-facing realm appears;
+#   - AC-2, AC-8: with Faito's key, Faito deployed with docs/migration.md's own lines ("On the demo
+#     host", read from the document; <project> and <realm> faito, $VPS the stand-in's address):
+#     its rsync, sudo c4-app pull (without its GHCR login: no registry here), register and up
+#     succeed: faito.gateway runs, the reverse proxy reaches it, its site belongs to c4-infra; and
+#     docs/demo-setup.md's bootstrap commands are the ones stand_in_accounts runs;
+#   - AC-3: the faito-realm.json of that registration, whose "realm" field says public-facing,
+#     imports realm faito, and no public-facing realm appears; through sudo c4-app register,
+#     Hurura'a's realm file with --reset-realms, Hurura'a's RabbitMQ user, a themes directory holding
+#     tickee (keycloak/themes/tickee, placed beforehand, unchanged), the two hostile routes files, a
+#     path outside ~/faito/, a symbolic link in it: each refused;
 #   - AC-1: with Faito's key, reading Hurura'a's .env or the shared stack's, docker (directly or
 #     through sudo), stopping Hurura'a's container, a compose file whose env_file is Hurura'a's .env,
 #     and a connection to Hurura'a's container's address (the firewall's rule; c4-infra's account
@@ -76,21 +78,50 @@ in_stand_in() { # <command…>: as root in the stand-in, its output kept quiet
   stand_in_exec "$@" > /dev/null 2>&1
 }
 
-# An application's files, from its fixture, into $UPLOADS/<app> (as the workflow's runner holds
-# them), its .env from <env file>; then rsynced to ~<app>/<app>/ with its key, as
-# docs/migration.md's workflow does
-upload() { # <app> <env file> [<extra fixture file>…]
-  local app=$1 env=$2 extra
+# AC-8: the lines of docs/migration.md's workflow ("On the demo host"), as the document writes them
+doc_line() { # <extended regex>: the first line of docs/migration.md matching it, unindented
+  grep -E "$1" docs/migration.md | head -n 1 | sed 's/\r$//; s/^[[:space:]]*//'
+}
+DOC_RSYNC=$(doc_line '^[[:space:]]*rsync .*"\$VPS:~/<project>/"$')
+DOC_PULL=$(doc_line '^[[:space:]]*ssh "\$VPS" sudo c4-app pull ')
+DOC_REGISTER=$(doc_line '^[[:space:]]*ssh "\$VPS" sudo c4-app register ')
+DOC_UP=$(doc_line '^[[:space:]]*ssh "\$VPS" sudo c4-app up$')
+# <log> <app> <line>: a line of the document, as its workflow runs it, in the stand-in from
+# $UPLOADS/<app> (which holds deploy/, the runner's directory): <project> and <realm> are <app>, $VPS
+# its account on the stand-in, ssh and rsync use its key; output and status as as()'s
+doc_run() {
+  local log=$1 app=$2 line=$3
+  line=${line//<project>/$app}
+  line=${line//<realm>/$app}
+  stand_in_exec bash -c '
+    cd "$1" || exit 1
+    export VPS=$2@127.0.0.1 RSYNC_RSH=$3
+    # the ssh binary with the key (command: not this function again)
+    ssh() { command $RSYNC_RSH "$@"; }
+    eval "$4"' sh "$UPLOADS/$app" "$app" "$(stand_in_ssh_command "$app")" "$line" > "$work/$log" 2>&1
+  status=$?
+  { echo "== $app, from docs/migration.md: $line"; cat "$work/$log"; } >> "$work/all.log"
+}
+
+# An application's files, from its fixture, into $UPLOADS/<app>/deploy/ (the workflow's runner's
+# directory), its .env from <env file>; then docs/migration.md's rsync line sends them to ~<app>/<app>/
+# with its key
+upload() { # <app> <env file> [<extra fixture file or directory>, or <fixture file>:<name>…]
+  local app=$1 env=$2 extra deploy=$UPLOADS/$1/deploy
   shift 2
   stand_in_exec rm -rf "$UPLOADS/$app"
-  stand_in_exec mkdir -p "$UPLOADS/$app" || return 1
-  (cd "$FIXTURES/$app" && tar -cf - .) | stand_in_exec -i tar -xf - --no-same-owner -C "$UPLOADS/$app" || return 1
+  stand_in_exec mkdir -p "$deploy" || return 1
+  (cd "$FIXTURES/$app" && tar -cf - .) | stand_in_exec -i tar -xf - --no-same-owner -C "$deploy" || return 1
   for extra in "$@"; do
-    (cd "$FIXTURES" && tar -cf - "$extra") | stand_in_exec -i tar -xf - --no-same-owner -C "$UPLOADS/$app" || return 1
+    if [[ $extra == *:* ]]; then
+      stand_in_exec -i sh -c 'cat > "$1"' sh "$deploy/${extra#*:}" < "$FIXTURES/${extra%%:*}" || return 1
+    else
+      (cd "$FIXTURES" && tar -cf - "$extra") | stand_in_exec -i tar -xf - --no-same-owner -C "$deploy" || return 1
+    fi
   done
-  stand_in_exec -i sh -c 'umask 077 && cat > "$1"' sh "$UPLOADS/$app/.env" < "$env" || return 1
-  stand_in_exec bash -c 'cd "$1" && rsync -az --delete -e "$2" ./ "$3@127.0.0.1:~/$3/"' \
-    sh "$UPLOADS/$app" "$(stand_in_ssh_command "$app")" "$app"
+  stand_in_exec -i sh -c 'umask 077 && cat > "$1"' sh "$deploy/.env" < "$env" || return 1
+  doc_run "upload-$app.log" "$app" "$DOC_RSYNC"
+  [ "$status" -eq 0 ] || { cat "$work/upload-$app.log"; return 1; }
 }
 
 # Keycloak's admin CLI in the stand-in, as the bootstrap administrator of the stack's .env (read as
@@ -108,6 +139,23 @@ realm_absent() { # <realm>
   [[ $output == *"Resource not found"* ]] || { echo "$output"; return 1; }
 }
 
+# AC-8: the documents' commands are the ones this test runs
+check "AC-8: docs/migration.md gives the rsync line ($DOC_RSYNC)" test "$DOC_RSYNC" = 'rsync -az --delete deploy/ "$VPS:~/<project>/"'
+check "AC-8: and the pull ($DOC_PULL)" \
+  test "$DOC_PULL" = 'ssh "$VPS" sudo c4-app pull --registry ghcr.io --registry-user "$GHCR_USER" <<< "$GHCR_TOKEN"'
+check "AC-8: the registration ($DOC_REGISTER)" test -n "$DOC_REGISTER"
+check "AC-8: and the start ($DOC_UP)" test "$DOC_UP" = 'ssh "$VPS" sudo c4-app up'
+check "AC-8: the workflow runs as <project>@" grep -qF 'VPS: <project>@${{ secrets.VPS_HOST }}' docs/migration.md
+# what stand_in_accounts runs, as root: vps-bootstrap.sh c4-infra, then app <app>, with each key
+check "AC-8: docs/demo-setup.md prepares the host with vps-bootstrap.sh c4-infra" \
+  grep -qF "\"sudo bash /tmp/vps-bootstrap.sh c4-infra '\$(cat c4-infra-demo.pub)'\"" docs/demo-setup.md
+check "AC-8: and adds an application with vps-bootstrap.sh app <app>" \
+  grep -qF "\"sudo bash /tmp/vps-bootstrap.sh app <app> '\$(cat <app>-demo.pub)'\"" docs/demo-setup.md
+check "AC-8: stand_in_accounts runs that script with those arguments" \
+  grep -qF 'bash /tmp/vps-bootstrap.sh app "$app" "$(cat "$keys/$app.pub")"' tests/lib/stand-in-host.sh
+check "AC-8: docs/demo-setup.md gives the application its host key secret" \
+  grep -qF 'gh secret set VPS_KNOWN_HOSTS --env demo -R $A < c4-infra-demo.known_hosts' docs/demo-setup.md
+
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, hururaa, faito), the shared stack deployed as c4-infra" stand_in_accounts hururaa faito
 c4_app_mode=$(stand_in_exec stat -c '%U:%G %a' /usr/local/sbin/c4-app | tr -d '\r')
@@ -123,18 +171,22 @@ as hururaa-up.log hururaa "sudo c4-app up"
 check "Hurura'a starts (sudo c4-app up)" exited_0 hururaa-up.log
 check "hururaa.gateway runs" running hururaa.gateway
 
-# AC-2: Faito's deployment with Faito's key
+# AC-2, AC-8: Faito's deployment with Faito's key, docs/migration.md's lines. Its faito-realm.json is
+# the fixture whose "realm" field says public-facing (AC-3, below).
 printf 'RABBITMQ_PASSWORD=%s\n' "$(openssl rand -hex 16)" > "$work/faito.env"
-check "AC-2: Faito's files are rsynced to ~faito/faito/ with its key" \
-  upload faito "$work/faito.env" public-facing-realm.json themes routes-hururaa-host.routes routes-keycloak-port.routes
-as pull.log faito "sudo c4-app pull"
-check "AC-2: sudo c4-app pull exits 0" exited_0 pull.log
-as register.log faito "sudo c4-app register --proxy faito.routes --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD"
-check "AC-2: sudo c4-app register (routes file, RabbitMQ user) exits 0" exited_0 register.log
+check "AC-2: Faito's files are rsynced to ~faito/faito/ with its key (the document's rsync line)" \
+  upload faito "$work/faito.env" faito-realm-named-public-facing.json:faito-realm.json \
+  public-facing-realm.json themes routes-hururaa-host.routes routes-keycloak-port.routes
+# the pull without its GHCR login (the stand-in has no registry): the document's line up to it
+doc_run pull.log faito "${DOC_PULL%% --registry*}"
+check "AC-2: the document's sudo c4-app pull exits 0" exited_0 pull.log
+doc_run register.log faito "$DOC_REGISTER"
+check "AC-2: the document's sudo c4-app register (realm, routes file, RabbitMQ user) exits 0" exited_0 register.log
+check "AC-2: it imports realm faito" says register.log "Importing realm faito"
 check "AC-2: it installs Faito's site" says register.log "Reverse proxy: faito site installed (INFRA_ENV=demo)"
 check "AC-2: and its RabbitMQ user" says register.log "RabbitMQ: virtual host faito, user faito-api"
-as up.log faito "sudo c4-app up"
-check "AC-2: sudo c4-app up exits 0" exited_0 up.log
+doc_run up.log faito "$DOC_UP"
+check "AC-2: the document's sudo c4-app up exits 0" exited_0 up.log
 check "AC-2: faito.gateway runs" running faito.gateway
 check "AC-2: the reverse proxy reaches it" \
   stand_in_exec sh -c 'docker exec c4-infra.reverse-proxy wget -qO- http://faito.gateway:7080/ | grep -qx faito.gateway'
@@ -145,13 +197,8 @@ check "AC-2: RabbitMQ has the user faito-api" \
 model_owner=$(stand_in_exec stat -c '%U:%G %a' /var/lib/c4-apps/faito/.c4-app.model.json | tr -d '\r')
 check "AC-2: the model root's compose ran is root's ($model_owner)" test "$model_owner" = "root:root 640"
 
-# AC-3: realm forcing first, while realm faito doesn't exist: a faito-realm.json whose "realm" field
-# says public-facing, sent by Faito's account
-check "AC-3: Faito sends a faito-realm.json whose realm field says public-facing" \
-  stand_in_ssh -i faito 'cat > ~/faito/faito-realm.json' < "$FIXTURES/faito-realm-named-public-facing.json"
-as realm.log faito "sudo c4-app register --realm faito-realm.json"
-check "AC-3: Faito's faito-realm.json registers" exited_0 realm.log
-check "AC-3: it imports realm faito" says realm.log "Importing realm faito"
+# AC-3: that registration's faito-realm.json, whose "realm" field says public-facing, imported while
+# realm faito didn't exist
 realm_display() { kc_get realms/faito | grep -q '"displayName" : "faito-realm-named-public-facing (0002 fixture)"' || kc_get realms/faito; }
 check "AC-3: realm faito is the file's (its displayName)" realm_display
 check "AC-3: no public-facing realm appears" realm_absent public-facing

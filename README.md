@@ -128,6 +128,9 @@ the shared stack (its realms, RabbitMQ user, themes and host names; the file's h
 write a line). `up.sh` and `register-app.sh` check it ([`registry.sh`](registry.sh)): two
 applications sharing a number, a name, a realm, a theme, a RabbitMQ user or a host name stop both,
 naming the two lines, and `register-app.sh` registers nothing for an application missing from it.
+No entry may claim what the shared stack itself owns: Keycloak's `master` realm, RabbitMQ's
+administrator (`RABBITMQ_ADMIN_USER` of `.env`, `admin`), since a registration may reset its
+entry's realms and set its RabbitMQ user's password.
 A new application takes the number `bash registry.sh next` prints, and adds its line to
 `registry.txt` first, in a commit of its own, before anything registers.
 
@@ -180,6 +183,12 @@ created since survive; `--reset-realms` re-imports it), a site is validated by C
 replaces the previous one (Caddy is reloaded, never restarted), an unchanged theme is left alone; a
 changed one is installed, and shows on reload in dev (no restart), while on the demo host it
 restarts Keycloak once per registration, whatever the number of themes.
+A registration touches only what the application's registry entry assigns to it, in dev as on the
+demo host: each `--realm` file is named after a realm of the entry (`<realm>-realm.json`) and is
+imported under that name, whatever its own `realm` field says; each theme directory of `--themes`
+is named after a theme of the entry; `--rabbitmq-user` is the entry's; the routes file gives a site
+on the entry's host name, to the application's own upstreams. Anything else is refused, saying
+why, before anything changes.
 No password goes on a command line: Keycloak's admin CLI reads the registration account's secret
 from its environment, RabbitMQ receives a salted hash.
 
@@ -286,17 +295,53 @@ Step by step in [docs/demo-setup.md](docs/demo-setup.md): VPS and DNS, deploymen
 preparation, host key, passwords (three of them fixed by the first deployment), the GitHub `demo`
 environment, first deployment and checks. Not set up yet (postponed on 2026-10-21).
 
+### Accounts
+
+One account per application, plus the shared stack's, each opened by one workflow's key only
+(installed as `restrict <key>`: no forwarding, no terminal), and each home closed to the others
+([`demo/vps-bootstrap.sh`](demo/vps-bootstrap.sh), [docs/demo-setup.md](docs/demo-setup.md)):
+
+- `c4-infra`, the shared stack's: the only account in the `docker` group, the only one that changes
+  the shared services (its workflow, `deploy-demo.yml`), with `~/c4-infra` and its `.env`, which
+  holds every secret of the stack, the registration account's included (mode 600);
+- `<app>`, one per application, named after its registry entry: outside the `docker` group, in the
+  group `c4-apps`, whose one sudo rule is `sudo c4-app`; its workflow sends its files to
+  `~/<app>/`. The firewall rejects any new outgoing connection of that group but on the loopback
+  (its ssh and rsync are inbound): it can't reach the containers' addresses from the host either.
+
+[`demo/c4-app`](demo/c4-app), installed root-owned by each deployment of the stack, acts for the
+application whose account runs it (never an argument), on its own project only:
+
+- `sudo c4-app pull [--registry <host> --registry-user <user>]` (the registry's token on stdin, in a
+  temporary Docker configuration removed at once), `sudo c4-app up`, `sudo c4-app down`: its compose
+  project, named after it. Each command copies `~/<app>/` (read as the application) into
+  `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
+  symbolic link or a special file; the compose model is read as the application (`docker compose
+  config`: no file its account can't read, such as another application's `env_file`), and root's
+  `docker compose` runs that model only;
+- `sudo c4-app register <register-app.sh's options>`, without `--app`: paths relative to
+  `~/<app>/`, which must stay inside it, and `--rabbitmq-password-env <VAR>` taken from
+  `~/<app>/.env`. The registration then runs with the registration account's secret, which the
+  application's account can't read, and touches only what its registry entry assigns to it (its
+  realms, its themes, its RabbitMQ user and virtual host, its site: see "What an application
+  provides").
+
+Until intent 0007, `c4-app up` starts whatever compose model the application writes (privileged
+containers included): no application deploys to the demo host before it.
+
 ### What an application's deployment does
 
-From its own workflow, as `deploy@<vps>`, in `~/<app>/`:
+From its own workflow, as `<app>@<vps>` (its own account, its own key; the host's key pinned), its
+files rsynced to `~/<app>/`, then `sudo c4-app pull`, `sudo c4-app register …` and `sudo c4-app up`
+([docs/migration.md](docs/migration.md), "On the demo host"):
 
-- its compose project, whose containers that need the shared services join the external network
-  `c4-infra`, with **unique container names** (`<app>.gateway`, `<app>.api`…): Caddy and Keycloak
-  reach them by these names, and two applications' `gateway` services on the same network would be
-  ambiguous. Its databases stay on its project's own network;
+- its compose project, `~/<app>/compose.yml`, whose containers that need the shared services join
+  the external network `c4-infra`, with **unique container names** (`<app>.gateway`, `<app>.api`…):
+  Caddy and Keycloak reach them by these names, and two applications' `gateway` services on the same
+  network would be ambiguous. Its databases stay on its project's own network;
 - its realm, rendered for the demo (public host, real client secrets, Mailpit's SMTP password,
   back-channel logout on `http://<app>.gateway:7080/...`), then
-  `bash ~/c4-infra/register-app.sh --app <app> --realm … --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
+  `sudo c4-app register --realm <realm>-realm.json --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
 - no Caddy site to write: its routes file, the one it registers in dev (see "Routes file"), gives
   its site on the demo host name of its registry entry, to its containers on the ports fixed here:
   the gateway on `<app>.gateway:7080`, and every locale's front end on `<app>.frontend:80` (`/fr/`
@@ -306,22 +351,27 @@ From its own workflow, as `deploy@<vps>`, in `~/<app>/`:
 
 ### On the host
 
-`~/c4-infra` holds what the deployment sends, the files of
-[`demo/deploy-files.txt`](demo/deploy-files.txt) (the compose base and its demo override, the
-shared Caddyfile and `caddy/env/demo.caddy`, the registry, `routes.sh`, `register-app.sh`,
-`registration-account.sh`, `demo/deploy.sh` and `demo/backup.sh`), its `.env` (mode 600, written by
-[`demo/write-env.sh`](demo/write-env.sh) on the workflow's runner: `INFRA_ENV=demo`,
-`COMPOSE_FILE=compose.yml:compose.demo.yml`, the secrets), and what the applications register
-(`caddy/apps/`, `keycloak/themes/`). The workflow then runs [`demo/deploy.sh`](demo/deploy.sh)
-there: `docker compose up` until every service is healthy, a Caddy reload, the registration
-account (`registration-account.sh ensure`, see "The registration account"), the nightly backup.
+`/home/c4-infra/c4-infra` (`~/c4-infra` of the `c4-infra` account) holds what the deployment sends,
+the files of [`demo/deploy-files.txt`](demo/deploy-files.txt) (the compose base and its demo
+override, the shared Caddyfile and `caddy/env/demo.caddy`, the registry, `routes.sh`,
+`register-app.sh`, `registration-account.sh`, `demo/deploy.sh`, `demo/backup.sh` and
+`demo/c4-app`), its `.env` (mode 600, written by [`demo/write-env.sh`](demo/write-env.sh) on the
+workflow's runner: `INFRA_ENV=demo`, `COMPOSE_FILE=compose.yml:compose.demo.yml`, the secrets), and
+what the applications register (`caddy/apps/`, `keycloak/themes/`, owned by `c4-infra` too). The
+workflow pins the host's key first ([`demo/trust-host-key.sh`](demo/trust-host-key.sh): no
+deployment without `VPS_KNOWN_HOSTS`), and pins every action it uses by commit; it then runs
+[`demo/deploy.sh`](demo/deploy.sh) there, as `c4-infra`: `c4-app` installed in `/usr/local/sbin`
+when it changed (the account's one sudo rule), `docker compose up` until every service is healthy, a
+Caddy reload, the registration account (`registration-account.sh ensure`, see "The registration
+account"), the nightly backup.
 
 ### Day to day
 
-On the host, as `deploy`, from `~/c4-infra`:
+On the host, as `c4-infra`, from `~/c4-infra`: over ssh with its key, or from the operator's
+`ubuntu` session (`sudo -iu c4-infra`), since the workflows' keys open no terminal:
 
 ```bash
-docker compose ps                  # health of every shared service
+ssh c4-infra@<vps> 'cd ~/c4-infra && docker compose ps'   # health of every shared service
 docker compose logs -f keycloak    # or reverse-proxy, rabbitmq...
 ```
 
@@ -330,7 +380,7 @@ first.
 
 ### Backups
 
-[`demo/deploy.sh`](demo/deploy.sh) installs [`demo/backup.sh`](demo/backup.sh) in the `deploy` user's crontab, nightly
+[`demo/deploy.sh`](demo/deploy.sh) installs [`demo/backup.sh`](demo/backup.sh) in the `c4-infra` account's crontab, nightly
 at 03:15 (host time): a hot `pg_dump` of Keycloak's database in `~/backups/`, kept 7 days. Each
 application backs up its own databases. To restore, from `~/c4-infra`:
 

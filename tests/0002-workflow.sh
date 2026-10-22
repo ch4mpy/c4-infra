@@ -6,7 +6,10 @@
 #   AC-5  the demo deployment pins the host's key before it connects: demo/trust-host-key.sh, run
 #         before webfactory/ssh-agent receives the private key and before any ssh or rsync, fails
 #         with a workflow error when VPS_KNOWN_HOSTS is empty, and appends it to ~/.ssh/known_hosts
-#         otherwise; nothing scans a host key (no ssh-keyscan in .github/ nor demo/).
+#         otherwise; nothing scans a host key (no ssh-keyscan in .github/ nor demo/);
+#   docs  the applications' workflow of docs/migration.md does the same: checkout and ssh-agent
+#         pinned by commit, the host-key step (the script's own lines, inline) before the agent and
+#         before any ssh or rsync, as <project>@ (its own account).
 #
 #   bash tests/0002-workflow.sh
 set -uo pipefail
@@ -90,4 +93,32 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) echo "# ~/.ssh's mode: not checked under Windows (no POSIX modes)" ;;
   *) check "AC-5: ~/.ssh is mode 700" test "$(stat -c %a "$work/set/.ssh")" = 700 ;;
 esac
+
+# docs: the applications' workflow (docs/migration.md, "On the demo host")
+MIGRATION=docs/migration.md
+uses_in_migration() { # <action>: a uses: line of it, pinned
+  grep -E "^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]+$1@" "$MIGRATION" | sed 's/\r$//' | grep -qE "$PINNED"
+}
+check "docs: migration.md's workflow uses actions/checkout, pinned" uses_in_migration actions/checkout
+check "docs: and webfactory/ssh-agent, pinned" uses_in_migration webfactory/ssh-agent
+# the script's lines from its test of VPS_KNOWN_HOSTS to its printf, without their indentation nor
+# the blank lines
+host_key_lines() { # <file>
+  sed -n '/if \[ -z "\${VPS_KNOWN_HOSTS:-}" \]; then/,/>> "\$HOME\/.ssh\/known_hosts"/p' "$1" | sed 's/\r$//; s/^[[:space:]]*//; /^$/d'
+}
+host_key_lines demo/trust-host-key.sh > "$work/script.lines"
+host_key_lines "$MIGRATION" > "$work/migration.lines"
+check "docs: the script's host-key lines are found ($(wc -l < "$work/script.lines") lines)" test "$(wc -l < "$work/script.lines")" -ge 5
+same_host_key_lines() { diff "$work/script.lines" "$work/migration.lines"; }
+check "docs: migration.md's host-key step is demo/trust-host-key.sh's lines" same_host_key_lines
+migration_line() { # <extended regex>: its first line in migration.md
+  grep -nE "$1" "$MIGRATION" | head -n 1 | cut -d: -f1
+}
+doc_trust=$(migration_line 'if \[ -z "\$\{VPS_KNOWN_HOSTS:-\}" \]; then')
+doc_agent=$(migration_line 'uses:[[:space:]]+webfactory/ssh-agent@')
+doc_connect=$(migration_line '^[[:space:]]*(rsync|ssh|scp)[[:space:]].*\$VPS')
+check "docs: the host key is pinned before the agent (lines ${doc_trust:-none}, ${doc_agent:-none})" \
+  test "${doc_trust:-999999}" -lt "${doc_agent:-0}"
+check "docs: and before the first rsync or ssh (line ${doc_connect:-none})" test "${doc_trust:-999999}" -lt "${doc_connect:-0}"
+check "docs: the workflow connects as <project>@, its own account" grep -qF 'VPS: <project>@${{ secrets.VPS_HOST }}' "$MIGRATION"
 finish

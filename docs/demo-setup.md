@@ -30,7 +30,8 @@ Markdown. The applications deploy themselves on top of it afterwards
 
 ## 2. Deployment key
 
-A key pair for this repository's workflow only (each application gets its own later):
+A key pair for this repository's workflow only, which opens the shared stack's account `c4-infra`
+(each application gets its own key pair and its own account later, step 9):
 
 ```bash
 ssh-keygen -t ed25519 -f c4-infra-demo -C c4-infra-demo -N ""
@@ -43,26 +44,34 @@ with sudo, so that sudo can ask for its password:
 
 ```bash
 scp demo/vps-bootstrap.sh ubuntu@<vps-ip>:/tmp/
-ssh -t ubuntu@<vps-ip> "sudo bash /tmp/vps-bootstrap.sh '$(cat c4-infra-demo.pub)'"
+ssh -t ubuntu@<vps-ip> "sudo bash /tmp/vps-bootstrap.sh c4-infra '$(cat c4-infra-demo.pub)'"
 ```
 
-It installs Docker from its official repository and `unattended-upgrades`, opens 22, 80 and 443
-only (`ufw`), and creates the `deploy` user (member of the `docker` group, key-only SSH) with
-`~/c4-infra`. It ends with `Done. The workflows can now deploy as deploy@<ip>`.
+It installs Docker from its official repository and `unattended-upgrades`, `jq` and `rsync`; opens
+22, 80 and 443 only (`ufw`), and rejects any new outgoing connection of the applications' accounts
+(group `c4-apps`) but on the loopback; writes `/etc/sudoers.d/c4-infra` (checked by `visudo`): the
+group `c4-apps` may run `sudo c4-app` only, and `c4-infra` may install `c4-app` (one exact command
+line, `demo/deploy.sh`'s); and creates the account `c4-infra`, the only one in the `docker` group,
+with `~/c4-infra` and the key installed as `restrict <key>` (no forwarding, no terminal: the
+workflow runs commands; you log in as `ubuntu`). It ends with
+`Done. c4-infra's workflow can now deploy as c4-infra@<ip>`.
 
-Each application's workflow key is added later by running the same script again with that key
-(keys are appended, never replaced).
+Run again, it changes nothing but appends a key it doesn't have yet (keys are never replaced).
 
 ## 4. Host key
 
+Required: every deployment pins the host's key before it connects, and fails (`VPS_KNOWN_HOSTS is
+not set`) without it, before the ssh agent receives its key; nothing trusts a host key on first use.
 From a machine you trust (not through an unknown network):
 
 ```bash
 ssh-keyscan -H <vps-ip> > c4-infra-demo.known_hosts
+ssh-keygen -lf c4-infra-demo.known_hosts   # compare with the fingerprints OVH's console shows
 ```
 
-It becomes the `VPS_KNOWN_HOSTS` secret: a host answering with another key then fails the
-deployment instead of receiving its secrets.
+It becomes the `VPS_KNOWN_HOSTS` secret, of c4-infra's `demo` environment (step 6) and of each
+application's (step 9): a host answering with another key then fails the deployment instead of
+receiving its secrets.
 
 ## 5. Passwords
 
@@ -117,8 +126,8 @@ them: set them, run the deployment once, then delete them
 A required reviewer on the environment (repository settings) makes each deployment wait for an
 approval.
 
-Then delete the local copies of the private key and the known-hosts file, or keep them in the
-password manager.
+Then delete the local copy of the private key, or keep it in the password manager. Keep the
+known-hosts file (it holds no secret): each application's environment gets it too (step 9).
 
 ## 7. First deployment
 
@@ -129,15 +138,18 @@ gh run watch -R ch4mpy/c4-infra
 
 - The `build` job builds the Keycloak image and pushes it to GHCR, tagged with the content of
   `keycloak/` (skipped when that tag exists).
-- The `deploy` job writes the host's `.env` on the runner with
+- The `deploy` job pins the host's key first ([`demo/trust-host-key.sh`](../demo/trust-host-key.sh):
+  it fails there without `VPS_KNOWN_HOSTS`), writes the host's `.env` on the runner with
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
-  which `rsync -a` keeps), sends `~/c4-infra` exactly the files of
+  which `rsync -a` keeps), sends `~/c4-infra`, as `c4-infra`, exactly the files of
   [`demo/deploy-files.txt`](../demo/deploy-files.txt) (the compose base and its demo override, the
   shared Caddy configuration, the registry, `routes.sh`, `register-app.sh`,
-  `registration-account.sh`, the host's scripts) and then `.env`, pulls the images, and runs
-  [`demo/deploy.sh`](../demo/deploy.sh) on the host: it waits up to 300 s for every service to be
-  healthy, reloads Caddy, creates the registration account (with the bootstrap administrator), and
-  installs the nightly backup of Keycloak's database (03:15, host time, `~/backups/`).
+  `registration-account.sh`, the host's scripts and `demo/c4-app`) and then `.env`, pulls the
+  images, and runs [`demo/deploy.sh`](../demo/deploy.sh) on the host: it installs `c4-app` in
+  `/usr/local/sbin` when it changed, waits up to 300 s for every service to be healthy, reloads
+  Caddy, creates the registration account (with the bootstrap administrator), and installs the
+  nightly backup of Keycloak's database (03:15, host time, `~/backups/`). Every action of the
+  workflow is pinned by commit (its tag as a comment).
 - The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
   migrations.
 
@@ -146,14 +158,51 @@ gh run watch -R ch4mpy/c4-infra
 - `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD`.
 - `https://infra.c4-soft.com/mailpit/` (user `demo`) and `https://infra.c4-soft.com/grafana/`
   (user `admin`; anonymous access is off).
-- On the host: `ssh deploy@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l'`.
+- On the host: `ssh c4-infra@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l'`.
 
-## 9. Then, the applications
+## 9. Adding an application
 
-Each application adapts its own deployment ([migration.md](migration.md), "On the demo host"):
-its key added to the host (step 3 again), its DNS record, its compose project on the `c4-infra`
-network with unique container names, its routes file (the one it registers in dev), and its call
-to `register-app.sh`. Faito has no demo deployment yet.
+Each application deploys with its own account, `<app>` (its registry entry's name), outside the
+`docker` group: it sends its files to `~/<app>/` and runs `sudo c4-app` there, which acts on its
+own compose project and registers it with what its registry entry assigns to it, nothing else
+([README](../README.md), "Accounts"). For each application, once:
+
+1. **Its registry entry** in [`registry.txt`](../registry.txt), committed in c4-infra and deployed
+   (step 7: the deployment sends the registry): `c4-app` refuses an application missing from it.
+2. **Its DNS record**, `<app>.c4-soft.com` (step 1).
+3. **Its key pair**, for its workflow only:
+
+   ```bash
+   ssh-keygen -t ed25519 -f <app>-demo -C <app>-demo -N ""
+   ```
+
+4. **Its account**, with that key (the script of step 3, copied again if `/tmp` was emptied):
+
+   ```bash
+   scp demo/vps-bootstrap.sh ubuntu@<vps-ip>:/tmp/
+   ssh -t ubuntu@<vps-ip> "sudo bash /tmp/vps-bootstrap.sh app <app> '$(cat <app>-demo.pub)'"
+   ```
+
+   It creates the account `<app>` in the group `c4-apps` (not in `docker`), with `~/<app>/`, its
+   home closed to the other accounts, and ends with
+   `Done. <app>'s workflow can now deploy as <app>@<ip>`. It refuses an account it didn't create
+   (`ubuntu`, a system user).
+5. **Its secrets**, in the application's repository (its own `demo` environment), read on stdin:
+
+   ```bash
+   A=ch4mpy/<app>
+   gh api -X PUT repos/$A/environments/demo
+   gh secret set VPS_HOST --env demo -R $A --body '<vps-ip>'
+   gh secret set VPS_SSH_KEY --env demo -R $A < <app>-demo
+   gh secret set VPS_KNOWN_HOSTS --env demo -R $A < c4-infra-demo.known_hosts
+   ```
+
+   then delete the local copy of the private key (or keep it in the password manager).
+6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on the
+   `c4-infra` network with unique container names, its routes file, the commands it runs as
+   `<app>@<vps-ip>`).
+
+Faito has no demo deployment yet.
 
 ## 10. Rotating the registration secret
 

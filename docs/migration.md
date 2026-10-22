@@ -116,27 +116,93 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 1. Deploy `c4-infra` on the VPS first (its README). Its Caddy takes ports 80 and 443: a project
    still deploying its own Caddy on the same host must move in the same maintenance window.
-2. In the project's `deploy/compose.yml`: drop `caddy`, `keycloak`, `mailpit`, `rabbitmq` and
-   `grafana-lgtm`; the services that need the shared ones (gateway, API, frontend, an LDAP
-   server) join the external network `c4-infra` and keep their unique `container_name`
-   (`<project>.gateway`…); the databases stay on the project's network only.
-3. Its realm rendering (`deploy/keycloak/render-realms.sh`): no `org.keycloak.keys.KeyProvider`
-   components (the dev keys are in the repository), issuer host `infra.c4-soft.com`, the
-   BFF's redirect URIs on `<project>.c4-soft.com`, back-channel logout on
+2. **Its account** on the host, `<project>`, named after its registry entry, opened by its own key
+   only: [demo-setup.md](demo-setup.md), step 9, "Adding an application" (its registry entry
+   deployed, its key pair, `vps-bootstrap.sh app <project> '<key>'`, its secrets `VPS_HOST`,
+   `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS`). That account isn't in the `docker` group: the project
+   deploys through `sudo c4-app` only, which acts on its own compose project and registers it with
+   what its registry entry assigns to it ([README](../README.md), "Accounts").
+3. What its workflow sends to `~/<project>/`, a `deploy/` directory of the runner: `compose.yml`
+   (the project's compose model, at its root), its `.env` (written on the runner, mode 600: the
+   variables compose interpolates, and the RabbitMQ password), its routes file, its rendered realm
+   file(s) and its themes, if any; nothing that is a symbolic link (`c4-app` refuses it). In
+   `compose.yml`: drop `caddy`, `keycloak`, `mailpit`, `rabbitmq` and `grafana-lgtm`; the services
+   that need the shared ones (gateway, API, frontend, an LDAP server) join the external network
+   `c4-infra` and keep their unique `container_name` (`<project>.gateway`…); the databases stay on
+   the project's network only; every file it mounts or reads (`env_file`) is inside `~/<project>/`,
+   relative to it (the model is read as the project's account: it can't read any other). Its data
+   go in named volumes: what is mounted from `~/<project>/` is root's copy, made again, as sent, by
+   each `sudo c4-app` command.
+4. Its realm rendering (`deploy/keycloak/render-realms.sh`), into `deploy/<realm>-realm.json` (the
+   file's name is the realm it is imported as, one of its registry entry's): no
+   `org.keycloak.keys.KeyProvider` components (the dev keys are in the repository), issuer host
+   `infra.c4-soft.com`, the BFF's redirect URIs on `<project>.c4-soft.com`, back-channel logout on
    `http://<project>.gateway:7080/gateway/logout/connect/back-channel/<registration>`, SMTP
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`.
-4. No Caddy site to write: its workflow sends its dev routes file, `reverse-proxy/<project>.routes`
-   (dev step 5), with the rest: `rsync` to `~/<project>/` as `deploy@<vps>`,
-   `docker compose up -d --wait`, then
-   `bash ~/c4-infra/register-app.sh --app <project> --realm … --proxy <project>.routes --rabbitmq-user …
-   --rabbitmq-password-env …` (no password on a command line). The site is generated on its demo
+5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
+   of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
+   by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
+   `~/<project>/`, `sudo c4-app pull` (the GHCR token on stdin), `sudo c4-app register` (paths
+   relative to `~/<project>/`; `--rabbitmq-password-env` names a variable of `~/<project>/.env`)
+   and `sudo c4-app up`:
+
+   ```yaml
+     deploy:
+       runs-on: ubuntu-latest
+       environment: demo
+       permissions:
+         contents: read
+         packages: read
+       env:
+         VPS: <project>@${{ secrets.VPS_HOST }}
+       steps:
+         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+         - name: Trust the VPS host key
+           # c4-infra's demo/trust-host-key.sh: no connection to a host whose key isn't pinned
+           run: |
+             if [ -z "${VPS_KNOWN_HOSTS:-}" ]; then
+               echo "::error::VPS_KNOWN_HOSTS is not set: the deployment connects only to a host whose key is pinned (docs/demo-setup.md, step 4, \"Host key\")"
+               exit 1
+             fi
+             mkdir -p "$HOME/.ssh"
+             chmod 700 "$HOME/.ssh"
+             printf '%s\n' "$VPS_KNOWN_HOSTS" >> "$HOME/.ssh/known_hosts"
+           env:
+             VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+         # ... the project's own steps: deploy/.env (mode 600), its realm rendered into deploy/ ...
+
+         - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+           with:
+             ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+         - name: Deploy
+           # the token on stdin, never on a command line; the registration with c4-infra's
+           # registration account, which this account can't read
+           run: |
+             rsync -az --delete deploy/ "$VPS:~/<project>/"
+             ssh "$VPS" sudo c4-app pull --registry ghcr.io --registry-user "$GHCR_USER" <<< "$GHCR_TOKEN"
+             ssh "$VPS" sudo c4-app register --realm <realm>-realm.json --proxy <project>.routes --rabbitmq-user <project>-api --rabbitmq-password-env RABBITMQ_PASSWORD
+             ssh "$VPS" sudo c4-app up
+           env:
+             GHCR_USER: ${{ github.actor }}
+             GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+   ```
+
+   A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
+   directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
+   its dev routes file, `reverse-proxy/<project>.routes` (dev step 5), gives its site on its demo
    host name, to its containers on the ports the README fixes (`<project>.gateway:7080`,
    `<project>.frontend:80`). A route to the `mcp` role is refused there until the README fixes the
-   MCP server's container port. Its secrets no longer include Keycloak's, Mailpit's, RabbitMQ's
-   admin or Grafana's.
-5. Users created during a demo live in the former Keycloak: export the realm from it
+   MCP server's container port. A realm, a theme or a RabbitMQ user its registry entry doesn't
+   assign is refused, before anything changes. Its secrets no longer include Keycloak's, Mailpit's,
+   RabbitMQ's admin or Grafana's.
+6. Users created during a demo live in the former Keycloak: export the realm from it
    (`kc.sh export --realm <realm> --users realm_file`) before switching, and register that export.
-6. `deploy/backup.sh`: only the project's databases (c4-infra backs Keycloak up).
+7. `deploy/backup.sh`: only the project's databases (c4-infra backs Keycloak up). Its account runs
+   no `docker` command: `c4-app` has none for a backup yet, a need to open as an intent before the
+   project's demo data needs one.
 
 ## Per project
 
