@@ -40,7 +40,7 @@ bash ./certs/make-certs.sh
 certificate_after=$(cat certs/tls.crt | cksum)
 
 # A project still running its own copy of these services holds their ports: name it rather than let
-# compose fail on the first one. The ports are the ones compose.yml publishes.
+# compose fail on the first one. The ports are the ones the compose files publish (compose.dev.yml).
 conflicts=()
 for port in $(docker compose config | sed -n 's/^ *published: "\([0-9]*\)"$/\1/p'); do
   # docker's own filter: it also matches a port inside a published range (4317-4318->...)
@@ -58,13 +58,13 @@ if [ ${#conflicts[@]} -gt 0 ]; then
   exit 1
 fi
 
-[ -f nginx/html/index.html ] || bash ./register-app.sh --index-only
+[ -f caddy/html/index.html ] || bash ./register-app.sh --index-only
 
 docker compose up -d --build --wait
-# nginx doesn't watch its configuration, and compose recreates nothing when only a mounted file
-# changed: reload it (graceful), or restart the proxy when a reload can't apply it (a changed pid
-# path, for instance)
-MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy nginx -c /etc/nginx/c4-infra/nginx.conf -s reload 2> /dev/null \
+# compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy
+# after a pull): reload Caddy (graceful; an invalid configuration leaves the previous one serving),
+# or restart it when it can't reload
+MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null 2>&1 \
   || docker restart c4-infra.reverse-proxy > /dev/null
 
 # The services read the certificate at startup, and compose recreates nothing when only a mounted

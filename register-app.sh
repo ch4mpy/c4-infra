@@ -2,7 +2,7 @@
 # Registers an application with the shared stack, in dev as on the demo host. Idempotent: each
 # application's deployment runs it every time.
 #
-#   register-app.sh --app <name> [--realm <file>]... [--themes <dir>] [--proxy <file>]
+#   register-app.sh --app <name> [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
 #                   [--rabbitmq-user <user> --rabbitmq-password-env <variable>] [--reset-realms]
 #
 #   --app           the application's name in the registry, registry.txt: an application missing
@@ -11,8 +11,10 @@
 #                   realm is imported only when Keycloak doesn't have it yet, so that the users and
 #                   clients created since survive; --reset-realms deletes it first.
 #   --themes        a directory of Keycloak themes, one sub-directory per theme
-#   --proxy         the application's server block: an nginx .conf in dev (PROXY=nginx in .env), a
-#                   Caddyfile site on the demo host (PROXY=caddy)
+#   --proxy         the application's routes file (README.md, "Routes file"), the same in both
+#                   environments: its site on the reverse proxy is generated from it and from the
+#                   application's registry entry, for the environment INFRA_ENV (.env) names (dev
+#                   or demo: the host name and the upstreams)
 #   --rabbitmq-*    a virtual host named after the application, and its user, with every permission
 #                   on that virtual host and none elsewhere; the password is read from the named
 #                   environment variable (the one the application itself reads)
@@ -26,6 +28,7 @@ export MSYS_NO_PATHCONV=1
 
 INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
+source "$INFRA_DIR/routes.sh"
 
 # The value of KEY in .env, read as data rather than sourced: the demo's .env is written for
 # compose, which un-escapes "$$" and takes everything after the first "=" as is.
@@ -35,9 +38,6 @@ env_value() {
   line=${line#*=}
   printf '%s' "${line//\$\$/\$}"
 }
-
-PROXY=$(env_value PROXY)
-APPS_DOMAIN=$(env_value APPS_DOMAIN)
 
 KEYCLOAK=c4-infra.keycloak
 RABBITMQ=c4-infra.rabbitmq
@@ -65,23 +65,39 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# The dev landing page links the shared services and every registered application
+# The environment, read at each run: it picks the site's host name and upstreams. The running
+# proxy's own rules (caddy/env/<INFRA_ENV>.caddy) are those of the INFRA_ENV it was started with:
+# this script only validates and reloads it, never restarts nor recreates it.
+INFRA_ENV=$(env_value INFRA_ENV)
+case "$INFRA_ENV" in
+  dev | demo) ;;
+  *)
+    echo "INFRA_ENV in $INFRA_DIR/.env must be dev or demo, not '$INFRA_ENV' (env.sh writes it in dev, demo/write-env.sh on the demo host); nothing was registered." >&2
+    exit 1
+    ;;
+esac
+
+# The dev landing page links the shared services and every registered application, on its dev
+# host name (registry.txt)
 write_index() {
-  [ "$PROXY" = nginx ] || return 0
-  mkdir -p "$INFRA_DIR/nginx/html"
+  local site name host
+  [ "$INFRA_ENV" = dev ] || return 0
+  mkdir -p "$INFRA_DIR/caddy/html"
   {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>c4-infra</title></head><body>'
     echo '<h1>Shared services</h1><ul>'
     echo '<li><a href="/auth/admin/">Keycloak</a></li><li><a href="/mailpit/">Mailpit</a></li>'
     echo '<li><a href="/grafana/">Grafana</a></li><li><a href="/rabbitmq/">RabbitMQ</a></li></ul>'
     echo '<h1>Applications</h1><ul>'
-    for conf in "$INFRA_DIR"/nginx/apps/*.conf; do
-      [ -f "$conf" ] || continue
-      name=$(basename "$conf" .conf)
-      echo "<li><a href=\"https://${name}.${APPS_DOMAIN}/\">${name}</a></li>"
+    for site in "$INFRA_DIR"/caddy/apps/*.caddy; do
+      [ -f "$site" ] || continue
+      name=$(basename "$site" .caddy)
+      # in a subshell: registry_entry sets the REG_* of the application being registered
+      host=$(registry_entry "$name" 2> /dev/null && printf '%s' "$REG_DEV_HOST") || continue
+      echo "<li><a href=\"https://${host}/\">${name}</a></li>"
     done
     echo '</ul></body></html>'
-  } > "$INFRA_DIR/nginx/html/index.html"
+  } > "$INFRA_DIR/caddy/html/index.html"
 }
 
 if $index_only; then
@@ -102,6 +118,27 @@ registry_entry "$app" || exit 1
 if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1
+fi
+
+# The site, generated before anything changes too: a routes file that names a host or a port, or
+# that the notation refuses, registers nothing
+if [ -n "$proxy" ]; then
+  # Transition, until Faito registers with its routes file (Faito 0021): an nginx server block, which
+  # Caddy doesn't read, is replaced by c4-infra's example routes file of that application. To remove
+  # once Faito 0021 is delivered (a follow-up change of c4-infra).
+  if [[ $proxy == *.conf ]]; then
+    if [ -f "$INFRA_DIR/examples/routes/$app.routes" ]; then
+      echo "Warning: $proxy is an nginx server block, which the reverse proxy (Caddy) doesn't read: $app is registered with c4-infra's examples/routes/$app.routes instead. Register with a routes file (c4-infra's README.md, \"Routes file\")." >&2
+      proxy=$INFRA_DIR/examples/routes/$app.routes
+    else
+      echo "$proxy is an nginx server block: the reverse proxy is Caddy, which takes a routes file (c4-infra's README.md, \"Routes file\"); nothing was registered." >&2
+      exit 1
+    fi
+  fi
+  if ! site=$(routes_generate "$proxy" "$INFRA_ENV"); then
+    echo "The routes file $proxy is refused (above); nothing was registered." >&2
+    exit 1
+  fi
 fi
 
 # Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network,
@@ -186,27 +223,15 @@ EOF
   echo "RabbitMQ: virtual host $app, user $rabbitmq_user"
 fi
 
-# Reverse proxy: the application's server block, checked before it is kept (and left alone, with
-# no reload, when it hasn't changed)
+# Reverse proxy: the application's site, generated above, checked by Caddy before it is kept (and
+# left alone, with no reload, when it hasn't changed). Caddy is validated and reloaded, never
+# restarted nor recreated: it keeps the rules of the INFRA_ENV it was started with.
 if [ -n "$proxy" ]; then
-  case "$PROXY" in
-    nginx)
-      target="$INFRA_DIR/nginx/apps/$app.conf"
-      check=(nginx -c /etc/nginx/c4-infra/nginx.conf -t -q)
-      reload=(nginx -c /etc/nginx/c4-infra/nginx.conf -s reload)
-      ;;
-    caddy)
-      target="$INFRA_DIR/caddy/apps/$app.caddy"
-      check=(caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile)
-      reload=(caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile)
-      ;;
-    *)
-      echo "PROXY must be nginx or caddy, not '$PROXY'" >&2
-      exit 1
-      ;;
-  esac
-  if [ -f "$target" ] && cmp -s "$proxy" "$target"; then
-    echo "Reverse proxy: $app server unchanged"
+  target="$INFRA_DIR/caddy/apps/$app.caddy"
+  check=(caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile)
+  reload=(caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile)
+  if [ -f "$target" ] && printf '%s\n' "$site" | cmp -s - "$target"; then
+    echo "Reverse proxy: $app site unchanged"
   else
     backup=$(mktemp)
     had_previous=false
@@ -214,22 +239,24 @@ if [ -n "$proxy" ]; then
       cp "$target" "$backup"
       had_previous=true
     fi
-    cp "$proxy" "$target"
-    if ! docker exec "$REVERSE_PROXY" "${check[@]}"; then
+    printf '%s\n' "$site" > "$target"
+    if ! output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1); then
       if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
       rm -f "$backup"
-      echo "The server block $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
+      printf '%s\n' "$output" | tail -n 3 >&2
+      echo "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
       exit 1
     fi
-    if ! docker exec "$REVERSE_PROXY" "${reload[@]}"; then
+    if ! output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1); then
       # removed, or restored: the next run installs it again rather than finding it "unchanged"
       if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
       rm -f "$backup"
-      echo "The reverse proxy could not reload: $proxy is not installed" >&2
+      printf '%s\n' "$output" | tail -n 3 >&2
+      echo "The reverse proxy could not reload: the site of $proxy is not installed" >&2
       exit 1
     fi
     rm -f "$backup"
     write_index
-    echo "Reverse proxy: $app server installed"
+    echo "Reverse proxy: $app site installed (INFRA_ENV=$INFRA_ENV)"
   fi
 fi

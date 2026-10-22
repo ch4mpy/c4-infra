@@ -1,0 +1,40 @@
+# The demo host's override of compose.yml (COMPOSE_FILE=compose.yml:compose.demo.yml in the host's
+# .env, written by demo/write-env.sh). Caddy alone is published, on 80 and 443 (a Let's Encrypt
+# certificate per site); everything else is plain HTTP inside the Docker network. The Keycloak image
+# is the one the workflow pushed to GHCR (KC_IMAGE). Each application deploys its own compose
+# project, whose containers join the c4-infra network, and registers itself with ./register-app.sh.
+services:
+  reverse-proxy:
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Mailpit's basic authentication (caddy/env/demo.caddy)
+      MAILPIT_UI_PASSWORD_HASH: ${MAILPIT_UI_PASSWORD_HASH}
+    networks:
+      default:
+        # The applications' containers reach the issuer (https://${INFRA_HOST}/auth/realms/...)
+        # through Caddy directly rather than through the public IP, with the Let's Encrypt cert.
+        aliases:
+          - ${INFRA_HOST}
+
+  keycloak:
+    environment:
+      # the applications may call the admin API or the token endpoint on http://keycloak:8080/auth
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: 'true'
+    mem_limit: 1200m
+
+  mailpit:
+    environment:
+      # SMTP without TLS, inside the Docker network only
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+
+  rabbitmq:
+    mem_limit: 400m
+
+  grafana-lgtm:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # the image lets anonymous visitors in as Admin; on a public host, they log in
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    mem_limit: 2g

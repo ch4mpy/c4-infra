@@ -5,13 +5,11 @@ certs/*.key
 certs/*.csr
 
 ### FILLED BY register-app.sh ###
-nginx/apps/*
-!nginx/apps/.gitkeep
-nginx/html/index.html
+caddy/apps/*
+!caddy/apps/.gitkeep
+caddy/html/
 keycloak/themes/*
 !keycloak/themes/.gitkeep
-demo/caddy/apps/*
-!demo/caddy/apps/.gitkeep
 
 ### CLAUDE CODE'S LOCAL STATE (the frozen-tests list of sdlc-plan, personal settings), never committed ###
 .claude/*.local

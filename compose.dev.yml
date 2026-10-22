@@ -1,0 +1,54 @@
+# The workstation's override of compose.yml (COMPOSE_FILE=compose.yml:compose.dev.yml in .env,
+# written by env.sh). Every port is published on the loopback only (127.0.0.1), with no setting to
+# open it: nothing of the stack answers from the local network. The workstation reaches it through
+# host.docker.internal, which up.sh checks resolves to 127.0.0.1. The containers reach the
+# applications' processes on the host through the same name (extra_hosts).
+services:
+  reverse-proxy:
+    ports:
+      - 127.0.0.1:80:80
+      - 127.0.0.1:443:443
+    volumes:
+      # the leaf of certs/make-certs.sh (caddy/env/dev.caddy), and the local CA that the gateways'
+      # and MCP servers' certificates are checked against
+      - ./certs/:/certs/:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  keycloak:
+    # the Keycloak version is the Dockerfile's; tagged ${KC_IMAGE} (c4-infra/keycloak)
+    build: ./keycloak
+    environment:
+      # back-channel logout calls the gateways on the host, which serve certificates of the local CA
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/certs/ca.crt
+    volumes:
+      - ./certs/ca.crt:/opt/keycloak/certs/ca.crt:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  mailpit:
+    ports:
+      - 127.0.0.1:1025:1025
+      # the UI, over plain HTTP (also https://host.docker.internal/mailpit/)
+      - 127.0.0.1:8025:8025
+    volumes:
+      - ./certs/:/opt/mailpit/certs/:ro
+    environment:
+      # STARTTLS on SMTP, with the shared leaf: the applications' mail clients trust the local CA
+      MP_SMTP_TLS_CERT: /opt/mailpit/certs/tls.crt
+      MP_SMTP_TLS_KEY: /opt/mailpit/certs/tls.key
+
+  rabbitmq:
+    ports:
+      - 127.0.0.1:5672:5672
+      - 127.0.0.1:15672:15672
+    volumes:
+      # the management UI, dev only, under https://host.docker.internal/rabbitmq/
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/20-c4-infra.conf:ro
+
+  grafana-lgtm:
+    ports:
+      - 127.0.0.1:3000:3000
+      - 127.0.0.1:4317:4317
+      - 127.0.0.1:4318:4318

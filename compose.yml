@@ -1,11 +1,21 @@
-# The shared dev stack: one reverse proxy, Keycloak (on its own PostgreSQL), Mailpit, RabbitMQ and
-# Grafana LGTM for every application of the machine. Started by ./up.sh; each application then
-# registers its realm, its RabbitMQ virtual host and its reverse-proxy server with ./register-app.sh
-# and runs its own database(s) in its own compose project. See README.md.
-# Every port is published on the loopback only (127.0.0.1), with no setting to open it: nothing of
-# the stack answers from the local network. The workstation reaches it through host.docker.internal,
-# which up.sh checks resolves to 127.0.0.1.
+# The shared stack, in dev as on the demo host: one reverse proxy (Caddy), Keycloak on its own
+# PostgreSQL, Mailpit, RabbitMQ and Grafana LGTM, for every application of the machine. Each
+# application then registers its realm, its RabbitMQ virtual host and its site on the proxy with
+# ./register-app.sh, and runs its own database(s) in its own compose project. See README.md.
+#
+# This is the base: every service and every image version, written once. COMPOSE_FILE (.env) adds the
+# environment's override: compose.dev.yml on the workstation (./up.sh), compose.demo.yml on the demo
+# host (.github/workflows/deploy-demo.yml). Published ports are declared in the overrides only:
+# compose merges ports lists, so a port here would be published in both.
 name: c4-infra
+
+# The default json-file driver never rotates: on a host that runs for months this is the most
+# likely way for the demo to fall over. Every service below references this anchor.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
 
 networks:
   default:
@@ -13,6 +23,8 @@ networks:
     name: c4-infra
 
 volumes:
+  caddy_data:
+  caddy_config:
   keycloak_db:
   mailpit_data:
   rabbitmq_data:
@@ -20,25 +32,27 @@ volumes:
 
 services:
   reverse-proxy:
-    image: nginx:1.30.6
+    image: caddy:2.11.4-alpine
     container_name: c4-infra.reverse-proxy
     restart: unless-stopped
-    ports:
-      - 127.0.0.1:80:80
-      - 127.0.0.1:443:443
-    # the directory, not its files: git and register-app.sh replace files with new inodes, which a
-    # single-file bind mount never shows to the running container
-    command: ['nginx', '-c', '/etc/nginx/c4-infra/nginx.conf', '-g', 'daemon off;']
-    volumes:
-      - ./nginx/:/etc/nginx/c4-infra/:ro
-      - ./certs/:/etc/nginx/certs/:ro
+    logging: *default-logging
+    networks: [default]
     environment:
+      INFRA_HOST: ${INFRA_HOST}
+      # picks caddy/env/dev.caddy or caddy/env/demo.caddy, when Caddy starts: register-app.sh only
+      # reloads it, and never changes that
+      INFRA_ENV: ${INFRA_ENV}
       TZ: ${TZ}
-    extra_hosts:
-      - host.docker.internal:host-gateway
+    volumes:
+      # the directory, not its files: git, rsync and register-app.sh replace files with new inodes,
+      # which a single-file bind mount never shows to the running container
+      - ./caddy/:/etc/caddy/:ro
+      - caddy_data:/data
+      - caddy_config:/config
     healthcheck:
-      # the landing page, over TLS (-k: the container doesn't trust the dev CA, nothing to prove here)
-      test: ['CMD', 'curl', '-fsSk', '-o', '/dev/null', 'https://localhost/']
+      # Caddy's admin API, local to the container (the sites may wait for their certificates); on
+      # 127.0.0.1, where it listens: wget would try localhost's ::1 first
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:2019/config/']
       start_period: 30s
       start_interval: 1s
       interval: 30s
@@ -49,6 +63,8 @@ services:
     image: postgres:18.6
     container_name: c4-infra.keycloak-db
     restart: unless-stopped
+    logging: *default-logging
+    networks: [default]
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -58,39 +74,39 @@ services:
       - keycloak_db:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -d keycloak -U keycloak']
-      interval: 3s
+      interval: 5s
       timeout: 5s
       retries: 20
 
   keycloak:
-    # the Keycloak version is the Dockerfile's
-    build: ./keycloak
-    image: c4-infra/keycloak
+    # built from keycloak/ in dev (compose.dev.yml: c4-infra/keycloak); on the demo host, the image
+    # the workflow pushed to GHCR, tagged with the content of keycloak/, so that a deployment that
+    # doesn't touch it doesn't restart the Keycloak every application uses
+    image: ${KC_IMAGE}
     container_name: c4-infra.keycloak
     restart: unless-stopped
-    # plain HTTP inside the Docker network: the reverse proxy is the only way in from the host
+    logging: *default-logging
+    networks: [default]
+    # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside
     command:
       - start
       - --optimized
     environment:
+      # As environment rather than --bootstrap-admin-* arguments: a command line is readable in
+      # `docker inspect` and in the host's process list. Only read on the very first start.
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
-      # every realm's issuer is https://host.docker.internal/auth/realms/<realm>
+      # every realm's issuer is https://${INFRA_HOST}/auth/realms/<realm>
       KC_HOSTNAME: https://${INFRA_HOST}/auth/
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: xforwarded
-      # back-channel logout calls the gateways on the host, which serve the CA certificate itself
-      KC_TRUSTSTORE_PATHS: /opt/keycloak/certs/ca.crt
       KC_LOG_LEVEL: ${KC_LOG_LEVEL}
       TZ: ${TZ}
     volumes:
-      - ./certs/ca.crt:/opt/keycloak/certs/ca.crt:ro
       - ./keycloak/themes/:/opt/keycloak/themes/:ro
-    extra_hosts:
-      - host.docker.internal:host-gateway
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
@@ -109,34 +125,29 @@ services:
     image: axllent/mailpit:v1.31.0
     container_name: c4-infra.mailpit
     restart: unless-stopped
-    ports:
-      - 127.0.0.1:1025:1025
-      - 127.0.0.1:8025:8025
+    logging: *default-logging
+    networks: [default]
     volumes:
       - mailpit_data:/data
-      - ./certs/:/opt/mailpit/certs/:ro
     environment:
       TZ: ${TZ}
       MP_MAX_MESSAGES: 5000
       MP_DATABASE: /data/mailpit.db
-      # the realms' smtpServer credentials
+      # the realms' smtpServer credentials (each application renders them into its realm)
       MP_SMTP_AUTH: ${MAILPIT_SMTP_USER}:${MAILPIT_SMTP_PASSWORD}
-      MP_SMTP_TLS_CERT: /opt/mailpit/certs/tls.crt
-      MP_SMTP_TLS_KEY: /opt/mailpit/certs/tls.key
+      # its UI over plain HTTP, behind the reverse proxy's /mailpit/
       MP_WEBROOT: /mailpit/
-      MP_UI_TLS_CERT: /opt/mailpit/certs/tls.crt
-      MP_UI_TLS_KEY: /opt/mailpit/certs/tls.key
 
   rabbitmq:
-    image: rabbitmq:4.3.5-management
+    # without the management plugin (RabbitMQ's UI is dev's only: compose.dev.yml enables it)
+    image: rabbitmq:4.3.5
     container_name: c4-infra.rabbitmq
     # RabbitMQ keeps its data under its node name, rabbit@<hostname>: fixed, so that a recreated
     # container finds the applications' virtual hosts, users and queues again
     hostname: rabbitmq
     restart: unless-stopped
-    ports:
-      - 127.0.0.1:5672:5672
-      - 127.0.0.1:15672:15672
+    logging: *default-logging
+    networks: [default]
     environment:
       # the administrator only: each application has its own virtual host and user (register-app.sh)
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER}
@@ -146,7 +157,6 @@ services:
       RABBITMQ_CTL_ERL_ARGS: '+S 1'
       TZ: ${TZ}
     volumes:
-      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/20-c4-infra.conf:ro
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
@@ -161,10 +171,8 @@ services:
     image: grafana/otel-lgtm:0.32.0
     container_name: c4-infra.grafana-lgtm
     restart: unless-stopped
-    ports:
-      - 127.0.0.1:3000:3000
-      - 127.0.0.1:4317:4317
-      - 127.0.0.1:4318:4318
+    logging: *default-logging
+    networks: [default]
     environment:
       GF_SERVER_ROOT_URL: https://${INFRA_HOST}/grafana
       GF_SERVER_SERVE_FROM_SUB_PATH: 'true'

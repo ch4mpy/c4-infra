@@ -11,13 +11,23 @@ add() {
   grep -q "^${1%%=*}=" .env || echo "$1" >> .env
 }
 
+# The environment: picks the proxy's dev rules (caddy/env/dev.caddy) and the applications' dev host
+# names and upstreams at registration (register-app.sh). The demo host's .env says demo.
+add "INFRA_ENV=dev"
+# The compose base and the workstation's override; ":" between them on Windows as well
+add "COMPOSE_FILE=compose.yml:compose.dev.yml"
+add "COMPOSE_PATH_SEPARATOR=:"
+# Built here from keycloak/ (compose.dev.yml); the demo host pulls the workflow's image instead
+add "KC_IMAGE=c4-infra/keycloak"
+# The proxy was nginx in dev before intent 0003: nothing reads PROXY any more
+sed -i '/^PROXY=/d' .env
+
 # Origin of the shared services (Keycloak, Mailpit, Grafana, RabbitMQ): the one host name that the
 # browser, the JVMs running on the host and the containers all resolve.
 add "INFRA_HOST=host.docker.internal"
-# Each application gets its own origin, https://<app>.${APPS_DOMAIN}/ (browsers resolve *.localhost)
+# The applications' dev host names end with it (registry.txt): the shared leaf certificate covers
+# *.${APPS_DOMAIN} (certs/make-certs.sh; browsers resolve *.localhost)
 add "APPS_DOMAIN=dev.localhost"
-# nginx in dev, caddy on the demo host: tells register-app.sh which kind of server block to install
-add "PROXY=nginx"
 add "TZ=Pacific/Tahiti"
 
 add "KC_LOG_LEVEL=INFO"
