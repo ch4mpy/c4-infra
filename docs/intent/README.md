@@ -52,7 +52,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0002 | [Deploying to the demo host gives every application's workflow the whole host](0002-demo-deployment-access/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
 | 0003 | [Dev doesn't apply the demo's reverse-proxy rules](0003-dev-and-demo-proxies-diverge/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
 | 0004 | [Nothing prevents two applications from taking the same port block](0004-port-registry-unchecked/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
-| 0005 | [A theme change restarts the Keycloak every application uses](0005-theme-change-restarts-keycloak/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
+| 0005 | [A theme change restarts the Keycloak every application uses](0005-theme-change-restarts-keycloak/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
 | 0006 | [Registrations depend on Keycloak's temporary bootstrap administrator](0006-registration-uses-bootstrap-admin/intent.md) | bug | specified | 2026-10-21 | 2026-10-21 |
 | 0007 | [On the demo host, an application's containers reach every shared service and every other application](0007-demo-containers-reach-every-service/intent.md) | bug | specified | 2026-10-21 | 2026-10-21 |
 | 0008 | [c4-infra's certificate scripts spread the local CA's private key and its password](0008-certificate-scripts-spread-the-ca-key/intent.md) | bug | accepted | 2026-10-22 | 2026-10-22 |
