@@ -1,0 +1,6 @@
+# An application with i18n: an upload limited to 1 KB first (first match wins over /gateway/*)
+~^/gateway/upload/[^/]+$  gateway  max-body=1KB
+/gateway/*  gateway
+/fr/*       fr
+/en/*       en
+/           redirect  to=/fr/

@@ -1,0 +1,8 @@
+# Hurura'a's routes (README.md, "Routes file"): Faito's, plus pf-ui's images, which its pages load
+# from absolute paths (/assets/...): on the demo host, /fr/assets/... is a file of the front end's
+# container.
+/           redirect  to=/fr/
+/gateway/*  gateway
+/fr/*       fr
+/en/*       en
+/assets/*   fr        prefix=/fr

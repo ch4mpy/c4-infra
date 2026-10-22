@@ -1,0 +1,3 @@
+# An application without i18n: its single front end, ui
+/ui/*  ui
+/      redirect  to=/ui/

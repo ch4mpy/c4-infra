@@ -1,0 +1,12 @@
+# Turu's routes (README.md, "Routes file"). First the migration runs upload, which may carry 64 MB
+# (first match wins: before /gateway/*); then its MCP server and that server's protected-resource
+# document. Turu has no demo deployment yet: on the demo host the mcp role is refused until the
+# README fixes its container port.
+~^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$  gateway  max-body=64MB
+/gateway/*                                  gateway
+/mcp                                        mcp
+/.well-known/oauth-protected-resource/mcp   mcp
+/fr/*                                       fr
+/en/*                                       en
+/assets/*                                   fr  prefix=/fr
+/                                           redirect  to=/fr/

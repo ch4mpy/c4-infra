@@ -1,0 +1,7 @@
+# registry.txt's four entries, and two fixture applications of the 0003 tests (blocks 46xxx, 47xxx)
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+36 verif-ui - - - verif-ui.dev.localhost verif-ui.c4-soft.com
+37 verif - - - verif.dev.localhost verif.c4-soft.com

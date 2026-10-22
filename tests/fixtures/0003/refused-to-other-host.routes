@@ -1,0 +1,4 @@
+# refused: see tests/0003-routes.sh
+/ redirect to=/fr/
+/old redirect to=//evil.example
+/en/* en
