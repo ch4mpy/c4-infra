@@ -49,6 +49,14 @@ services:
         # through Caddy directly rather than through the public IP, with the Let's Encrypt cert.
         aliases:
           - ${INFRA_HOST}
+    healthcheck:
+      # Caddy's admin API, local to the container (the sites need their certificates first)
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:2019/config/']
+      start_period: 30s
+      start_interval: 1s
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   keycloak-db:
     image: postgres:18.6

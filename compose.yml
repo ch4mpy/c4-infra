@@ -33,6 +33,14 @@ services:
       TZ: ${TZ}
     extra_hosts:
       - host.docker.internal:host-gateway
+    healthcheck:
+      # the landing page, over TLS (-k: the container doesn't trust the dev CA, nothing to prove here)
+      test: ['CMD', 'curl', '-fsSk', '-o', '/dev/null', 'https://localhost/']
+      start_period: 30s
+      start_interval: 1s
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   keycloak-db:
     image: postgres:18.6
