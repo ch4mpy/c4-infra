@@ -99,3 +99,5 @@ Firewall rule, before the `*filter` table's `COMMIT`: in `/etc/ufw/before.rules`
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-22 — `registry.sh check` also refuses an entry owning Keycloak's `master` realm or the RabbitMQ administrator's user (`RABBITMQ_ADMIN_USER` of the `.env` next to it, `admin` by default) — once registrations are scoped by the entry (REQ-3), such an entry would authorize deleting the master realm (`--realm master-realm.json --reset-realms`) or overwriting the administrator's password (`--rabbitmq-user admin`), and `registration-account.sh ensure` would grant the master realm's roles — files: `registry.sh` (beyond *Files*), two fixture registries in `tests/fixtures/0002/`, their cases in `tests/0002-register-scope.sh` (step 2; 0004's test untouched) — approved by Jérôme Wacongne (approver of the grouped pass), with the check of REQ-3's `--realm` scoping (a realm file not named in the entry refused), already step 2's first case.
