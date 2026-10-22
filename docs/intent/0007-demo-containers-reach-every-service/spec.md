@@ -1,11 +1,11 @@
 # Spec: On the demo host, an application's containers reach every shared service and every other application
 
 - Intent: [0007](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: the isolation between applications, personal data — the demo visitors' mails and accounts, what a host exposes inside its Docker network; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `docs/migration.md`; c4-infra 0002 (deployment and registration as root-owned commands), 0003 (one compose base with overrides), 0004 (the registry names each application)
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -130,3 +130,4 @@ Until the demo host exists and Hurura'a is migrated, AC-1, AC-2, AC-8 to AC-11 a
 - v1 — 2026-10-21 — draft: coherence review (compose files checked at deployment, the whole of Grafana LGTM's and Keycloak's exposure, the network named from the registry only, how the criteria run before the demo host exists), PA-1 decided, PA-2 decided again with the facts
 - v1 — 2026-10-21 — draft: second coherence review (published ports and other applications' names refused, Mailpit and RabbitMQ in the port check, RabbitMQ's other ports recorded, end-to-end criteria with Faito's first demo deployment)
 - v1 — 2026-10-21 — draft: third coherence review (REQ-6 credits each port to the decision that covers it, RabbitMQ's Erlang ports closed and no management API on the demo host, AC-9 back to a fixed list), PA-3 decided
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
