@@ -47,4 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
-| 0005 | [A theme change restarts the Keycloak every application uses](0005-theme-change-restarts-keycloak/intent.md) | change | proposed | 2026-10-21 | — |
+| 0005 | [A theme change restarts the Keycloak every application uses](0005-theme-change-restarts-keycloak/intent.md) | change | accepted | 2026-10-21 | 2026-10-21 |
