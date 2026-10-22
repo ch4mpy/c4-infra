@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (review of the shared stack, 2026-10-21)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-21
 - Decided: 2026-10-21
 - Supersedes: —

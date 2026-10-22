@@ -1,11 +1,11 @@
 # Spec: Registrations depend on Keycloak's temporary bootstrap administrator
 
 - Intent: [0006](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: authentication, authorization and secrets — the credential that creates and deletes every application's realm; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `CLAUDE.md` (no password on a command line)
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -92,3 +92,4 @@ A client in Keycloak's master realm, with its roles.
 
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (credential held by the shared stack, existing stacks and realms, the secret off the admin CLI's command line), PA-1 and PA-2 decided
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
