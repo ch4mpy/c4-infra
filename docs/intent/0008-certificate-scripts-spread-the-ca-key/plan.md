@@ -1,0 +1,61 @@
+# Plan: c4-infra's certificate scripts spread the local CA's private key and its password
+
+- Spec: none — a bug without spec: [the intent](intent.md) (accepted 2026-10-22)
+- Status: approved
+- Branch: main (grouped pass of 2026-10-21)
+- Approved: 2026-10-22, Jérôme Wacongne (engineer, product owner and tech lead), after two rounds of cross-plan coherence review
+- Builds on: 0001 (`tests/lib/assert.sh`, `tests/run.sh`, `.claude/*.local` ignored); last of c4-infra's plans in the pass (after 0007). Touches `certs/` only, which no earlier plan changes.
+
+## Starting point
+
+- `certs/make-certs.sh:30` advises `bash <project>/certs/add-to-jre-cacerts.sh $CA_DIR/$CA_NAME.jks <password> $CA_NAME`: a project's script importing the whole keystore, so a JDK's `cacerts` receives the CA's **private key** (`PrivateKeyEntry`); five JDKs of the workstation held it until they were cleaned by hand on 2026-10-22 (now `trustedCertEntry` only). After Faito 0022 and skills 0016 that script takes other arguments, or is gone.
+- `certs/make-certs.sh:26` passes the CA's password to `self-signed.sh` as an argument (`bash ./self-signed.sh "$CA_NAME" "$(cat "$password_file")" "$CA_DIR"`): on that process's command line.
+- `certs/self-signed.sh` puts the password on command lines throughout: `openssl … -passout pass:…` (line 75), `-passin pass:…` (83, 91), and at lines 99-100 prints the `keytool -importkeystore … -srcstorepass … -deststorepass …` command, then runs it with the passwords as arguments. It also takes the password as its second argument.
+- Tools the fix relies on: `openssl` reads a password from `env:<VAR>` (`-passin` / `-passout`); `keytool` from `:env <VAR>` (`-storepass:env`, `-srcstorepass:env`, `-deststorepass:env`, `-srckeypass:env`, `-destkeypass:env`) and addresses a JDK's own trust store with `-cacerts` (JDK 9+). The workstation's JDKs: `~/.sdkman/candidates/java/*`.
+- Nothing else of c4-infra refers to `add-to-jre-cacerts.sh` or the `.jks` (searched 2026-10-22: only `make-certs.sh` and `self-signed.sh`).
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `tests/0008-certificate-scripts.sh` | new: the reproducing test (step 1), two parts selectable by argument (`advice`, `passwords`; both by default) | success criterion |
+| `tests/lib/argv-log.sh` | new: `argv_log_path <dir> <command>…` writes, for each named command, a wrapper into `<dir>` that appends its full command line to `$ARGV_LOG` and `exec`s the real one (resolved with `command -v` before `PATH` changes); `argv_log_java_home <dir>` builds a fake `JAVA_HOME` whose `bin/keytool` is such a wrapper of the real one. Only the scripts under test run through the wrappers: the test's own `keytool` calls (seeding, listing) use the real one, by its absolute path, with the `:env` forms, and each part writes its own log | success criterion |
+| `certs/trust-ca-in-jdk.sh` | new: `bash certs/trust-ca-in-jdk.sh [<JDK home>]` (default `$JAVA_HOME`): imports c4-infra's own `certs/ca.crt` — the certificate only — into that JDK's trust store, `keytool -importcert -noprompt -cacerts -alias host.docker.internal -file certs/ca.crt -storepass:env CACERTS_PASSWORD` (`CACERTS_PASSWORD` exported, `changeit` by default); the alias `host.docker.internal` then decides: absent → imported; a `trustedCertEntry` with `ca.crt`'s SHA-256 fingerprint → nothing done, "already trusted"; a `trustedCertEntry` with another fingerprint (a former CA, or Faito 0022's import of another certificate) → deleted and `ca.crt` imported, saying so; a `PrivateKeyEntry` (the former advice's result) → deleted and `ca.crt` imported, saying so; never reads `~/.ssh`; `CACERTS=<file>` addresses another trust store (`-keystore` instead of `-cacerts`), for the tests; keytool's output read with `-J-Duser.language=en` | success criterion |
+| `certs/make-certs.sh` | modified: the JDK advice becomes `bash <absolute path of c4-infra>/certs/trust-ca-in-jdk.sh <JDK home>` (once per JDK running the projects); the CA's password reaches `self-signed.sh` through its environment (`SERVER_SSL_KEY_PASSWORD`, read from `$CA_DIR/$CA_NAME.password.txt`), never as an argument | success criterion |
+| `certs/self-signed.sh` | modified: refuses a password argument (`$2` non-empty: "no password on a command line: export SERVER_SSL_KEY_PASSWORD"); `openssl` with `-passout env:SSL_PASSWORD` / `-passin env:SSL_PASSWORD`; `keytool -importkeystore` with the `:env` forms; the command no longer printed; what it writes stays in `CERTIF_DIR` (`~/.ssh` for the CA) | success criterion |
+| `README.md` | modified: Prerequisites: the local CA trusted by the browsers and by each JDK the projects run on, with `bash certs/trust-ca-in-jdk.sh <JDK home>` (the certificate only; the CA's key stays in `~/.ssh`) | success criterion |
+| `docs/intent/0008-certificate-scripts-spread-the-ca-key/plan.md` | new: this plan (`approved` at the gate) | bookkeeping |
+| `docs/intent/0008-certificate-scripts-spread-the-ca-key/intent.md` | modified: status `planned` at approval | bookkeeping |
+| `docs/intent/README.md` | modified: index row 0008 → `planned` | bookkeeping |
+
+## Order of work
+
+1. **Failing test**, committed alone and staged by path (`git add tests/0008-certificate-scripts.sh tests/lib/argv-log.sh`, never `git add -A`) as `test(0008): make-certs.sh's advice puts the CA's key in a JDK, and the certificate scripts put its password on command lines`. Everything runs in a temporary directory: the repository's `certs/*.sh` copied to `$tmp/repo/certs/`, a `$tmp/repo/.env` with `INFRA_HOST=host.docker.internal` and `APPS_DOMAIN=dev.localhost`, `CA_DIR=$tmp/ca` (a new, throwaway CA: neither `~/.ssh` nor the repository's `certs/` is touched), `PATH` with `argv_log_path "$tmp/bin" bash openssl`, `JAVA_HOME` from `argv_log_java_home` (the real one, `REAL_KEYTOOL=<real JDK>/bin/keytool`: `~/.sdkman/candidates/java/25.4.4.1+1-graalce` on this workstation). Each part sets its own `ARGV_LOG` (`$tmp/advice.argv`, `$tmp/passwords.argv`), and the wrappers are on `PATH` / in `JAVA_HOME` only for the scripts under test:
+   - `advice`: `bash "$tmp/repo/certs/make-certs.sh"` creates the CA; its JDK advice line must name `$tmp/repo/certs/trust-ca-in-jdk.sh` (an existing c4-infra script), and hold no `.jks`, no `<project>`, no password; that advised command, run with `CACERTS=<copy>`, must leave the alias `host.docker.internal` as a `trustedCertEntry` whose SHA-256 fingerprint is `$tmp/repo/certs/ca.crt`'s, and no `PrivateKeyEntry` of this CA, on three copies of the real JDK's `lib/security/cacerts`: a fresh one; one seeded beforehand with the throwaway CA's `PrivateKeyEntry` under that alias (the former advice's state; seeded by the test with `"$REAL_KEYTOOL" -importkeystore … -srcstorepass:env … -deststorepass:env …`, outside the wrappers); one holding another certificate as a `trustedCertEntry` under that alias (re-imported). A second run on the fresh copy changes nothing ("already trusted", same `cksum`). The test lists with `"$REAL_KEYTOOL" -J-Duser.language=en -list -v -keystore <copy> -storepass:env CACERTS_PASSWORD`;
+   - `passwords`: the CA's password (`$tmp/ca/host.docker.internal.password.txt`) appears neither in `make-certs.sh`'s output nor in that run's log (`grep -F -f`); then `SERVER_SSL_KEY_PASSWORD=<random> bash "$tmp/repo/certs/self-signed.sh" probe.local "" "$tmp/out"`: that password appears neither in its output nor in `$tmp/passwords.argv`, and `$tmp/out` still holds `probe.local.crt`, `.key`, `.p12`, `.jks`, the `.jks` opening with that password (`"$REAL_KEYTOOL" -list -storepass:env`, outside the wrappers).
+   — skill: none — check: `bash tests/0008-certificate-scripts.sh; echo "exit=$?"` fails on both parts for the intent's reasons: the advice names `<project>/certs/add-to-jre-cacerts.sh` and a `.jks`; the password shows in `self-signed.sh`'s output (its line 99) and in the logged command lines of `bash ./self-signed.sh`, `openssl … pass:` and `keytool -srcstorepass`; `exit=1`. Freeze it (`.claude/frozen-tests.local`).
+2. **Trusting the CA's certificate only**: `certs/trust-ca-in-jdk.sh`, and `make-certs.sh`'s advice. — skill: none — check: `bash tests/0008-certificate-scripts.sh advice`.
+3. **No password on a command line**: `make-certs.sh` (environment instead of an argument), `self-signed.sh` (`env:` and `:env` forms, no echo, a password argument refused). — skill: none — check: `bash tests/0008-certificate-scripts.sh passwords`, and `bash up.sh` (the workstation's CA exists already: `make-certs.sh` doesn't recreate it, the stack starts as before).
+4. **Docs**: README's prerequisites. — skill: none — check: `bash tests/run.sh`; `grep -rn 'add-to-jre-cacerts\|\.jks' README.md certs/make-certs.sh` finds nothing.
+5. **The workstation's JDKs**: for each `~/.sdkman/candidates/java/*/` (and any other JDK the projects run on), `bash certs/trust-ca-in-jdk.sh <JDK home>` → "already trusted" (cleaned by hand on 2026-10-22) or imported. — skill: none — check: for each, `"<JDK home>/bin/keytool" -J-Duser.language=en -list -cacerts -storepass:env CACERTS_PASSWORD -alias host.docker.internal -v | grep 'Entry type'` prints `trustedCertEntry` (with `CACERTS_PASSWORD=changeit` exported).
+
+## Risks
+
+- A JDK installed under `C:\Program Files` whose `cacerts` the user can't write → `keytool` fails with an access error; the script says to run it from an administrator's terminal (the sdkman JDKs are the user's).
+- A JDK whose `cacerts` password isn't `changeit` → `CACERTS_PASSWORD` exported beforehand, read by `keytool` from its environment.
+- Another alias already trusting the same CA (e.g. one a project's script chose) → harmless (a certificate twice); the script reports the alias it manages only.
+- The projects' own copies of `self-signed.sh` and `add-to-jre-cacerts.sh` (Faito, the skills) → their intents (Faito 0022, skills 0016); this plan changes c4-infra's only.
+- Refusing a password argument breaks a caller that passed one → `make-certs.sh` is c4-infra's only caller (searched 2026-10-22), changed in the same step.
+- The test needs a real JDK → it uses `JAVA_HOME`, else the first `~/.sdkman/candidates/java/*`, and fails saying so when there is none; it reads only a copy of `cacerts`.
+
+## Proof
+
+| Criterion (the intent's success criterion) | How | Test, command or check |
+| --- | --- | --- |
+| Following `make-certs.sh`'s advice on a JDK leaves a `trustedCertEntry` for the CA (its certificate only) in its `cacerts` | automated test + command | `bash tests/0008-certificate-scripts.sh advice` (on copies of a JDK's `cacerts`: a fresh one, one holding the former `PrivateKeyEntry`, one holding another certificate under the alias; a second run changes nothing); before the fix: fails (step 1). On the workstation, step 5's `keytool -list … -v \| grep 'Entry type'` → `trustedCertEntry` for every JDK |
+| `self-signed.sh`'s output and its processes' command lines hold no password | automated test | `bash tests/0008-certificate-scripts.sh passwords` — every command line of `bash`, `openssl` and `keytool` logged by wrappers, and the scripts' output, searched for the password with `grep -F -f`; before the fix: fails (line 99's echo, `pass:`, `-srcstorepass`, `make-certs.sh`'s argument) |
+| The CA's private key nowhere but `~/.ssh` (the intent's proposed outcome) | automated test | `bash tests/0008-certificate-scripts.sh advice` — no `PrivateKeyEntry` of the CA in the trust store after the advice; `certs/trust-ca-in-jdk.sh` reads `certs/ca.crt` only |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->

@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (coherence review of the plans, 2026-10-22; follow-up of Faito 0022 and skills 0016)
 - Spec needed: no
-- Status: accepted
+- Status: planned
 - Opened: 2026-10-22
 - Decided: 2026-10-22
 - Supersedes: —
