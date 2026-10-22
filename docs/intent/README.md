@@ -24,6 +24,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 - Policies: none yet
 - Tech lead: Jérôme Wacongne
 - Spec template: [_spec-template.md](_spec-template.md)
+- Plan template: [_plan-template.md](_plan-template.md)
 - Risk rules: a spec is high-risk if it touches authentication, authorization or secrets, the isolation between applications, what a host exposes to the network, or personal data; standard otherwise
 - Status vocabulary:
 
