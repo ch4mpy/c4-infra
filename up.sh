@@ -73,3 +73,7 @@ if [ "$certificate_before" != "$certificate_after" ]; then
   docker compose restart reverse-proxy mailpit
   docker compose up -d --wait
 fi
+
+# The account registrations log in as, with Keycloak healthy (--wait above): created when missing,
+# its secret set to .env's, the registry's realms granted to it; an administrator is only needed then
+bash ./registration-account.sh ensure

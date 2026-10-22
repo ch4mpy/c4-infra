@@ -35,6 +35,10 @@ add "KC_BOOTSTRAP_ADMIN_USERNAME=admin"
 # "secret" on purpose, as before the stack was shared: the projects' scripts and docs rely on it
 add "KC_BOOTSTRAP_ADMIN_PASSWORD=secret"
 add "KC_DB_PASSWORD=$(openssl rand -hex 16)"
+# The registration account, a service account of the master realm that register-app.sh logs in as
+# (registration-account.sh creates it, and rotates its secret)
+add "KC_REGISTRATION_CLIENT_ID=c4-infra-registration"
+add "KC_REGISTRATION_CLIENT_SECRET=$(openssl rand -hex 32)"
 
 add "RABBITMQ_ADMIN_USER=admin"
 add "RABBITMQ_ADMIN_PASSWORD=$(openssl rand -hex 16)"
