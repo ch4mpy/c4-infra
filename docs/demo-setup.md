@@ -3,10 +3,13 @@
 Status: **not set up yet**. Postponed on 2026-10-21 (OVH's administration console was down); until
 then, only the dev stack is in use. Follow these steps once, in order, when the VPS is available.
 
-The demo host runs the shared stack of [demo/](../demo/) (Caddy, Keycloak on PostgreSQL, Mailpit,
-RabbitMQ, Grafana LGTM), deployed by [deploy-demo.yml](../.github/workflows/deploy-demo.yml) on
-every push to `main` that isn't only Markdown. The applications deploy themselves on top of it
-afterwards ([migration.md](migration.md), "On the demo host").
+The demo host runs the shared stack (Caddy, Keycloak on PostgreSQL, Mailpit, RabbitMQ, Grafana
+LGTM): the compose base [compose.yml](../compose.yml) with its demo override
+[compose.demo.yml](../compose.demo.yml), and the shared Caddy configuration of [caddy/](../caddy/)
+with the demo's rules (`INFRA_ENV=demo`), deployed by
+[deploy-demo.yml](../.github/workflows/deploy-demo.yml) on every push to `main` that isn't only
+Markdown. The applications deploy themselves on top of it afterwards
+([migration.md](migration.md), "On the demo host").
 
 ## 0. Before anything
 
@@ -118,10 +121,14 @@ gh run watch -R ch4mpy/c4-infra
 
 - The `build` job builds the Keycloak image and pushes it to GHCR, tagged with the content of
   `keycloak/` (skipped when that tag exists).
-- The `deploy` job writes the host's `.env` (failing by name if a secret is missing), copies
-  `demo/` and `register-app.sh` to `~/c4-infra`, pulls the images and waits up to 300 s for every
-  service to be healthy, reloads Caddy, and installs the nightly backup of Keycloak's database
-  (03:15, host time, `~/backups/`).
+- The `deploy` job writes the host's `.env` on the runner with
+  [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
+  which `rsync -a` keeps), sends `~/c4-infra` exactly the files of
+  [`demo/deploy-files.txt`](../demo/deploy-files.txt) (the compose base and its demo override, the
+  shared Caddy configuration, the registry, `routes.sh`, `register-app.sh`, the host's scripts) and
+  then `.env`, pulls the images, and runs [`demo/deploy.sh`](../demo/deploy.sh) on the host: it
+  waits up to 300 s for every service to be healthy, reloads Caddy, and installs the nightly
+  backup of Keycloak's database (03:15, host time, `~/backups/`).
 - The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
   migrations.
 
@@ -136,5 +143,5 @@ gh run watch -R ch4mpy/c4-infra
 
 Each application adapts its own deployment ([migration.md](migration.md), "On the demo host"):
 its key added to the host (step 3 again), its DNS record, its compose project on the `c4-infra`
-network with unique container names, its Caddy site, and its call to `register-app.sh`. Faito
-has no demo deployment yet.
+network with unique container names, its routes file (the one it registers in dev), and its call
+to `register-app.sh`. Faito has no demo deployment yet.

@@ -86,10 +86,18 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    database refuses twice ("Duplicate resource error"). The script prints the users' new ids:
    update whatever the project stores about them (dev seed data such as Liquibase `dev` contexts,
    tests naming a user id).
-5. **Reverse proxy**: `reverse-proxy/<project>.conf`, the project's `server` for
-   `<project>.dev.localhost` (see Faito's, or `create-dev-infra/reverse-proxy/i18n.conf`), with the
-   routes the project's `nginx-reverse-proxy/nginx.conf` had beyond the shared ones (`/assets/`,
-   `/mcp`, `/.well-known/oauth-protected-resource/mcp`, special routes), on the new ports.
+5. **Routes file**: `reverse-proxy/<project>.routes`, the paths of the project's site, the same
+   file in dev and on the demo host (notation, roles and upstreams: the
+   [README's "Routes file"](../README.md#routes-file)). One line per path the project's
+   `nginx-reverse-proxy/nginx.conf` (or its demo Caddyfile) served beyond the shared ones, each
+   naming the role it goes to, never a host or a port: `/gateway/*`, the front ends (`/fr/*`,
+   `/en/*`, or `/ui/*` without i18n), `/assets/`, `/mcp`,
+   `/.well-known/oauth-protected-resource/mcp`, special routes (a regular expression, a body
+   limit), in the order they must be tried, the narrowest first. Turu's, Hurura'a's and Faito's
+   are written: [`examples/routes/`](../examples/routes/) (copy the project's into its
+   `reverse-proxy/`). `register-app.sh --proxy reverse-proxy/<project>.routes` generates the
+   project's site, on its registry entry's dev host name; the dev and demo upstreams are derived
+   from its number (no port in the file).
 6. **Scripts**: `build-0-env.sh`, `deploy-dev.sh` and `keycloak/export.sh` from the
    `create-dev-infra` skill (placeholders replaced as its SKILL.md says), `compose-rest-api-db.yml`
    kept. Delete `build-1-images.sh`, `compose-keycloak.yml`, `compose-mailpit.yml`,
@@ -117,11 +125,15 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    BFF's redirect URIs on `<project>.c4-soft.com`, back-channel logout on
    `http://<project>.gateway:7080/gateway/logout/connect/back-channel/<registration>`, SMTP
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`.
-4. Its Caddy site, `deploy/caddy/<project>.caddy` (example in the README), and its workflow:
-   `rsync` to `~/<project>/` as `deploy@<vps>`, `docker compose up -d --wait`, then
-   `bash ~/c4-infra/register-app.sh --app <project> --realm … --proxy <project>.caddy --rabbitmq-user …
-   --rabbitmq-password-env …` (no password on a command line). Its secrets no longer include Keycloak's, Mailpit's, RabbitMQ's admin
-   or Grafana's.
+4. No Caddy site to write: its workflow sends its dev routes file, `reverse-proxy/<project>.routes`
+   (dev step 5), with the rest: `rsync` to `~/<project>/` as `deploy@<vps>`,
+   `docker compose up -d --wait`, then
+   `bash ~/c4-infra/register-app.sh --app <project> --realm … --proxy <project>.routes --rabbitmq-user …
+   --rabbitmq-password-env …` (no password on a command line). The site is generated on its demo
+   host name, to its containers on the ports the README fixes (`<project>.gateway:7080`,
+   `<project>.frontend:80`). A route to the `mcp` role is refused there until the README fixes the
+   MCP server's container port. Its secrets no longer include Keycloak's, Mailpit's, RabbitMQ's
+   admin or Grafana's.
 5. Users created during a demo live in the former Keycloak: export the realm from it
    (`kc.sh export --realm <realm> --users realm_file`) before switching, and register that export.
 6. `deploy/backup.sh`: only the project's databases (c4-infra backs Keycloak up).
@@ -133,12 +145,12 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 - Branch `master`; uncommitted work in progress on it: migrate once it is committed.
 - MCP server (`mcp-server`, 9080 → 11280, management 9081 → 11281) and its clients in the realm
   (`turu-mcp`, `turu-agent-dev`, `turu-agent-dev-actor`): routes `/mcp` and
-  `/.well-known/oauth-protected-resource/mcp` in `reverse-proxy/turu.conf`; drop the
+  `/.well-known/oauth-protected-resource/mcp` to the `mcp` role; drop the
   `/.well-known/oauth-authorization-server/...` and `/.well-known/openid-configuration/...` routes
   (c4-infra serves them). `keycloak/check-agent-delegation.sh` may name the old ports.
-- Extra routes: `/assets/` → the `fr` dev server; the migration runs upload
-  (`~ ^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$`, proxied without URI rewriting,
-  `client_max_body_size 64m`), on 11080.
+- Extra routes: `/assets/` → the `fr` front end, prefixed with `/fr`; the migration runs upload
+  (`~^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$`, to the gateway, `max-body=64MB`),
+  first. All in [`examples/routes/turu.routes`](../examples/routes/turu.routes).
 - `.env`: `MAIL_SSL_TRUST=host.docker.internal` stays (the shared Mailpit serves a leaf signed by
   the same CA, valid for that host).
 - No demo deployment yet.
@@ -148,7 +160,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 - Branch `0004-hururaa-application-comme-les-autres` in progress.
 - The realm also holds the sample applications' clients (`te-fenua-*`, `escales-*`, `anahei-*`):
   only `hururaa-bff`'s URLs move to `hururaa.dev.localhost`; the others keep theirs.
-- Extra route: `/assets/` → the `fr` dev server (pf-ui's images, absolute paths).
+- Extra route: `/assets/` → the `fr` front end, prefixed with `/fr` (pf-ui's images, absolute
+  paths): [`examples/routes/hururaa.routes`](../examples/routes/hururaa.routes).
 - Demo on `hururaa.c4-soft.com`: steps above; the demo users and the clients Hurura'a provisions
   are in the former Keycloak's H2 volume (export first, step 5).
 
@@ -162,3 +175,11 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 - The realm `tickee` has two BFF clients with back-channel logout (`gateway` and `tickee-bff`):
   both URLs move to the gateway's port.
 - Demo: steps above (the LDAP container joins `c4-infra`).
+
+### Faito (n° 4, ports 14xxx, realm `faito`)
+
+- Created on this stack: nothing to migrate but its site. Its routes file,
+  [`examples/routes/faito.routes`](../examples/routes/faito.routes), replaces its nginx block
+  `reverse-proxy/faito.conf` (Faito 0021: copied to `reverse-proxy/faito.routes`, passed to
+  `--proxy`). Until then, `register-app.sh` registers c4-infra's copy in place of the `.conf`, with
+  a warning.

@@ -6,8 +6,9 @@ application), one Mailpit, one RabbitMQ (a virtual host per application) and one
 instead of a copy of each per project: less memory, and no port conflict between projects.
 
 Each application keeps in its own repository what is its own: its database(s), in its own compose
-project; its realm export, its Keycloak theme, its RabbitMQ user, and its reverse-proxy server
-block, which it installs here with [`register-app.sh`](register-app.sh) every time it deploys.
+project; its realm export, its Keycloak theme, its RabbitMQ user, and its routes file (the paths of
+its site on the reverse proxy), which it installs here with [`register-app.sh`](register-app.sh)
+every time it deploys.
 
 ## Design
 
@@ -41,6 +42,24 @@ block, which it installs here with [`register-app.sh`](register-app.sh) every ti
 - **A block of 1 000 ports per application** for what runs on the host (dev servers, Spring Boot
   apps, databases), registered in [`registry.txt`](registry.txt) (see the port registry below);
   the shared services keep their usual ports.
+- **One reverse proxy, Caddy, in dev as on the demo host.** The shared services' routes and the
+  headers of the applications' sites are written once, in [`caddy/Caddyfile`](caddy/Caddyfile);
+  only what must differ is in [`caddy/env/dev.caddy`](caddy/env/dev.caddy) and
+  [`caddy/env/demo.caddy`](caddy/env/demo.caddy): the certificate (the dev leaf, Let's Encrypt),
+  HSTS (on the demo host only, so that browsers don't pin the workstation's host names), Mailpit's
+  basic authentication (demo host) and RabbitMQ's management UI (dev). A page that the demo's
+  Content-Security-Policy blocks is blocked in dev too. Each application's site is generated from
+  its [routes file](#routes-file).
+- **One compose base, an override per environment.** [`compose.yml`](compose.yml) holds every
+  service and every image version; [`compose.dev.yml`](compose.dev.yml) (ports on `127.0.0.1`, the
+  dev certificate, Keycloak built here, RabbitMQ's UI) and [`compose.demo.yml`](compose.demo.yml)
+  (ports 80 and 443 only, the demo's passwords and memory limits) add what differs. Published ports
+  are declared in the overrides only, since compose merges `ports` lists. `COMPOSE_FILE` in `.env`
+  names the pair: `docker compose` commands need no `-f`.
+- **The environment is a setting**: `INFRA_ENV` in `.env`, `dev` (written by [`env.sh`](env.sh))
+  or `demo` (written by [`demo/write-env.sh`](demo/write-env.sh)). Caddy reads it when it starts
+  (which `caddy/env/*.caddy` it applies), `register-app.sh` at each registration (the site's host
+  name and upstreams).
 
 ## Development
 
@@ -73,7 +92,7 @@ their ports: `up.sh` names its containers, to stop first.
 |---|---|---|
 | Landing page (links to everything registered) | https://host.docker.internal/ | 80, 443 |
 | Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | none: through the proxy only |
-| Mailpit | https://host.docker.internal/mailpit/ | 1025 (SMTP, auth `mailpit` / `secret`), 8025 |
+| Mailpit | https://host.docker.internal/mailpit/ | 1025 (SMTP, auth `mailpit` / `secret`), 8025 (its UI, over plain HTTP) |
 | Grafana LGTM | https://host.docker.internal/grafana/ | 3000, 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
 | RabbitMQ (admin user and password in `.env`) | https://host.docker.internal/rabbitmq/ | 5672 (AMQP), 15672 |
 
@@ -83,6 +102,11 @@ docker compose logs -f keycloak       # or reverse-proxy, rabbitmq...
 docker compose stop                   # e.g. to start a project's former stack again
 bash ./export-realm.sh faito ../faito/keycloak/import   # realm + users, Keycloak keeps running
 ```
+
+Mailpit's UI serves no TLS since the dev proxy is Caddy (one Mailpit route for both environments):
+`https://host.docker.internal/mailpit/` is the way in, and `http://127.0.0.1:8025/mailpit/` the
+direct one (nothing in Faito, Turu or Hurura'a calls `https://…:8025`). SMTP on 1025 keeps its
+STARTTLS, with the shared leaf.
 
 ### Port registry
 
@@ -123,8 +147,9 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     the application accepts; `export-realm.sh` exports the generated ones, which stay dev keys:
     the demo rendering removes them again;
 - its themes, if any, `keycloak/themes/<theme>/`;
-- its nginx server block for `<app>.dev.localhost` (`listen 443 ssl`: the certificate is the
-  proxy's), routing to its processes on the host through `host.docker.internal:<port>`;
+- its [routes file](#routes-file), `reverse-proxy/<app>.routes`, the same in both environments:
+  `register-app.sh` generates its site from it, on its registry entry's host name, to its processes
+  on the host in dev and to its containers on the demo host;
 - its RabbitMQ user and password (the virtual host is named after the application: Spring's
   `spring.rabbitmq.virtual-host`);
 - its own compose project for its database(s), on its block's ports;
@@ -135,17 +160,22 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   bash "$C4_INFRA_DIR/up.sh"
   bash "$C4_INFRA_DIR/register-app.sh" --app faito \
     --realm keycloak/import/faito-realm.json \
-    --proxy reverse-proxy/faito.conf \
+    --proxy reverse-proxy/faito.routes \
     --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD   # exported, from .env
   docker compose -f compose-rest-api-db.yml up -d --wait
   ```
 
+  Until Faito registers with its routes file (Faito 0021), its `deploy-dev.sh` passes its former
+  nginx block, `reverse-proxy/faito.conf`: `register-app.sh` then registers
+  [`examples/routes/faito.routes`](examples/routes/faito.routes) in its place, with a warning.
+
 A project created before this stack existed moves onto it with [docs/migration.md](docs/migration.md).
 
 `register-app.sh` is idempotent: a realm already in Keycloak is left alone (the users and clients
-created since survive; `--reset-realms` re-imports it), a server block is checked by the proxy
-before it replaces the previous one, a changed theme restarts Keycloak. No password goes on a
-command line: Keycloak's admin CLI reads it from its environment, RabbitMQ receives a salted hash.
+created since survive; `--reset-realms` re-imports it), a site is validated by Caddy before it
+replaces the previous one (Caddy is reloaded, never restarted), a changed theme restarts Keycloak.
+No password goes on a command line: Keycloak's admin CLI reads it from its environment, RabbitMQ
+receives a salted hash.
 
 It logs in as Keycloak's bootstrap administrator (`KC_BOOTSTRAP_ADMIN_USERNAME` /
 `KC_BOOTSTRAP_ADMIN_PASSWORD` in `.env`, the `KC_ADMIN_PASSWORD` secret on the demo host). Keycloak
@@ -153,12 +183,66 @@ reads them on its very first start only, and its console invites to replace that
 account: keep it, with the same password, or every registration fails. Changing the password means
 changing it in the console and in `.env` (or the secret) together.
 
+### Routes file
+
+An application writes the paths of its site once, for both environments: each path, the role it
+goes to, and its options. It names neither a host, a scheme nor a port: its host names are its
+registry entry's, and each role's upstream is derived from its number (dev) or its container (demo
+host). `bash routes.sh generate <routes file> <app> <dev|demo>` prints the site `register-app.sh`
+installs.
+
+```text
+# one route per line; '#' starts a comment
+<path>  <target>  [<option>...]
+  path:    /exact  |  /prefix/*  |  ~<regular expression>   (characters: A-Z a-z 0-9 . _ ~ / -, and for a regex ^ $ * + ? ( ) | [ ])
+  target:  gateway | mcp | fr | en | ui | redirect
+  options: to=<path>          redirect only, required: a path on the same host (not //...)
+           max-body=<n>KB|MB  request body limit (413 beyond)
+           prefix=<path>      prepended to the request's path before proxying
+```
+
+Faito's, [`examples/routes/faito.routes`](examples/routes/faito.routes) (Hurura'a's and Turu's are
+next to it):
+
+```text
+/           redirect  to=/fr/
+/gateway/*  gateway
+/fr/*       fr
+/en/*       en
+```
+
+- **First match.** Routes are tried in the file's order, and the first one that matches serves the
+  request: a narrower route goes before a wider one (Turu's 64 MB upload, a regular expression,
+  before `/gateway/*`). A `/<p>/*` route also redirects `/<p>` to `/<p>/` (301). Any other path
+  answers `404`.
+- **Roles and their upstreams**, with `p = 10 + n` (port registry above). The front end without
+  i18n is `ui`.
+
+  | Role | dev | demo host |
+  |---|---|---|
+  | `gateway` | `https://host.docker.internal:p080` | `http://<app>.gateway:7080` |
+  | `mcp` | `https://host.docker.internal:p280` | none yet: refused (see "What an application's deployment does") |
+  | `fr`, `ui` | `http://host.docker.internal:p200` | `http://<app>.frontend:80` |
+  | `en` | `http://host.docker.internal:p205` | `http://<app>.frontend:80` |
+
+  Dev's HTTPS upstreams are checked against the local CA (`certs/ca.crt`) and get the client's
+  `Host` (`<app>.dev.localhost`).
+- **Headers.** The front ends (`fr`, `en`, `ui`) get the single-page-app headers
+  (Content-Security-Policy, `X-Frame-Options`, `Permissions-Policy`: the `spa-headers` snippet of
+  [`caddy/Caddyfile`](caddy/Caddyfile)); every response gets `X-Content-Type-Options` and
+  `Referrer-Policy`, and no `Server`; `Strict-Transport-Security` on the demo host only.
+- **Refused**, as `<file>:<line>: …`, before anything is registered: a line outside the notation,
+  and any host name, scheme or port (`routes name neither a host nor a port: '<token>'`): an
+  application's routes reach its own processes only.
+
 ## Demo host
 
 The same stack on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:
-Caddy instead of nginx (a Let's Encrypt certificate per site), plain HTTP inside the Docker
-network, `https://infra.c4-soft.com/` for the shared services, and one site per application,
+the compose base with its demo override, [`compose.demo.yml`](compose.demo.yml), and the same Caddy
+configuration with the demo's rules (`INFRA_ENV=demo`: a Let's Encrypt certificate per site, HSTS,
+Mailpit behind its basic authentication, no RabbitMQ UI); plain HTTP inside the Docker network,
+`https://infra.c4-soft.com/` for the shared services, and one site per application,
 `https://<app>.c4-soft.com/`, which each application installs from its own deployment.
 
 ### One-time setup
@@ -177,27 +261,24 @@ From its own workflow, as `deploy@<vps>`, in `~/<app>/`:
   ambiguous. Its databases stay on its project's own network;
 - its realm, rendered for the demo (public host, real client secrets, Mailpit's SMTP password,
   back-channel logout on `http://<app>.gateway:7080/...`), then
-  `bash ~/c4-infra/register-app.sh --app <app> --realm … --proxy <app>.caddy --rabbitmq-user … --rabbitmq-password-env …`;
-- its Caddy site, importing the `common-headers` and `spa-headers` snippets of
-  [`demo/caddy/Caddyfile`](demo/caddy/Caddyfile):
+  `bash ~/c4-infra/register-app.sh --app <app> --realm … --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
+- no Caddy site to write: its routes file, the one it registers in dev (see "Routes file"), gives
+  its site on the demo host name of its registry entry, to its containers on the ports fixed here:
+  the gateway on `<app>.gateway:7080`, and every locale's front end on `<app>.frontend:80` (`/fr/`
+  and `/en/` are directories of that one container). No container port is fixed yet for an MCP
+  server, since no application deploys one here: a routes file naming the `mcp` role is refused
+  on the demo host, and the first application that deploys one fixes its port in this section.
 
-  ```caddyfile
-  faito.c4-soft.com {
-      encode zstd gzip
-      import common-headers
-      handle /gateway/* {
-          reverse_proxy faito.gateway:7080
-      }
-      @locales path /fr/* /en/*
-      handle @locales {
-          import spa-headers
-          reverse_proxy faito.frontend:80
-      }
-      handle {
-          redir * /fr/ temporary
-      }
-  }
-  ```
+### On the host
+
+`~/c4-infra` holds what the deployment sends, the files of
+[`demo/deploy-files.txt`](demo/deploy-files.txt) (the compose base and its demo override, the
+shared Caddyfile and `caddy/env/demo.caddy`, the registry, `routes.sh`, `register-app.sh`,
+`demo/deploy.sh` and `demo/backup.sh`), its `.env` (mode 600, written by
+[`demo/write-env.sh`](demo/write-env.sh) on the workflow's runner: `INFRA_ENV=demo`,
+`COMPOSE_FILE=compose.yml:compose.demo.yml`, the secrets), and what the applications register
+(`caddy/apps/`, `keycloak/themes/`). The workflow then runs [`demo/deploy.sh`](demo/deploy.sh)
+there: `docker compose up` until every service is healthy, a Caddy reload, the nightly backup.
 
 ### Day to day
 
@@ -213,7 +294,7 @@ first.
 
 ### Backups
 
-The workflow installs [`demo/backup.sh`](demo/backup.sh) in the `deploy` user's crontab, nightly
+[`demo/deploy.sh`](demo/deploy.sh) installs [`demo/backup.sh`](demo/backup.sh) in the `deploy` user's crontab, nightly
 at 03:15 (host time): a hot `pg_dump` of Keycloak's database in `~/backups/`, kept 7 days. Each
 application backs up its own databases. To restore, from `~/c4-infra`:
 
