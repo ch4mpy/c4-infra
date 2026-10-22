@@ -18,10 +18,16 @@ Each application's containers join a network of their own, to which the registra
 - REQ-3 Keycloak's database is on a network that only Keycloak joins. (intent)
 - REQ-4 On the demo host, Mailpit's web UI and API ask for the demo's Mailpit credentials themselves, whether they are reached through Caddy or from a container; in dev, Mailpit stays without authentication (0003 REQ-2). (intent)
 - REQ-5 Registering an application creates its network when it is missing, named after its registry entry only (0004), and attaches to it the shared services of REQ-2, never Keycloak's database. They stay attached when the shared stack is restarted or recreated by its deployment, without registering the applications again. (intent; 0002 REQ-3: a registration acts only on what is the application's)
-- REQ-6 What stays reachable and unprotected from an application's network is recorded in the README (PA-2 decided): Grafana LGTM's OTLP receivers accept any telemetry, so an application can write under another's name; its Prometheus, Tempo, Loki and Pyroscope ports answer without authentication, so an application can read every application's metrics, traces, logs and profiles; Keycloak's management port answers its health and metrics. (intent: open question)
+- REQ-6 What stays reachable from an application's network beyond REQ-2 and REQ-4 is recorded in the README, port by port (PA-2 decided):
+  - Grafana LGTM's OTLP receivers accept any telemetry, so an application can write under another's name;
+  - its Prometheus, Tempo, Loki and Pyroscope ports answer without authentication, so an application can read every application's metrics, traces, logs and profiles;
+  - Keycloak's management port answers its health and metrics;
+  - RabbitMQ's other ports answer: epmd, the Erlang distribution behind its cookie, and its Prometheus metrics if the image enables them.
+
+  (intent: open question)
 - REQ-7 The README's design and `docs/migration.md` describe the application's network, which its compose project joins instead of `c4-infra`. (intent)
 - REQ-8 The same topology applies in dev, where an application's containers join its network too (Tickee's LDAP server, which Keycloak federates). (intent: affected systems)
-- REQ-9 The root-owned command that starts an application's compose project (0002 REQ-2) refuses a project that would leave its isolation: a network other than the application's own, `network_mode`, a container name or network alias outside `<app>.`, a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, the shared host's name), and what escapes a container altogether (privileged mode, the Docker socket, host paths outside the application's directory). (intent: proposed outcome)
+- REQ-9 The root-owned command that starts an application's compose project (0002 REQ-2) refuses a project that would leave its isolation: a network other than the application's own, `network_mode`, a published port (only Caddy publishes on the host), a container name or network alias outside `<app>.`, a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, the shared host's name), and what escapes a container altogether (privileged mode, the Docker socket, host paths outside the application's directory). The last group is what 0002 REQ-1 also forbids: this check is the one that enforces it. (intent: proposed outcome)
 
 ## Out of scope
 
@@ -38,7 +44,8 @@ Each application's containers join a network of their own, to which the registra
 - Caddy carries the alias `${INFRA_HOST}` on that network, so that the applications reach the issuer through it; it reaches Keycloak as `keycloak:8080` (`demo/caddy/Caddyfile`).
 - Mailpit: SMTP authentication (`MP_SMTP_AUTH`), no authentication of its UI and API on `8025`; the demo's `/mailpit/*` route asks for a basic authentication in Caddy.
 - Keycloak serves plain HTTP on `8080` (`KC_HTTP_ENABLED`); the applications may call its token endpoint and admin API there (`KC_HOSTNAME_BACKCHANNEL_DYNAMIC`); it reaches each gateway at `http://<app>.gateway:7080` for back-channel logout; its management port `9000` serves health and metrics (`keycloak/Dockerfile`).
-- Grafana LGTM (`grafana/otel-lgtm`) bundles OTLP receivers (4317, 4318), Grafana (3000, with its login), and Prometheus (9090), Tempo (3200), Loki and Pyroscope (4040), without authentication.
+- Grafana LGTM (`grafana/otel-lgtm`) bundles OTLP receivers (4317, 4318), Grafana (3000, with its login), and Prometheus (9090), Tempo (3200), Loki (3100) and Pyroscope (4040), without authentication.
+- RabbitMQ (`rabbitmq:4.3.5`) listens for AMQP (5672), epmd (4369) and the Erlang distribution (25672), and serves Prometheus metrics (15692) when its plugin is enabled (to confirm on the image).
 - In dev, Tickee's LDAP server joins `c4-infra` so that Keycloak federates it (`docs/migration.md`, Tickee).
 
 ### Behaviour per persona
@@ -90,7 +97,7 @@ None.
 
 ## Acceptance criteria
 
-Until the demo host exists and Hurura'a is migrated, AC-1 to AC-4 and AC-8 to AC-10 run on the workstation, with the demo override and stand-in containers named after Faito and Hurura'a (as 0003 AC-7).
+Until the demo host exists and Hurura'a is migrated, AC-1, AC-2, AC-8 to AC-10 and the reachability part of AC-3 and AC-4 run on the workstation, with the demo override and stand-in containers named after Faito and Hurura'a (as 0003 AC-7). The end-to-end part of AC-3 and AC-4 (login, back-channel logout, mail, event, traces) runs with Faito's first demo deployment.
 
 - AC-1 Given Faito and Hurura'a deployed, then from a Faito container neither `hururaa.gateway` nor `keycloak-db` can be reached. (REQ-1, REQ-3)
 - AC-2 From a Faito container on the demo host, `GET http://mailpit:8025/mailpit/api/v1/messages` without credentials gets `401`; through Caddy, `/mailpit/` still asks for them. (REQ-4)
@@ -99,8 +106,8 @@ Until the demo host exists and Hurura'a is migrated, AC-1 to AC-4 and AC-8 to AC
 - AC-5 The README records the exposure of REQ-6, port by port. (REQ-6)
 - AC-6 The README's design and `docs/migration.md` name the application's network, and no longer tell an application to join `c4-infra`. (REQ-7)
 - AC-7 In dev, Tickee's LDAP server is on Tickee's network, Keycloak federates it, and a container on another application's network can't reach it. (REQ-8)
-- AC-8 Given a Faito compose project with `network_mode: "container:c4-infra.keycloak"`, a service named `keycloak` or an alias `keycloak` on Faito's network, Hurura'a's network as an external one, `privileged: true`, or the Docker socket mounted, when Faito's deployment starts it, then each is refused before any container starts. (REQ-9)
-- AC-9 From a Faito container, the shared services' ports that answer are those of REQ-2 and those REQ-6 lists, and no other. (REQ-2, REQ-6)
+- AC-8 Given a Faito compose project with any one of: `network_mode: "container:c4-infra.keycloak"`; a service named `keycloak`; an alias `keycloak` or `hururaa.gateway` on Faito's network; `container_name: hururaa.gateway`; Hurura'a's network as an external one; `ports: ["7080:7080"]`; `privileged: true`; the Docker socket, or a host path outside Faito's directory, mounted — when Faito's deployment starts it, then it is refused before any container starts. (REQ-9)
+- AC-9 From a Faito container, the shared services' ports that answer are those of REQ-2, Mailpit's UI and API (answering `401`, REQ-4) and those the README records (REQ-6), and no other. (REQ-2, REQ-4, REQ-6)
 - AC-10 Given Faito registered, then the shared services of REQ-2 are attached to Faito's network, `keycloak-db` to Keycloak's only, and Hurura'a's network is unchanged. (REQ-5)
 
 ## Intent questions
@@ -112,3 +119,4 @@ Until the demo host exists and Hurura'a is migrated, AC-1 to AC-4 and AC-8 to AC
 
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (compose files checked at deployment, the whole of Grafana LGTM's and Keycloak's exposure, the network named from the registry only, how the criteria run before the demo host exists), PA-1 decided, PA-2 decided again with the facts
+- v1 — 2026-10-21 — draft: second coherence review (published ports and other applications' names refused, Mailpit and RabbitMQ in the port check, RabbitMQ's other ports recorded, end-to-end criteria with Faito's first demo deployment)
