@@ -22,7 +22,8 @@
 #   --index-only    only rewrite the dev landing page (https://host.docker.internal/)
 #
 # No password ever goes on a command line (the host's process list and `docker inspect` show
-# them): Keycloak's admin CLI reads it from its environment, RabbitMQ gets a salted hash.
+# them): Keycloak's admin CLI reads the registration account's secret from its environment,
+# RabbitMQ gets a salted hash.
 set -euo pipefail
 # Git Bash would rewrite the container paths below (/opt/keycloak/...) into Windows paths
 export MSYS_NO_PATHCONV=1
@@ -37,11 +38,26 @@ env_value() {
   local line
   line=$(grep -m1 "^$1=" "$INFRA_DIR/.env" || true)
   line=${line#*=}
+  line=${line%$'\r'}
   printf '%s' "${line//\$\$/\$}"
 }
 
 KEYCLOAK=c4-infra.keycloak
 RABBITMQ=c4-infra.rabbitmq
+
+# What a registration leaves behind, removed on exit whatever happens: the admin CLI's session in
+# the Keycloak container, RabbitMQ's working directory
+kc_session=""
+work=""
+cleanup() {
+  if [ -n "$kc_session" ]; then
+    docker exec "$KEYCLOAK" rm -f "$kc_session" > /dev/null 2>&1 || true
+  fi
+  if [ -n "$work" ]; then
+    rm -rf "$work"
+  fi
+}
+trap cleanup EXIT
 REVERSE_PROXY=c4-infra.reverse-proxy
 
 app=""
@@ -142,14 +158,14 @@ if [ -n "$proxy" ]; then
   fi
 fi
 
-# Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network,
-# each call authenticated on its own (no stored session: a registration makes one or two calls).
-# The registration depends on the bootstrap administrator of .env: replacing it in the admin
-# console, or changing its password there, makes the registrations fail (see README.md).
+# Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network, as
+# the registration account (registration-account.sh): a service account of the master realm that may
+# create realms and manage the registry's, nothing else. Keycloak's administrators, the bootstrap one
+# included, may be replaced or deleted: registrations don't use them. The account's secret, read from
+# .env, reaches the CLI in its environment (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session
+# lives in the container's /dev/shm (memory only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  KC_CLI_PASSWORD=$(env_value KC_BOOTSTRAP_ADMIN_PASSWORD)
-  export KC_CLI_PASSWORD
-  kc_admin=$(env_value KC_BOOTSTRAP_ADMIN_USERNAME)
+  kc_client=$(env_value KC_REGISTRATION_CLIENT_ID)
   # `kcadm -i ...` only where the input is redirected: a deployment may run this script from a
   # heredoc on ssh's stdin, which `docker exec -i` would otherwise swallow
   kcadm() {
@@ -158,12 +174,39 @@ if [ ${#realms[@]} -gt 0 ]; then
       exec_options=(-i)
       shift
     fi
-    docker exec "${exec_options[@]}" -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" \
-      --no-config --server http://localhost:8080/auth --realm master --user "$kc_admin"
+    docker exec "${exec_options[@]}" "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" --config "$kc_session"
   }
+  output=""
+  kc_session=/dev/shm/c4-registration-$$.kcadm
+  if [ -z "$kc_client" ] || ! output=$(KC_CLI_CLIENT_SECRET=$(env_value KC_REGISTRATION_CLIENT_SECRET) \
+    docker exec -e KC_CLI_CLIENT_SECRET "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh config credentials \
+    --config "$kc_session" --server http://localhost:8080/auth --realm master --client "$kc_client" 2>&1); then
+    [ -z "$output" ] || printf '%s\n' "$output" | tail -n 3 >&2
+    echo "The registration account ${kc_client:-(no KC_REGISTRATION_CLIENT_ID in .env)} doesn't log in to Keycloak: run up.sh in dev, the deployment on the demo host (registration-account.sh ensure creates it, and sets its secret to .env's); nothing was registered." >&2
+    exit 1
+  fi
+  # What the account may do with each realm, before anything changes. Asked with `get
+  # realms/<realm>/roles`: `get realms/<realm>` answers a reduced view of any realm to whoever may
+  # create realms. A realm there but out of the account's reach stops the registration.
+  declare -A realm_found=()
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
-    if kcadm get "realms/$realm" --fields realm > /dev/null 2>&1; then
+    if output=$(kcadm get "realms/$realm/roles" --fields name 2>&1); then
+      realm_found[$realm]=true
+    elif [[ $output == *"Resource not found"* ]]; then
+      realm_found[$realm]=false
+    elif [[ $output == *"HTTP 403"* ]]; then
+      echo "Realm $realm is in Keycloak, but the registration account $kc_client may not manage it (created outside the registrations, and never granted to it): nothing was registered. registration-account.sh ensure grants it the realms of the registry that exist (up.sh in dev, the deployment on the demo host)." >&2
+      exit 1
+    else
+      printf '%s\n' "$output" | tail -n 3 >&2
+      echo "Realm $realm: unexpected answer of Keycloak (above); nothing was registered." >&2
+      exit 1
+    fi
+  done
+  for file in "${realms[@]}"; do
+    realm=$(basename "$file" -realm.json)
+    if ${realm_found[$realm]}; then
       if $reset_realms; then
         echo "Deleting realm $realm"
         kcadm delete "realms/$realm"
@@ -210,8 +253,8 @@ fi
 # the password as a salted SHA-256 hash, RabbitMQ's own format. rabbitmqctl doesn't read them from
 # its standard input: the file goes into the container first.
 if [ -n "$rabbitmq_user" ]; then
+  # removed on exit (cleanup)
   work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
   openssl rand 4 > "$work/salt"
   password=${!rabbitmq_password_env}
   { cat "$work/salt"; printf '%s' "${password%$'\r'}"; } | openssl dgst -sha256 -binary > "$work/digest"
