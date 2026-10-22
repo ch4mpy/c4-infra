@@ -3,8 +3,17 @@
 #   check <description> <command…>   runs the command: prints "ok - <description>", or
 #                                     "KO - <description>" followed by the command's output
 #   finish                           exits 1 when a check failed, 0 otherwise
+#   jq                               jq without the \r of Windows (see below), for every test
 
 failures=0
+
+# Windows' native jq.exe ends every line with \r\n, and Git Bash's $(…) strips only the last \r: a
+# value read from jq would compare unequal. jq's -b would stop that, but jq 1.6 (Ubuntu 22.04) has
+# no -b: strip the \r instead, and keep jq's exit status.
+jq() {
+  command jq "$@" | tr -d '\r'
+  return "${PIPESTATUS[0]}"
+}
 
 check() {
   local description=$1 output
