@@ -17,6 +17,19 @@
 #                                    stand-in (a Linux shell, as the workflow's runner), with a random
 #                                    value for each secret `write-env.sh --required` names; then keeps
 #                                    Let's Encrypt out (compose.no-acme.yml)
+#   stand_in_accounts <app>…         the demo host's accounts (intent 0002), as docs/demo-setup.md
+#                                    prepares them: a key pair per account, generated inside the
+#                                    stand-in ($STAND_IN_KEYS), `vps-bootstrap.sh c4-infra` and
+#                                    `vps-bootstrap.sh app <app>` for each; then the shared stack
+#                                    deployed as c4-infra over ssh, as the workflow does: the files of
+#                                    demo/deploy-files.txt and .env (stand_in_send, stand_in_env)
+#                                    rsynced to /home/c4-infra/c4-infra, then demo/deploy.sh there
+#                                    (which installs c4-app). The Keycloak image is this machine's.
+#   stand_in_ssh [-i] <account> <command>
+#                                    runs the command over ssh to 127.0.0.1 inside the stand-in, as
+#                                    <account>, with its key (stand_in_accounts), the host key pinned;
+#                                    -i passes stdin, which the caller always redirects
+#   stand_in_ssh_command <account>   that ssh command line (for rsync -e), inside the stand-in
 #   stand_in_down                    stops and removes the stand-in (its Docker volume stays: the
 #                                    pulled images)
 #
@@ -27,6 +40,8 @@ STAND_IN_NAME=c4-infra-stand-in
 STAND_IN_IMAGE=c4-infra/stand-in-host
 STAND_IN_VOLUME=c4-infra-stand-in-docker
 STAND_IN_CADDY_IMAGE=caddy:2.11.4-alpine
+# inside the stand-in: the accounts' keys and the pinned host key (stand_in_accounts)
+STAND_IN_KEYS=/root/stand-in-keys
 
 # the docker CLI of Windows wants a Windows path for a build context
 _stand_in_host_path() {
@@ -108,6 +123,81 @@ stand_in_env() ( # <dir>
     < "$STAND_IN_ROOT/tests/stand-in-host/compose.no-acme.yml" || exit 1
   stand_in_exec sed -i 's/^COMPOSE_FILE=.*/&:compose.no-acme.yml/' "$dir/.env"
 )
+
+stand_in_ssh_command() { # <account>
+  printf 'ssh -i %s/%s -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%s/known_hosts' \
+    "$STAND_IN_KEYS" "$1" "$STAND_IN_KEYS"
+}
+
+stand_in_ssh() { # [-i] <account> <command>
+  local options=()
+  if [ "${1:-}" = -i ]; then
+    options=(-i)
+    shift
+  fi
+  # word splitting of the ssh command line is wanted: it holds no space but between its words
+  # shellcheck disable=SC2046
+  stand_in_exec "${options[@]}" $(stand_in_ssh_command "$1") "$1@127.0.0.1" "$2"
+}
+
+# Why <account>'s key doesn't log in: the modes sshd checks, the key it holds, and the reason a
+# one-shot sshd in debug mode (port 2222) gives
+_stand_in_ssh_diagnose() { # <account>
+  stand_in_exec bash -c '
+    keys=$1 account=$2
+    stat -c "%n %a %U:%G" "/home/$account" "/home/$account/.ssh" "/home/$account/.ssh/authorized_keys" "$keys/$account"
+    ssh-keygen -lf "$keys/$account.pub"
+    ssh-keygen -lf "/home/$account/.ssh/authorized_keys"
+    /usr/sbin/sshd -d -p 2222 > /tmp/sshd-debug.log 2>&1 &
+    sleep 1
+    ssh -p 2222 -i "$keys/$account" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null "$account@127.0.0.1" true > /dev/null 2>&1
+    wait
+    grep -iE "refused|not allowed|bad ownership|authentication|key" /tmp/sshd-debug.log | tail -n 15' \
+    sh "$STAND_IN_KEYS" "$1"
+}
+
+stand_in_accounts() { # <app>…
+  local log=/root/stand-in-accounts.log
+  # A fresh host's homes: the stand-in's dockerd restarts an earlier run's containers from its volume
+  # before stand_in_up removes them, and their bind mounts recreate their sources, root-owned
+  # (/home/c4-infra/c4-infra/caddy/…): sshd would then refuse the account's key
+  stand_in_exec sh -c 'for dir in /home/c4-infra /var/lib/c4-apps "$@"; do
+      case $dir in /*) ;; *) dir=/home/$dir ;; esac
+      [ ! -e "$dir" ] || { echo "# an earlier run'\''s leftover, removed: $dir"; rm -rf "$dir"; }
+    done' sh "$@" || return 1
+  stand_in_exec -i sh -c 'cat > /tmp/vps-bootstrap.sh' < "$STAND_IN_ROOT/demo/vps-bootstrap.sh" || return 1
+  # the keys, and the host's own key pinned for 127.0.0.1 (no ssh-keyscan); then the accounts
+  stand_in_exec bash -c '
+    set -e
+    keys=$1 log=$2
+    shift 2
+    rm -rf "$keys"
+    mkdir -m 700 "$keys"
+    for key in /etc/ssh/ssh_host_*_key.pub; do
+      printf "127.0.0.1 %s\n" "$(cut -d" " -f1,2 "$key")"
+    done > "$keys/known_hosts"
+    for account in c4-infra "$@"; do
+      ssh-keygen -q -t ed25519 -N "" -f "$keys/$account" -C "$account-stand-in"
+    done
+    {
+      bash /tmp/vps-bootstrap.sh c4-infra "$(cat "$keys/c4-infra.pub")"
+      for app in "$@"; do
+        bash /tmp/vps-bootstrap.sh app "$app" "$(cat "$keys/$app.pub")"
+      done
+    } > "$log" 2>&1 || { tail -n 20 "$log"; exit 1; }
+    rm -f /tmp/vps-bootstrap.sh' sh "$STAND_IN_KEYS" "$log" "$@" || return 1
+  stand_in_load_image c4-infra/keycloak || return 1
+  # the shared stack, as the workflow deploys it: its files and .env rsynced as c4-infra (rsync -a
+  # keeps .env's mode 600), then demo/deploy.sh run there as c4-infra
+  stand_in_exec rm -rf /root/c4-infra-upload
+  stand_in_send /root/c4-infra-upload || return 1
+  stand_in_env /root/c4-infra-upload || return 1
+  stand_in_exec bash -c 'cd /root/c4-infra-upload && rsync -az -e "$1" ./ c4-infra@127.0.0.1:~/c4-infra/' \
+    sh "$(stand_in_ssh_command c4-infra)" || { _stand_in_ssh_diagnose c4-infra; return 1; }
+  stand_in_ssh c4-infra "cd ~/c4-infra && bash ./demo/deploy.sh < /dev/null > ~/deploy.log 2>&1" \
+    || { stand_in_exec tail -n 30 /home/c4-infra/deploy.log; return 1; }
+}
 
 stand_in_down() {
   # docker stop: the entrypoint stops dockerd, which stops its containers
