@@ -22,6 +22,8 @@ destination=$2
 
 INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/.env"
+# handed to the container by name (-e KC_DB_PASSWORD), never on the docker command line
+export KC_DB_PASSWORD
 
 container="c4-infra.keycloak-export-$realm"
 docker rm -f "$container" > /dev/null 2>&1 || true
@@ -30,7 +32,7 @@ trap 'docker rm -f "$container" > /dev/null 2>&1 || true' EXIT
 docker create --name "$container" --network c4-infra \
   -e KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak \
   -e KC_DB_USERNAME=keycloak \
-  -e KC_DB_PASSWORD="$KC_DB_PASSWORD" \
+  -e KC_DB_PASSWORD \
   "c4-infra/keycloak:$KC_VERSION" \
   export --optimized --realm "$realm" --users realm_file --dir /tmp/export > /dev/null
 docker start -a "$container"
