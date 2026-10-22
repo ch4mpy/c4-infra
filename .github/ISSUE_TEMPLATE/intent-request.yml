@@ -1,0 +1,58 @@
+name: Intent request
+description: Report a bug or ask for a change. Describe the problem, not the solution.
+title: "[Intent] "
+labels: ["intent-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This request becomes an **intent** that the product owner accepts or rejects.
+        Describe what is wrong or missing and for whom; leave the solution to the next stages.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Change (new need, improvement)
+        - Bug (something does not work as expected)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who is affected, how it shows, how often, what it costs.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: For a bug — steps to reproduce, expected and observed behaviour
+      placeholder: |
+        1. …
+        Expected: …
+        Observed: …
+        Environment: …
+    validations:
+      required: false
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: What will be observable once it is done? How will we know it worked?
+    validations:
+      required: true
+  - type: textarea
+    id: affected
+    attributes:
+      label: Who and what is affected
+      description: Users or roles, and the parts of the system concerned, if you know them.
+    validations:
+      required: false
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Known constraints
+      description: Deadlines, security or compliance requirements, things that must not change.
+    validations:
+      required: false
