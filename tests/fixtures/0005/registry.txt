@@ -1,0 +1,6 @@
+# registry.txt's four entries, and the fixture application of tests/0005-themes.sh (block 45xxx): its realm and its theme
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+35 verif-theme verif-theme verif-theme-api verif-theme verif-theme.dev.localhost verif-theme.c4-soft.com

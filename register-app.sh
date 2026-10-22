@@ -10,7 +10,8 @@
 #   --realm        a realm export (kc.sh export --users realm_file), named <realm>-realm.json. The
 #                   realm is imported only when Keycloak doesn't have it yet, so that the users and
 #                   clients created since survive; --reset-realms deletes it first.
-#   --themes        a directory of Keycloak themes, one sub-directory per theme
+#   --themes        a directory of Keycloak themes, one sub-directory per theme: a new or changed
+#                   one shows on reload in dev; on the demo host, it restarts Keycloak (once)
 #   --proxy         the application's routes file (README.md, "Routes file"), the same in both
 #                   environments: its site on the reverse proxy is generated from it and from the
 #                   application's registry entry, for the environment INFRA_ENV (.env) names (dev
@@ -177,7 +178,10 @@ if [ ${#realms[@]} -gt 0 ]; then
   done
 fi
 
-# Themes: copied into the directory Keycloak reads; it caches them, so a change needs a restart
+# Themes: copied into the directory Keycloak reads (mounted as a whole: a new theme shows in the
+# running container too). In dev, Keycloak caches no theme (compose.dev.yml): the next page load
+# shows the change, and the Keycloak every application uses isn't restarted. On the demo host it
+# caches them: a changed theme restarts it, once per registration; an unchanged one restarts nothing.
 if [ -n "$themes" ]; then
   changed=false
   for dir in "$themes"/*/; do
@@ -188,10 +192,14 @@ if [ -n "$themes" ]; then
       rm -rf "$target"
       cp -r "$dir" "$target"
       changed=true
-      echo "Theme $name installed"
+      if [ "$INFRA_ENV" = dev ]; then
+        echo "Theme $name installed: reload the login page (Keycloak doesn't cache themes in dev)"
+      else
+        echo "Theme $name installed"
+      fi
     fi
   done
-  if $changed; then
+  if $changed && [ "$INFRA_ENV" = demo ]; then
     echo "Restarting Keycloak to load the themes"
     docker restart "$KEYCLOAK" > /dev/null
   fi
