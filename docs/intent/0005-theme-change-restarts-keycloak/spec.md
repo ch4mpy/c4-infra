@@ -17,7 +17,7 @@ In dev, Keycloak doesn't cache themes, and a registration installs a new or chan
 - REQ-2 In dev, `register-app.sh` installs a new or changed theme without restarting Keycloak. (intent: success criterion)
 - REQ-3 A developer iterating on a theme re-runs the registration (`deploy-dev.sh`, or `register-app.sh --themes`), then reloads the login page to see the change (PA-1 decided). (intent: success criterion, narrowed)
 - REQ-4 On the demo host, theme caching stays on, and Keycloak is restarted only when a theme a registration installs differs from the installed one — today's behaviour, kept. (intent: constraint, "as little as possible")
-- REQ-5 Dev and the demo host are told apart by the stack's own setting (today `PROXY` in `.env`; 0003 REQ-7 keeps one). (0003)
+- REQ-5 Dev and the demo host are told apart by the setting of the stack's `.env` that names its environment (`dev` or `demo`, 0003 REQ-7), never by the proxy in use, which becomes Caddy in both (0003 PA-1); whichever of the two specs is delivered first introduces it. (intent: constraint, production-like caching stays on the demo host; 0003)
 
 ## Out of scope
 
@@ -28,7 +28,7 @@ In dev, Keycloak doesn't cache themes, and a registration installs a new or chan
 
 ### Current behaviour
 
-`register-app.sh`: when a theme differs from the installed copy, it is copied into `keycloak/themes/` and Keycloak is restarted ("Restarting Keycloak to load the themes"), in dev as on the demo host; an unchanged theme restarts nothing.
+`register-app.sh`: when a theme differs from the installed copy, it is copied into `keycloak/themes/` and Keycloak is restarted ("Restarting Keycloak to load the themes"), in dev as on the demo host; an unchanged theme restarts nothing. The only difference `register-app.sh` sees between the two is `PROXY` (`nginx` in dev, `caddy` written by `deploy-demo.yml`).
 
 ### Behaviour per persona
 
@@ -68,6 +68,7 @@ None.
 - AC-1 Given a theme registered in dev, when one of its templates is edited and the registration re-run, then the login page shows the change on reload, and Keycloak's container wasn't restarted (same start time). (REQ-1, REQ-2, REQ-3)
 - AC-2 Given another application logged in, when the theme changes in dev, then its session stays valid. (REQ-2)
 - AC-3 Non-regression on the demo host: when a deployment installs an unchanged theme, Keycloak isn't restarted; when it installs a changed one, it is, once. (REQ-4)
+- AC-4 Given the stack's environment set to `dev` with Caddy as its proxy, when a changed theme is registered, then Keycloak isn't restarted; set to `demo`, it is. (REQ-5)
 
 ## Intent questions
 
@@ -77,3 +78,4 @@ None.
 
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (the intent's criterion narrowed by a decision, demo behaviour stated as kept, dev/demo setting shared with 0003), PA-1 decided
+- v1 — 2026-10-21 — draft: second coherence review (the environment named in `.env` rather than told by the proxy, criterion AC-4)
