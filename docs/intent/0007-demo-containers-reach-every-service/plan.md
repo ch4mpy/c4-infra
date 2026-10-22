@@ -121,3 +121,5 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-22 — step 1: the fixture applications' `.env` (`RABBITMQ_PASSWORD`, random) is written by `tests/0007-isolation.stand-in.sh` into the copy each one uploads, not committed under `tests/fixtures/0007/<app>/` — `.gitignore` ignores every `.env` (0002's deviation of 2026-10-22, the same case) — files: no `tests/fixtures/0007/*/.env`; proof unchanged. The test's first run (pre-fix) failed at AC-10's first assertion (`no network c4-infra.faito`; `sudo c4-app up`: `network c4-infra.faito declared as external, but could not be found`), `exit=1`; from a scratch copy whose fixtures join `c4-infra`, it failed on AC-1 (both by name and address), AC-2 (`status 200`) and AC-9 (`4369 5672 15692 25672`; `3000 3100 3200 4040 4317 4318 7946 9090 9095 9096 9097 13133`), AC-3's reachability passing.
