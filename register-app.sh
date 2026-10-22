@@ -5,7 +5,9 @@
 #   register-app.sh --app <name> [--realm <file>]... [--themes <dir>] [--proxy <file>]
 #                   [--rabbitmq-user <user> --rabbitmq-password-env <variable>] [--reset-realms]
 #
-#   --realm         a realm export (kc.sh export --users realm_file), named <realm>-realm.json. The
+#   --app           the application's name in the registry, registry.txt: an application missing
+#                   from it, or a registry that registry.sh's check refuses, registers nothing
+#   --realm        a realm export (kc.sh export --users realm_file), named <realm>-realm.json. The
 #                   realm is imported only when Keycloak doesn't have it yet, so that the users and
 #                   clients created since survive; --reset-realms deletes it first.
 #   --themes        a directory of Keycloak themes, one sub-directory per theme
@@ -23,6 +25,7 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
 INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
+source "$INFRA_DIR/registry.sh"
 
 # The value of KEY in .env, read as data rather than sourced: the demo's .env is written for
 # compose, which un-escapes "$$" and takes everything after the first "=" as is.
@@ -90,6 +93,12 @@ if [ -z "$app" ]; then
   echo "--app <name> is required" >&2
   exit 1
 fi
+# Before anything changes in the shared stack: a valid registry, which holds this application
+if ! registry_check; then
+  echo "The registry is invalid (above): fix registry.txt; nothing was registered." >&2
+  exit 1
+fi
+registry_entry "$app" || exit 1
 if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1

@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # 0004: the application registry, registry.txt, read by registry.sh.
 #
-#   bash tests/0004-registry.sh [registry]...   (every part by default)
+#   bash tests/0004-registry.sh [registry|scripts]...   (every part by default)
 #
 #   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
 #              entries (AC-6), the duplicates and the malformed lines `check` refuses (AC-3), `next`
 #              (AC-4), `entry` and `upstream` as their output contract says (plan, REQ-3)
+#   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
+#              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
+#              both (AC-3, REQ-4), an application missing from it is refused (AC-1), before any
+#              docker call
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/stubs.sh
 
 FIXTURES=$PWD/tests/fixtures/0004
 TICKEE_LINE='^3 +tickee +tickee,brasserie,tenant2,tenant3 +tickee-api +tickee +tickee\.dev\.localhost +tickee\.c4-soft\.com$'
@@ -139,15 +144,62 @@ part_registry() {
   check "upstream verif gateway dev (unknown application) exits 1" exited 1
 }
 
-[ $# -gt 0 ] || set -- registry
+# Runs <command…> as run_with does, with the fakes of $work/stubs first in PATH: their docker
+# appends each call to $work/docker.log
+run_stubbed() { # <registry file> <command…>
+  local file=$1
+  shift
+  : > "$work/docker.log"
+  STUB_LOG="$work/docker.log" STUB_ADDRESS=127.0.0.1 PATH="$work/stubs:$PATH" run_with "$file" "$@"
+}
+
+exited_non_zero() {
+  [ "$status" -ne 0 ] || { echo "exited 0; stderr:"; cat "$work/err"; return 1; }
+}
+
+called_no_docker() {
+  [ ! -s "$work/docker.log" ] || { echo "called:"; head -n 5 "$work/docker.log"; return 1; }
+}
+
+stopped() { # <label> <both entries>: the last run exited ≠ 0, naming both entries, before any docker call
+  local label=$1 both=$2
+  check "$label: exits non-zero" exited_non_zero
+  check "$label: names both entries ($both)" says "$both"
+  check "$label: no docker call" called_no_docker
+}
+
+part_scripts() {
+  stub_path "$work/stubs" docker getent powershell.exe
+
+  # AC-3
+  run_stubbed "$FIXTURES/duplicate-number.txt" bash ./up.sh
+  stopped "duplicate number, up.sh" 'number 4: faito (line 5) and verif (line 6)'
+  run_stubbed "$FIXTURES/duplicate-realm.txt" bash ./up.sh
+  stopped "duplicate realm, up.sh" 'realm public-facing: hururaa (line 3) and verif (line 6)'
+  run_stubbed "$FIXTURES/duplicate-theme.txt" bash ./up.sh
+  stopped "duplicate theme, up.sh" 'theme tickee: tickee (line 4) and verif (line 6)'
+
+  # REQ-4: register-app.sh as well, for an application of the registry
+  run_stubbed "$FIXTURES/duplicate-realm.txt" bash ./register-app.sh --app faito
+  stopped "duplicate realm, register-app.sh --app faito" 'realm public-facing: hururaa (line 3) and verif (line 6)'
+
+  # AC-1
+  run_stubbed "" bash ./register-app.sh --app verif
+  check "unknown app: register-app.sh --app verif exits non-zero" exited_non_zero
+  check "unknown app: its message names registry.txt" says registry.txt
+  check "unknown app: its message names bash registry.sh next" says 'bash registry.sh next'
+  check "unknown app: no docker call" called_no_docker
+}
+
+[ $# -gt 0 ] || set -- registry scripts
 for part in "$@"; do
   case "$part" in
-    registry)
+    registry | scripts)
       echo "# $part"
       "part_$part"
       ;;
     *)
-      echo "Unknown part: $part (registry)" >&2
+      echo "Unknown part: $part (registry or scripts)" >&2
       exit 2
       ;;
   esac

@@ -27,6 +27,13 @@ EOF
   exit 1
 fi
 
+# The application registry: no two applications share a number (their port block), a name, a realm,
+# a theme, a RabbitMQ user or a host name
+if ! bash ./registry.sh check; then
+  echo "The registry is invalid (above): fix registry.txt, then run $0 again." >&2
+  exit 1
+fi
+
 bash ./env.sh
 certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
 bash ./certs/make-certs.sh
