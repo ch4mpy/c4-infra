@@ -65,3 +65,5 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-22 — step 2: the login page URL of `tests/0005-themes.sh` also carries `code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256` (RFC 7636's example challenge) — Keycloak's default `account-console` client requires PKCE: without them the authorization endpoint redirects (`302`, `Missing parameter: code_challenge_method`) instead of rendering the login page — no change to the files, the scope, a risk or a proof: the same page, rendered by the same theme.
