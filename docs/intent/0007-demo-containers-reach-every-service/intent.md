@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (follow-up of 0002, out of its scope; 2026-10-21)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-21
 - Decided: 2026-10-21
 - Supersedes: —
