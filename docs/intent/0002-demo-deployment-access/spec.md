@@ -1,11 +1,11 @@
 # Spec: Deploying to the demo host gives every application's workflow the whole host
 
 - Intent: [0002](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: secrets, the isolation between applications, what a host exposes; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `docs/demo-setup.md`, `docs/migration.md`
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -92,3 +92,4 @@ None beyond the registry (0004).
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (registration scoped by the registry, credential held by the shared stack, runtime lateral movement out of scope), PA-1 decided
 - v1 — 2026-10-21 — draft: second coherence review (themes scoped by the registry entry, criteria for REQ-5 and REQ-8)
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
