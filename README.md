@@ -24,9 +24,11 @@ block, which it installs here with [`register-app.sh`](register-app.sh) every ti
 - **Host names that resolve where they are used.** Browsers resolve `*.localhost` to the loopback
   on their own; the JVMs and Node processes of the host don't (Windows doesn't), and neither do the
   containers. Hence the split: everything server-side (issuer, admin API, back-channel logout,
-  OTLP, SMTP, AMQP) uses `host.docker.internal`, which resolves to the loopback everywhere (the
-  hosts-file line of the prerequisites on the host, `extra_hosts: host-gateway` in the containers);
-  only the browser uses `<app>.dev.localhost`. A command-line client of an application's own origin
+  OTLP, SMTP, AMQP) uses `host.docker.internal`, which reaches the workstation's loopback
+  everywhere: on the host through the hosts-file line of the prerequisites (`127.0.0.1`), in the
+  containers through `extra_hosts: host-gateway` (Docker Desktop's gateway address, which it
+  forwards to the host's loopback; Docker Engine on Linux doesn't); only the browser uses
+  `<app>.dev.localhost`. A command-line client of an application's own origin
   (an MCP client such as Claude Code) needs a hosts-file line: `127.0.0.1 <app>.dev.localhost`.
 - **One certificate.** The leaf the proxy, Keycloak and Mailpit serve is valid for
   `host.docker.internal`, `localhost` and `*.dev.localhost` (browsers refuse a second-level wildcard

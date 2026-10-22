@@ -27,14 +27,10 @@ done < <(git ls-files --cached --others --exclude-standard -- '*.sh')
 
 for test in tests/[0-9][0-9][0-9][0-9]-*.sh; do
   [ -f "$test" ] || continue
-  case "$test" in
-    *.stand-in.sh)
-      if ! $all; then
-        echo "== $test: skipped (--all runs it)"
-        continue
-      fi
-      ;;
-  esac
+  if [[ $test == *.stand-in.sh ]] && ! $all; then
+    echo "== $test: skipped (--all runs it)"
+    continue
+  fi
   echo "== $test"
   bash "$test" || failed+=("$test")
 done

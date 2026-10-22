@@ -9,9 +9,9 @@ failures=0
 
 # Windows' native jq.exe ends every line with \r\n, and Git Bash's $(…) strips only the last \r: a
 # value read from jq would compare unequal. jq's -b would stop that, but jq 1.6 (Ubuntu 22.04) has
-# no -b: strip the \r instead, and keep jq's exit status.
+# no -b: strip the \r of each line end instead (a \r inside a value stays), and keep jq's exit status.
 jq() {
-  command jq "$@" | tr -d '\r'
+  command jq "$@" | sed 's/\r$//'
   return "${PIPESTATUS[0]}"
 }
 

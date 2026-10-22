@@ -7,21 +7,23 @@ cd "$(dirname "$0")"
 # compose.yml publishes every port on 127.0.0.1 only: this machine's browser, JVMs and Node
 # processes reach the stack through host.docker.internal, which must resolve there. Docker Desktop
 # can write the LAN address for that name in the hosts file: stop before starting anything.
-if command -v getent > /dev/null; then
-  addresses=$(getent ahostsv4 host.docker.internal | awk '{ print $1 }' | sort -u) || true
-else
-  addresses=$(powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('host.docker.internal') | Where-Object AddressFamily -eq 'InterNetwork' | ForEach-Object IPAddressToString" 2> /dev/null \
-    | tr -d '\r' | sort -u) || true
-fi
+addresses=$(
+  if command -v getent > /dev/null; then
+    getent ahostsv4 host.docker.internal | awk '{ print $1 }'
+  else
+    powershell.exe -NoProfile -Command "[System.Net.Dns]::GetHostAddresses('host.docker.internal') | Where-Object AddressFamily -eq 'InterNetwork' | ForEach-Object IPAddressToString" 2> /dev/null | tr -d '\r'
+  fi | sort -u
+) || true
 if [ "$addresses" != 127.0.0.1 ]; then
-  {
-    addresses=${addresses:-nothing}
-    echo "host.docker.internal resolves to ${addresses//$'\n'/, }, not 127.0.0.1. The stack publishes its ports on the loopback only: this machine's browser and JVMs would not reach it."
-    echo "To fix it:"
-    echo "  - turn off Docker Desktop's option (Settings > General, \"Add the *.docker.internal names to the host's etc/hosts file\");"
-    printf '%s\n' '  - keep the single line "127.0.0.1 host.docker.internal" in C:\Windows\System32\drivers\etc\hosts (/etc/hosts elsewhere);'
-    echo "  - then run $0 again."
-  } >&2
+  shown=${addresses:-nothing}
+  shown=${shown//$'\n'/, }
+  cat >&2 <<EOF
+host.docker.internal resolves to $shown, not 127.0.0.1. The stack publishes its ports on the loopback only: this machine's browser and JVMs would not reach it.
+To fix it:
+  - turn off Docker Desktop's option (Settings > General, "Add the *.docker.internal names to the host's etc/hosts file");
+  - keep the single line "127.0.0.1 host.docker.internal" in C:\Windows\System32\drivers\etc\hosts (/etc/hosts elsewhere);
+  - then run $0 again.
+EOF
   exit 1
 fi
 
