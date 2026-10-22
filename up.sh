@@ -39,6 +39,10 @@ certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
 bash ./certs/make-certs.sh
 certificate_after=$(cat certs/tls.crt | cksum)
 
+# compose.apps.yml (COMPOSE_FILE): the shared services on each registered application's network,
+# before any compose call (intent 0007)
+bash ./networks.sh compose-file
+
 # A project still running its own copy of these services holds their ports: name it rather than let
 # compose fail on the first one. The ports are the ones the compose files publish (compose.dev.yml).
 conflicts=()

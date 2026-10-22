@@ -43,8 +43,8 @@ check "$DIR holds only what the deployment sends" holds_only_sent
 mode=$(stand_in_exec stat -c %a "$DIR/.env" | tr -d '\r')
 check ".env is mode 600 (it is $mode)" test "$mode" = 600
 check ".env says INFRA_ENV=demo" stand_in_exec grep -qx INFRA_ENV=demo "$DIR/.env"
-check ".env names the compose base and its demo override" \
-  stand_in_exec grep -qx 'COMPOSE_FILE=compose.yml:compose.demo.yml:compose.no-acme.yml' "$DIR/.env"
+check ".env names the compose base, its demo override and the applications' networks (0007)" \
+  stand_in_exec grep -qx 'COMPOSE_FILE=compose.yml:compose.demo.yml:compose.apps.yml:compose.no-acme.yml' "$DIR/.env"
 
 # AC-8: the host's side of the deployment
 in_stack bash ./demo/deploy.sh > "$work/deploy.log" 2>&1

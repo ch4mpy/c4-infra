@@ -14,3 +14,6 @@ keycloak/themes/*
 ### CLAUDE CODE'S LOCAL STATE (the frozen-tests list of sdlc-plan, personal settings), never committed ###
 .claude/*.local
 .claude/settings.local.json
+
+### WRITTEN BY networks.sh (the applications' networks, intent 0007) ###
+compose.apps.yml

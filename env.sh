@@ -14,8 +14,11 @@ add() {
 # The environment: picks the proxy's dev rules (caddy/env/dev.caddy) and the applications' dev host
 # names and upstreams at registration (register-app.sh). The demo host's .env says demo.
 add "INFRA_ENV=dev"
-# The compose base and the workstation's override; ":" between them on Windows as well
-add "COMPOSE_FILE=compose.yml:compose.dev.yml"
+# The compose base, the workstation's override and the applications' networks (compose.apps.yml,
+# written by networks.sh: intent 0007); ":" between them on Windows as well. The value written before
+# intent 0007 gets compose.apps.yml added.
+add "COMPOSE_FILE=compose.yml:compose.dev.yml:compose.apps.yml"
+sed -i 's/^COMPOSE_FILE=compose\.yml:compose\.dev\.yml\r\{0,1\}$/COMPOSE_FILE=compose.yml:compose.dev.yml:compose.apps.yml/' .env
 add "COMPOSE_PATH_SEPARATOR=:"
 # Built here from keycloak/ (compose.dev.yml); the demo host pulls the workflow's image instead
 add "KC_IMAGE=c4-infra/keycloak"

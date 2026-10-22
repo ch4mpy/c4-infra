@@ -33,14 +33,23 @@ ACCOUNT=service-account-$CLIENT
 umask 077
 work=$(mktemp -d)
 samplers=()
+# the applications whose network (0007: each registration makes sure of it) this test creates
+new_networks=()
+for app in verif-hidden faito; do
+  docker network inspect "c4-infra.$app" > /dev/null 2>&1 || new_networks+=("$app")
+done
 remove_fixtures() {
   kc_admin delete realms/verif-unassigned > /dev/null 2>&1
   kc_admin delete realms/verif-hidden > /dev/null 2>&1
 }
 cleanup() {
+  local app
   touch "$work/sample.stop"
   [ ${#samplers[@]} -eq 0 ] || wait "${samplers[@]}" 2> /dev/null
   remove_fixtures
+  for app in "${new_networks[@]}"; do
+    bash networks.sh remove "$app" > /dev/null
+  done
   rm -rf "$work"
 }
 trap cleanup EXIT

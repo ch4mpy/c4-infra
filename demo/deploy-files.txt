@@ -8,6 +8,7 @@ registry.sh
 routes.sh
 register-app.sh
 registration-account.sh
+networks.sh
 demo/deploy.sh
 demo/backup.sh
 demo/c4-app

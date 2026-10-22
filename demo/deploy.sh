@@ -19,6 +19,9 @@ fi
 # What the applications register: their themes and their sites, in directories of the c4-infra
 # account (a bind mount Docker creates would belong to root)
 mkdir -p keycloak/themes caddy/apps
+# compose.apps.yml (COMPOSE_FILE): the shared services stay on each registered application's network
+# when compose recreates them (intent 0007)
+bash ./networks.sh compose-file
 # --wait: fails, with the state printed, unless every service with a healthcheck reports healthy
 # within the timeout
 docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker compose ps; exit 1; }

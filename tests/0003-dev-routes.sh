@@ -26,8 +26,11 @@ host_path() {
 
 work=$(mktemp -d)
 mkdir -p "$work/before"
+# the applications whose network (0007: each registration makes sure of it) this test creates
+new_networks=()
 for app in "${SITES[@]}"; do
   [ ! -f "caddy/apps/$app.caddy" ] || cp "caddy/apps/$app.caddy" "$work/before/"
+  docker network inspect "c4-infra.$app" > /dev/null 2>&1 || new_networks+=("$app")
 done
 cleanup() {
   local app
@@ -37,6 +40,9 @@ cleanup() {
     else
       rm -f "caddy/apps/$app.caddy"
     fi
+  done
+  for app in "${new_networks[@]}"; do
+    bash networks.sh remove "$app" > /dev/null
   done
   MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null 2>&1
   bash register-app.sh --index-only

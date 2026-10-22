@@ -26,6 +26,9 @@ OTHER_REALM="$BASE/faito/.well-known/openid-configuration"
 
 work=$(mktemp -d)
 cp .env "$work/env"
+# verif-theme's network (0007: each registration makes sure of it), when this test creates it
+new_network=false
+docker network inspect c4-infra.verif-theme > /dev/null 2>&1 || new_network=true
 remove_fixture() {
   kc_admin delete realms/verif-theme > /dev/null 2>&1
   rm -rf "$INSTALLED"
@@ -36,6 +39,8 @@ cleanup() {
   cp "$work/env" .env
   kc_wait_healthy > /dev/null
   remove_fixture
+  # after .env is back: compose.apps.yml is rewritten for its INFRA_ENV
+  ! $new_network || bash networks.sh remove verif-theme > /dev/null
   rm -rf "$work"
 }
 trap cleanup EXIT

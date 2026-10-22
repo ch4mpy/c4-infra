@@ -24,6 +24,9 @@
 #                   read from the named environment variable (the one the application itself reads)
 #   --index-only    only rewrite the dev landing page (https://host.docker.internal/)
 #
+# Every registration also makes sure of the application's own network, c4-infra.<app>, with the
+# shared services attached to it (networks.sh ensure, intent 0007).
+#
 # A registration touches only what the application's registry entry assigns to it (intent 0002): a
 # realm, a theme or a RabbitMQ user of another entry, or of none, registers nothing. On the demo
 # host, an application's account runs it through the root-owned demo/c4-app, for its own name only;
@@ -206,6 +209,12 @@ if [ -n "$proxy" ]; then
     exit 1
   fi
 fi
+
+# The application's own network, c4-infra.<app> (intent 0007), once every check has passed: created
+# when missing, the shared services it uses attached to it (never keycloak-db), compose.apps.yml
+# written so that they stay attached when the stack is recreated. Its containers join it as an
+# external network, never c4-infra.
+bash "$INFRA_DIR/networks.sh" ensure "$app"
 
 # Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network, as
 # the registration account (registration-account.sh): a service account of the master realm that may

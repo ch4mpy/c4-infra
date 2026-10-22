@@ -44,7 +44,9 @@ esc() { printf '%s' "${!1}" | sed 's/\$/$$/g'; }
 umask 077
 {
   echo "INFRA_ENV=demo"
-  echo "COMPOSE_FILE=compose.yml:compose.demo.yml"
+  # the compose base, the demo override and the applications' networks (compose.apps.yml, written by
+  # networks.sh on the host: intent 0007)
+  echo "COMPOSE_FILE=compose.yml:compose.demo.yml:compose.apps.yml"
   echo "COMPOSE_PATH_SEPARATOR=:"
   echo "INFRA_HOST=$INFRA_HOST"
   echo "TZ=Pacific/Tahiti"

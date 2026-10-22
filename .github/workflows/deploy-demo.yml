@@ -133,6 +133,8 @@ jobs:
           set -euo pipefail
           cd ~/c4-infra
           echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
+          # compose.apps.yml, the last file of COMPOSE_FILE: the applications' networks (intent 0007)
+          bash ./networks.sh compose-file
           docker compose pull --quiet
           docker logout ghcr.io
           KC_SETUP_ADMIN_USERNAME=\$(printf '%s' '$setup_user' | base64 -d)

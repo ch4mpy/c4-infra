@@ -19,7 +19,9 @@ x-logging: &default-logging
 
 networks:
   default:
-    # a fixed name: the shared services' own network (intent 0007)
+    # a fixed name: the shared services' own network, which no application joins (intent 0007). Each
+    # application has its own, c4-infra.<app>: its registration creates it and attaches the shared
+    # services but keycloak-db to it (networks.sh), compose.apps.yml (COMPOSE_FILE) keeps them there.
     name: c4-infra
   keycloak-db:
     # Keycloak's database, which only Keycloak reaches (intent 0007, REQ-3); no way out of it
