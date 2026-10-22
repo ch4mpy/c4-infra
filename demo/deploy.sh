@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# The demo host's side of the deployment: .github/workflows/deploy-demo.yml runs it over ssh, in
-# ~/c4-infra, once the files of demo/deploy-files.txt and .env are there and the images pulled.
-# Starts the stack or brings it up to date, reloads Caddy, makes sure of the registration account,
-# prunes the old images and installs the nightly backup. Idempotent.
+# The demo host's side of the deployment: .github/workflows/deploy-demo.yml runs it over ssh, as the
+# shared stack's account c4-infra, in ~/c4-infra, once the files of demo/deploy-files.txt and .env
+# are there and the images pulled. Installs the applications' command (c4-app), starts the stack or
+# brings it up to date, reloads Caddy, makes sure of the registration account, prunes the old images
+# and installs the nightly backup. Idempotent.
 set -euo pipefail
 # the stack's directory: compose reads COMPOSE_FILE (compose.yml:compose.demo.yml) from its .env
 cd "$(dirname "$0")/.."
 
-# What the applications register: their themes and their sites, in directories of the deploy user
-# (a bind mount Docker creates would belong to root)
+# The one command the applications' accounts run as root (sudo c4-app, demo/c4-app), installed
+# root-owned when it changed. The c4-infra account's only sudo rule (demo/vps-bootstrap.sh) is this
+# exact command line, from /home/c4-infra/c4-infra; the stand-in tests run it as root.
+if ! cmp -s demo/c4-app /usr/local/sbin/c4-app; then
+  sudo -n /usr/bin/install -o root -g root -m 0755 "$PWD/demo/c4-app" /usr/local/sbin/c4-app
+  echo "c4-app installed (/usr/local/sbin/c4-app)"
+fi
+
+# What the applications register: their themes and their sites, in directories of the c4-infra
+# account (a bind mount Docker creates would belong to root)
 mkdir -p keycloak/themes caddy/apps
 # --wait: fails, with the state printed, unless every service with a healthcheck reports healthy
 # within the timeout

@@ -9,3 +9,4 @@ register-app.sh
 registration-account.sh
 demo/deploy.sh
 demo/backup.sh
+demo/c4-app

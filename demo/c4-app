@@ -1,0 +1,244 @@
+#!/bin/bash
+# The one command an application's account on the demo host runs as root (intent 0002): the account
+# is in the group c4-apps, outside the docker group, and /etc/sudoers.d/c4-infra
+# (demo/vps-bootstrap.sh) lets that group run this file, which demo/deploy.sh installs root-owned as
+# /usr/local/sbin/c4-app. The application is the account that runs it (SUDO_USER), never an
+# argument:
+#
+#   sudo c4-app pull [--registry <host> --registry-user <user>]
+#                                   pulls the images of the application's compose project; with
+#                                   --registry, logs in first with the token read on stdin, in a
+#                                   temporary Docker configuration removed at once
+#   sudo c4-app up                  starts the project, or brings it up to date, and waits until it
+#                                   runs (healthy where it has a healthcheck)
+#   sudo c4-app down                stops and removes the project's containers (its volumes stay)
+#   sudo c4-app register <option>…  bash /home/c4-infra/c4-infra/register-app.sh --app <application>
+#                                   with register-app.sh's options (README.md) but --app: paths are
+#                                   relative to ~/<application>/, and --rabbitmq-password-env <VAR>
+#                                   takes VAR from ~/<application>/.env
+#
+# Each command works on a copy of ~/<application>/<application>/ (sent there by the application's
+# workflow), read as the application and written by root into /var/lib/c4-apps/<application>/
+# (root:<application>, mode 0750: the application reads it, never writes it); a symbolic link or a
+# special file in it is refused, and every path given must stay inside it. The compose model is read
+# as the application (`docker compose config`: no daemon, and no file its account can't read, such
+# as another application's env_file), into the one file root's `docker compose` runs,
+# /var/lib/c4-apps/<application>/.c4-app.model.json, as the project <application>.
+#
+# A registration runs with the shared stack's registration credential, in
+# /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
+# only what the application's registry entry assigns to it (register-app.sh).
+set -euo pipefail
+umask 027
+cd /
+
+# Nothing of the caller's environment: sudo already resets it, this keeps only what follows
+for name in $(compgen -e); do
+  case "$name" in
+    SUDO_USER) ;;
+    *) unset "$name" 2> /dev/null || true ;;
+  esac
+done
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root LC_ALL=C.UTF-8
+
+STACK=/home/c4-infra/c4-infra
+STAGING_ROOT=/var/lib/c4-apps
+
+fail() {
+  echo "c4-app: $*" >&2
+  exit 1
+}
+usage() {
+  cat >&2 <<'EOF'
+Usage, from an application's account:
+  sudo c4-app pull [--registry <host> --registry-user <user>]   (token on stdin)
+  sudo c4-app up
+  sudo c4-app down
+  sudo c4-app register [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
+                       [--rabbitmq-user <user> --rabbitmq-password-env <VAR of .env>] [--reset-realms]
+EOF
+  exit 2
+}
+
+[ "$(id -u)" -eq 0 ] || fail "runs as root, through sudo: sudo c4-app <command>"
+app=${SUDO_USER:-}
+case "$app" in
+  '') fail "runs through sudo, from an application's account: sudo c4-app <command>" ;;
+  root | c4-infra) fail "$app is not an application's account" ;;
+esac
+[[ $app =~ ^[a-z][a-z0-9-]*$ ]] || fail "$app is not an application's name"
+
+# The application is in the shared stack's registry (never another file: REGISTRY_FILE is unset with
+# the rest of the environment)
+# shellcheck source=../registry.sh
+source "$STACK/registry.sh"
+registry_check || fail "the shared stack's registry ($STACK/registry.txt) is invalid (above)"
+registry_entry "$app" || fail "$app is not in the shared stack's registry ($STACK/registry.txt)"
+
+source_dir=/home/$app/$app
+staging=$STAGING_ROOT/$app
+model=$staging/.c4-app.model.json
+[ -d "$source_dir" ] || fail "$source_dir is missing: the application's workflow sends its files there first"
+
+# One command at a time per application
+install -d -m 0755 -o root -g root "$STAGING_ROOT"
+exec 9> "$STAGING_ROOT/.$app.lock"
+flock -w 600 9 || fail "another c4-app command of $app is still running"
+
+# The staging copy: read as the application (what its account can't read isn't copied), checked,
+# then synchronized into the staging directory, whose inode stays (bind mounts inside it)
+stage() {
+  local incoming=$STAGING_ROOT/.$app.incoming found
+  rm -rf "$incoming"
+  install -d -m 0700 -o root -g root "$incoming"
+  if ! runuser -u "$app" -- tar -C "$source_dir" -cf - . \
+    | tar -C "$incoming" -xf - --no-same-owner --no-same-permissions; then
+    rm -rf "$incoming"
+    fail "$source_dir could not be copied (above)"
+  fi
+  # (head may close the pipe early: its status, not find's)
+  found=$(find "$incoming" -mindepth 1 ! -type f ! -type d -printf '%P\n' | head -n 5 || true)
+  if [ -n "$found" ]; then
+    rm -rf "$incoming"
+    fail "$source_dir holds a symbolic link or a special file, refused: ${found//$'\n'/, }"
+  fi
+  # the model is root's, never the application's
+  rm -f "$incoming/.c4-app.model.json" "$incoming/.c4-app.model.json.new"
+  chown -R "root:$app" "$incoming"
+  chmod -R u+rwX,g+rX,g-w,o-rwx "$incoming"
+  install -d -m 0750 -o root -g "$app" "$staging"
+  rsync -a --delete "$incoming/" "$staging/"
+  rm -rf "$incoming"
+}
+
+# The compose model, read as the application, into the one root-owned file root's compose runs
+read_model() {
+  local next=$model.new
+  [ -f "$staging/compose.yml" ] || fail "$source_dir/compose.yml is missing"
+  rm -f "$model" "$next"
+  if ! runuser -u "$app" -- env -i PATH="$PATH" HOME="/home/$app" \
+    docker compose --project-directory "$staging" -p "$app" -f "$staging/compose.yml" config --format json > "$next"; then
+    rm -f "$next"
+    fail "docker compose config refuses $source_dir/compose.yml (above)"
+  fi
+  chown root:root "$next"
+  chmod 0640 "$next"
+  mv "$next" "$model"
+}
+
+# root's docker compose, on the model only (no .env read again: the model is interpolated already)
+compose() {
+  docker compose --project-directory "$staging" -p "$app" -f "$model" --env-file /dev/null "$@"
+}
+
+# A path the application gives, relative to ~/<application>/, as its staging copy's
+staged_path() { # <path>
+  local resolved
+  case "$1" in
+    '' | /*) fail "'$1': a path relative to ~/$app/ is expected" ;;
+  esac
+  resolved=$(realpath -m -- "$staging/$1")
+  case "$resolved" in
+    "$staging"/*) printf '%s' "$resolved" ;;
+    *) fail "$1 is outside ~/$app/: refused" ;;
+  esac
+}
+
+# The value of KEY in the staging .env, read as data (compose's quotes removed)
+env_value() { # <key>
+  local line=""
+  [ -f "$staging/.env" ] && line=$(grep -m1 "^$1=" "$staging/.env" || true)
+  line=${line#*=}
+  line=${line%$'\r'}
+  if [[ $line =~ ^\"(.*)\"$ || $line =~ ^\'(.*)\'$ ]]; then
+    line=${BASH_REMATCH[1]}
+  fi
+  printf '%s' "$line"
+}
+
+cmd_pull() {
+  local registry="" user="" config status=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --registry) [ $# -ge 2 ] || usage; registry=$2; shift 2 ;;
+      --registry-user) [ $# -ge 2 ] || usage; user=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+  stage
+  read_model
+  if [ -z "$registry" ]; then
+    compose pull --quiet
+    return
+  fi
+  [[ $registry =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || fail "--registry takes a registry's host name, not '$registry'"
+  [[ $user =~ ^[A-Za-z0-9._-]+$ ]] || fail "--registry needs --registry-user <user>"
+  # the token, on stdin, into a configuration of its own: never in root's ~/.docker
+  config=$(mktemp -d)
+  if DOCKER_CONFIG=$config docker login "$registry" -u "$user" --password-stdin > /dev/null; then
+    DOCKER_CONFIG=$config compose pull --quiet || status=$?
+  else
+    status=1
+  fi
+  rm -rf "$config"
+  return "$status"
+}
+
+cmd_register() {
+  local args=() var value
+  stage
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --realm | --themes | --proxy)
+        [ $# -ge 2 ] || usage
+        value=$(staged_path "$2") || exit 1
+        args+=("$1" "$value")
+        shift 2
+        ;;
+      --rabbitmq-user)
+        [ $# -ge 2 ] || usage
+        args+=("$1" "$2")
+        shift 2
+        ;;
+      --rabbitmq-password-env)
+        # the password, from the application's .env, under a name of c4-app's: the application's
+        # variable name never reaches root's environment
+        [ $# -ge 2 ] || usage
+        var=$2
+        [[ $var =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "--rabbitmq-password-env takes a variable name, not '$var'"
+        value=$(env_value "$var")
+        [ -n "$value" ] || fail "$var is not set in ~/$app/.env"
+        export C4_APP_RABBITMQ_PASSWORD=$value
+        args+=(--rabbitmq-password-env C4_APP_RABBITMQ_PASSWORD)
+        shift 2
+        ;;
+      --reset-realms)
+        args+=("$1")
+        shift
+        ;;
+      --app) fail "the application is the account's own ($app): no --app" ;;
+      *) fail "unknown option $1 (register takes --realm, --themes, --proxy, --rabbitmq-user, --rabbitmq-password-env, --reset-realms)" ;;
+    esac
+  done
+  bash "$STACK/register-app.sh" --app "$app" "${args[@]}" < /dev/null
+}
+
+command=${1:-}
+[ $# -eq 0 ] || shift
+case "$command" in
+  pull) cmd_pull "$@" ;;
+  up)
+    [ $# -eq 0 ] || usage
+    stage
+    read_model
+    compose up -d --wait --remove-orphans
+    ;;
+  down)
+    [ $# -eq 0 ] || usage
+    stage
+    read_model
+    compose down --remove-orphans
+    ;;
+  register) cmd_register "$@" ;;
+  *) usage ;;
+esac
