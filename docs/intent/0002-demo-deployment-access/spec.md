@@ -15,7 +15,7 @@ Each application deploys to the demo host with its own account, outside the `doc
 
 - REQ-1 Each application's deployment credential opens one account on the host, its own, which can neither read nor change another application's files, containers, volumes or secrets, nor the shared stack's, `.env` and registration credential included (PA-1 decided). (intent: proposed outcome)
 - REQ-2 That account can copy its own deployment files, pull its images, start and stop its own compose project, and register itself — and nothing else. (intent: proposed outcome)
-- REQ-3 Registering as an application acts only on what the registry assigns to it (0004): its realms (the realms named in its entry; importing, resetting or deleting another realm is refused), its RabbitMQ user and virtual host, its themes (installed under names it owns), and a server block that serves its host names only and routes only to its own containers. (intent: proposed outcome)
+- REQ-3 Registering as an application acts only on what the registry assigns to it (0004): its realms (the realms named in its entry; importing, resetting or deleting another realm is refused), its RabbitMQ user and virtual host, its themes (the theme names in its entry; installing or replacing another one is refused), and a server block that serves its host names only and routes only to its own containers. (intent: proposed outcome)
 - REQ-4 The registration credential (0006) is held by the shared stack only; registrations run as root-owned commands that use it on the application's behalf. (intent; 0006)
 - REQ-5 The shared stack's deployment keeps an account of its own, the only one that can change the shared services. (intent)
 - REQ-6 Every action of the deployment workflows that receives a secret is pinned by commit, in c4-infra and in the deployment `docs/migration.md` describes for the applications. (intent: action pinned by tag)
@@ -76,10 +76,12 @@ None beyond the registry (0004).
 
 - AC-1 Given Faito's deployment key, when it tries to read Hurura'a's `.env` or `~/c4-infra/.env`, list or stop another application's containers, or run `docker` directly, then it is refused. (REQ-1)
 - AC-2 Given Faito's deployment key, when its workflow deploys and registers Faito, then the deployment succeeds. (REQ-2)
-- AC-3 Given Faito's deployment key, when it registers with Hurura'a's realm file (`public-facing`), `--reset-realms`, Hurura'a's RabbitMQ user, or a server block for `hururaa.c4-soft.com` or routing to `keycloak:8080`, then each is refused. (REQ-3)
+- AC-3 Given Faito's deployment key, when it registers with Hurura'a's realm file (`public-facing`), `--reset-realms`, Hurura'a's RabbitMQ user, Tickee's theme (`--themes` holding `tickee`), or a server block for `hururaa.c4-soft.com` or routing to `keycloak:8080`, then each is refused, and Tickee's theme is left as it was. (REQ-3)
 - AC-4 Given an application's account, then it can't read the registration credential. (REQ-4)
 - AC-5 Given a workflow without `VPS_KNOWN_HOSTS`, when it runs, then it fails before connecting. (REQ-7)
 - AC-6 The workflows' actions that receive a secret are referenced by a 40-character commit SHA. (REQ-6)
+- AC-7 Given every application's account outside the `docker` group, when c4-infra's own workflow deploys, then it updates and restarts the shared stack with the shared stack's account; with an application's key, the same commands are refused. (REQ-5)
+- AC-8 Given a host prepared by `docs/demo-setup.md`, when the demo operator follows it and `docs/migration.md` to add Faito (its account, its key, its registry entry), then AC-2's deployment succeeds without any other step. (REQ-8)
 
 ## Intent questions
 
@@ -89,3 +91,4 @@ None beyond the registry (0004).
 
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (registration scoped by the registry, credential held by the shared stack, runtime lateral movement out of scope), PA-1 decided
+- v1 — 2026-10-21 — draft: second coherence review (themes scoped by the registry entry, criteria for REQ-5 and REQ-8)
