@@ -22,6 +22,8 @@
 # Functions, once sourced:
 #
 #   registry_check             the problems of the registry, as `check`; returns 1 when there is one
+#                              (among them, an entry claiming Keycloak's master realm or RabbitMQ's
+#                              administrator, RABBITMQ_ADMIN_USER)
 #   registry_entry <app>       sets REG_N REG_APP REG_REALMS REG_RABBITMQ_USER REG_THEMES REG_DEV_HOST
 #                              REG_DEMO_HOST (lists as in the file, empty for "-"); returns 1, saying
 #                              how to register, when <app> isn't in the registry
@@ -31,11 +33,25 @@
 # REGISTRY_FILE (default: registry.txt next to this script) is a test seam only: on the demo host,
 # registrations run through a root-owned command that clears the environment (intent 0002).
 
-REGISTRY_FILE=${REGISTRY_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/registry.txt}
+REGISTRY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REGISTRY_FILE=${REGISTRY_FILE:-$REGISTRY_DIR/registry.txt}
 
 # The shared stack's own names (its services, and the stack itself): an application can't take one
 REGISTRY_RESERVED=(c4-infra keycloak keycloak-db mailpit rabbitmq grafana-lgtm reverse-proxy)
 REGISTRY_MAX=38
+
+# What the shared stack itself owns in Keycloak and RabbitMQ, which no entry may claim: a
+# registration may delete and import its entry's realms and set its RabbitMQ user's password
+# (intent 0002), so an entry owning the master realm or the broker's administrator would hand
+# them to that application. The administrator is RABBITMQ_ADMIN_USER of the .env next to this
+# script (read as data), admin by default.
+_registry_rabbitmq_admin() {
+  local line=""
+  [ ! -f "$REGISTRY_DIR/.env" ] || line=$(grep -m1 '^RABBITMQ_ADMIN_USER=' "$REGISTRY_DIR/.env" || true)
+  line=${line#*=}
+  line=${line%$'\r'}
+  printf '%s' "${line:-admin}"
+}
 
 # "<line number> <line>" for each entry of the registry: neither a comment nor a blank line, the
 # \r of a line end edited on Windows removed
@@ -70,9 +86,10 @@ _registry_claim() { # <kind> <value> <app> <line>: a value two entries (or one e
 
 registry_check() {
   local lines number fields problems=0 file
-  local n app realms rabbitmq_user themes dev_host demo_host value kind reserved
+  local n app realms rabbitmq_user themes dev_host demo_host value kind reserved rabbitmq_admin
   local -a values list_values
   local -A owner=()
+  rabbitmq_admin=$(_registry_rabbitmq_admin)
   local name='^[a-z][a-z0-9-]*$'
   local list='^[a-z0-9][a-z0-9_-]*(,[a-z0-9][a-z0-9_-]*)*$'
   local single='^[a-z0-9][a-z0-9_-]*$'
@@ -120,9 +137,13 @@ registry_check() {
       [ "$value" != - ] || continue
       IFS=, read -r -a list_values <<< "$value"
       for value in "${list_values[@]}"; do
+        [ "$kind $value" != "realm master" ] \
+          || _registry_problem "$file:$number: realm master is Keycloak's own (the shared stack's): no entry may claim it"
         _registry_claim "$kind" "$value" "$app" "$number"
       done
     done
+    [ "$rabbitmq_user" != "$rabbitmq_admin" ] \
+      || _registry_problem "$file:$number: RabbitMQ user $rabbitmq_user is the broker's administrator (RABBITMQ_ADMIN_USER, the shared stack's): no entry may claim it"
     [ "$rabbitmq_user" = - ] || _registry_claim "RabbitMQ user" "$rabbitmq_user" "$app" "$number"
     # one namespace for both columns: a demo host can't be another application's dev host
     _registry_claim "host name" "$dev_host" "$app" "$number"

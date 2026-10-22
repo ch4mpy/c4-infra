@@ -7,19 +7,27 @@
 #
 #   --app           the application's name in the registry, registry.txt: an application missing
 #                   from it, or a registry that registry.sh's check refuses, registers nothing
-#   --realm        a realm export (kc.sh export --users realm_file), named <realm>-realm.json. The
-#                   realm is imported only when Keycloak doesn't have it yet, so that the users and
-#                   clients created since survive; --reset-realms deletes it first.
-#   --themes        a directory of Keycloak themes, one sub-directory per theme: a new or changed
-#                   one shows on reload in dev; on the demo host, it restarts Keycloak (once)
+#   --realm        a realm export (kc.sh export --users realm_file), named <realm>-realm.json, for
+#                   a realm of the application's registry entry. The realm is imported only when
+#                   Keycloak doesn't have it yet, so that the users and clients created since
+#                   survive; --reset-realms deletes it first. It is imported under the name of the
+#                   file: the file's own "realm" field can't name another.
+#   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
+#                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
+#                   restarts Keycloak (once)
 #   --proxy         the application's routes file (README.md, "Routes file"), the same in both
 #                   environments: its site on the reverse proxy is generated from it and from the
 #                   application's registry entry, for the environment INFRA_ENV (.env) names (dev
 #                   or demo: the host name and the upstreams)
-#   --rabbitmq-*    a virtual host named after the application, and its user, with every permission
-#                   on that virtual host and none elsewhere; the password is read from the named
-#                   environment variable (the one the application itself reads)
+#   --rabbitmq-*    a virtual host named after the application, and its user (the registry entry's),
+#                   with every permission on that virtual host and none elsewhere; the password is
+#                   read from the named environment variable (the one the application itself reads)
 #   --index-only    only rewrite the dev landing page (https://host.docker.internal/)
+#
+# A registration touches only what the application's registry entry assigns to it (intent 0002): a
+# realm, a theme or a RabbitMQ user of another entry, or of none, registers nothing. On the demo
+# host, an application's account runs it through the root-owned demo/c4-app, for its own name only;
+# what it writes here then belongs to this directory's owner, as the deployment's own files.
 #
 # No password ever goes on a command line (the host's process list and `docker inspect` show
 # them): Keycloak's admin CLI reads the registration account's secret from its environment,
@@ -40,6 +48,13 @@ env_value() {
   line=${line#*=}
   line=${line%$'\r'}
   printf '%s' "${line//\$\$/\$}"
+}
+
+# Run as root (demo/c4-app), what a registration writes under the stack's directory gets that
+# directory's owner: the shared stack's account, which the next deployment runs as
+own() { # <path>…
+  [ "$(id -u)" -eq 0 ] || return 0
+  chown -R --reference="$INFRA_DIR" "$@"
 }
 
 KEYCLOAK=c4-infra.keycloak
@@ -115,6 +130,7 @@ write_index() {
     done
     echo '</ul></body></html>'
   } > "$INFRA_DIR/caddy/html/index.html"
+  own "$INFRA_DIR/caddy/html"
 }
 
 if $index_only; then
@@ -134,6 +150,39 @@ fi
 registry_entry "$app" || exit 1
 if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
+  exit 1
+fi
+
+# Only what the registry entry assigns to the application, before anything changes: each realm
+# (from its file's name, the name it is imported under), each theme (its directory's name) and the
+# RabbitMQ user must be the entry's
+in_entry() { # <value> <comma-separated list of the entry>
+  [[ ",$2," == *",$1,"* ]]
+}
+not_assigned=()
+for file in "${realms[@]}"; do
+  name=$(basename "$file")
+  realm=${name%-realm.json}
+  if [ "$realm" = "$name" ] || [ -z "$realm" ]; then
+    not_assigned+=("--realm $file: a realm export is named <realm>-realm.json, after the realm it holds")
+  elif ! in_entry "$realm" "$REG_REALMS"; then
+    not_assigned+=("--realm $file: realm $realm is not $app's (its registry entry's realms: ${REG_REALMS:-none})")
+  fi
+done
+if [ -n "$themes" ]; then
+  for dir in "$themes"/*/; do
+    [ -d "$dir" ] || continue
+    name=$(basename "$dir")
+    in_entry "$name" "$REG_THEMES" \
+      || not_assigned+=("--themes $themes: theme $name is not $app's (its registry entry's themes: ${REG_THEMES:-none})")
+  done
+fi
+if [ -n "$rabbitmq_user" ] && [ "$rabbitmq_user" != "$REG_RABBITMQ_USER" ]; then
+  not_assigned+=("--rabbitmq-user $rabbitmq_user: not $app's RabbitMQ user (its registry entry's: ${REG_RABBITMQ_USER:-none})")
+fi
+if [ ${#not_assigned[@]} -gt 0 ]; then
+  printf '%s\n' "${not_assigned[@]}" >&2
+  echo "A registration touches only what the application's entry in registry.txt assigns to it; nothing was registered." >&2
   exit 1
 fi
 
@@ -216,8 +265,9 @@ if [ ${#realms[@]} -gt 0 ]; then
       fi
     fi
     echo "Importing realm $realm"
-    # on stdin: nothing to copy into the container, whatever the file's owner and mode
-    kcadm -i create realms -f - < "$file"
+    # on stdin: nothing to copy into the container, whatever the file's owner and mode; under the
+    # file's name, the realm of the entry checked above, whatever its "realm" field says
+    kcadm -i create realms -f - -s "realm=$realm" < "$file"
   done
 fi
 
@@ -234,6 +284,7 @@ if [ -n "$themes" ]; then
     if [ ! -d "$target" ] || ! diff -r "$dir" "$target" > /dev/null 2>&1; then
       rm -rf "$target"
       cp -r "$dir" "$target"
+      own "$target"
       changed=true
       if [ "$INFRA_ENV" = dev ]; then
         echo "Theme $name installed: reload the login page (Keycloak doesn't cache themes in dev)"
@@ -291,6 +342,7 @@ if [ -n "$proxy" ]; then
       had_previous=true
     fi
     printf '%s\n' "$site" > "$target"
+    own "$target"
     if ! output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1); then
       if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
       rm -f "$backup"

@@ -1,0 +1,3 @@
+# 0002 fixture: a routes file routing to Keycloak's plain HTTP port, refused (a routes file names
+# neither a host nor a port)
+/auth/*  keycloak:8080
