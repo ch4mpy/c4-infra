@@ -168,7 +168,10 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 ### Tickee (n° 3, ports 13xxx, realms `tickee`, `brasserie`, `tenant2`, `tenant3`)
 
 - Four realm files: `deploy-dev.sh` registers every `keycloak/import/*-realm.json`.
-- Theme `tickee` (`keycloak/themes/tickee`): installed by `register-app.sh --themes`.
+- Theme `tickee` (`keycloak/themes/tickee`): installed by `register-app.sh --themes`. To iterate on
+  it in dev, edit it, run `bash ../c4-infra/register-app.sh --app tickee --themes keycloak/themes`
+  (or `deploy-dev.sh`), then reload the login page: the dev Keycloak caches no theme and isn't
+  restarted, so the other applications' sessions stay valid.
 - `tenant2` federates the LDAP server `ldap://tickee.ldap-tenant2:389`, now started by the
   project's own compose (move `ldap2` out of `compose-keycloak.yml`), on the `c4-infra` network,
   in dev as in the demo.

@@ -146,7 +146,11 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     import. A key committed in a template or a project would let anyone who reads it sign tokens
     the application accepts; `export-realm.sh` exports the generated ones, which stay dev keys:
     the demo rendering removes them again;
-- its themes, if any, `keycloak/themes/<theme>/`;
+- its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
+  Keycloak caches no theme: a theme change shows on reload once the registration has been run again
+  (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
+  it keeps its caches: a deployment that changes a theme restarts Keycloak, once, for every
+  application of the host;
 - its [routes file](#routes-file), `reverse-proxy/<app>.routes`, the same in both environments:
   `register-app.sh` generates its site from it, on its registry entry's host name, to its processes
   on the host in dev and to its containers on the demo host;
@@ -173,7 +177,9 @@ A project created before this stack existed moves onto it with [docs/migration.m
 
 `register-app.sh` is idempotent: a realm already in Keycloak is left alone (the users and clients
 created since survive; `--reset-realms` re-imports it), a site is validated by Caddy before it
-replaces the previous one (Caddy is reloaded, never restarted), a changed theme restarts Keycloak.
+replaces the previous one (Caddy is reloaded, never restarted), an unchanged theme is left alone; a
+changed one is installed, and shows on reload in dev (no restart), while on the demo host it
+restarts Keycloak once per registration, whatever the number of themes.
 No password goes on a command line: Keycloak's admin CLI reads it from its environment, RabbitMQ
 receives a salted hash.
 
