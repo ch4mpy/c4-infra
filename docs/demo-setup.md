@@ -72,6 +72,7 @@ Generate them, e.g. `openssl rand -base64 32`, and **store them in a password ma
 | --- | --- | --- |
 | `KC_ADMIN_PASSWORD` | Keycloak's administrator `admin` (`/auth/admin/`) | read on Keycloak's first start only |
 | `KC_DB_PASSWORD` | Keycloak's database | set when the database volume is created |
+| `KC_REGISTRATION_CLIENT_SECRET` | the registration account `c4-infra-registration`, which `register-app.sh` logs in as | `openssl rand -hex 32`; rotated in step 10 |
 | `RABBITMQ_ADMIN_PASSWORD` | the broker's administrator `admin` | set when RabbitMQ's volume is created |
 | `MAILPIT_SMTP_PASSWORD` | SMTP user `mailpit` | the applications render it into their realms |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana's `admin` user | |
@@ -83,9 +84,9 @@ docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext '<Mailpit UI
 
 The first three are fixed by the first deployment: the services don't read them again. Changing
 the secret afterwards breaks the stack unless the value is changed in the service as well
-(Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`). Don't replace
-Keycloak's temporary administrator either, as its console suggests: the registrations log in with
-it (intent 0006).
+(Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`). Replacing
+Keycloak's temporary administrator by a permanent one, as its console suggests, is safe: the
+registrations log in as their own account ([README](../README.md), "The registration account").
 
 ## 6. GitHub environment `demo`
 
@@ -98,14 +99,21 @@ gh api -X PUT repos/$R/environments/demo
 gh secret set VPS_HOST --env demo -R $R --body '<vps-ip>'
 gh secret set VPS_SSH_KEY --env demo -R $R < c4-infra-demo
 gh secret set VPS_KNOWN_HOSTS --env demo -R $R < c4-infra-demo.known_hosts
-for s in KC_ADMIN_PASSWORD KC_DB_PASSWORD RABBITMQ_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD \
-    MAILPIT_UI_PASSWORD_HASH GRAFANA_ADMIN_PASSWORD; do
+for s in KC_ADMIN_PASSWORD KC_DB_PASSWORD KC_REGISTRATION_CLIENT_SECRET RABBITMQ_ADMIN_PASSWORD \
+    MAILPIT_SMTP_PASSWORD MAILPIT_UI_PASSWORD_HASH GRAFANA_ADMIN_PASSWORD; do
   gh secret set $s --env demo -R $R   # paste the value, then Enter
 done
 ```
 
 Optional variables: `INFRA_HOST` (defaults to `infra.c4-soft.com`) and `KC_ADMIN_USERNAME`
 (defaults to `admin`), e.g. `gh variable set INFRA_HOST --env demo -R $R --body infra.c4-soft.com`.
+
+Optional secrets, `KC_SETUP_ADMIN_USERNAME` and `KC_SETUP_ADMIN_PASSWORD`: an administrator of
+Keycloak's master realm, for the deployment to create the registration account or set its secret
+once the bootstrap administrator no longer logs in (replaced, or its password changed). Until then
+the deployment uses the bootstrap one and they stay unset. When a deployment fails saying to set
+them: set them, run the deployment once, then delete them
+(`gh secret delete KC_SETUP_ADMIN_PASSWORD --env demo -R $R`, and the user name).
 A required reviewer on the environment (repository settings) makes each deployment wait for an
 approval.
 
@@ -125,10 +133,11 @@ gh run watch -R ch4mpy/c4-infra
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
   which `rsync -a` keeps), sends `~/c4-infra` exactly the files of
   [`demo/deploy-files.txt`](../demo/deploy-files.txt) (the compose base and its demo override, the
-  shared Caddy configuration, the registry, `routes.sh`, `register-app.sh`, the host's scripts) and
-  then `.env`, pulls the images, and runs [`demo/deploy.sh`](../demo/deploy.sh) on the host: it
-  waits up to 300 s for every service to be healthy, reloads Caddy, and installs the nightly
-  backup of Keycloak's database (03:15, host time, `~/backups/`).
+  shared Caddy configuration, the registry, `routes.sh`, `register-app.sh`,
+  `registration-account.sh`, the host's scripts) and then `.env`, pulls the images, and runs
+  [`demo/deploy.sh`](../demo/deploy.sh) on the host: it waits up to 300 s for every service to be
+  healthy, reloads Caddy, creates the registration account (with the bootstrap administrator), and
+  installs the nightly backup of Keycloak's database (03:15, host time, `~/backups/`).
 - The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
   migrations.
 
@@ -145,3 +154,16 @@ Each application adapts its own deployment ([migration.md](migration.md), "On th
 its key added to the host (step 3 again), its DNS record, its compose project on the `c4-infra`
 network with unique container names, its routes file (the one it registers in dev), and its call
 to `register-app.sh`. Faito has no demo deployment yet.
+
+## 10. Rotating the registration secret
+
+One step: a new value in the `demo` environment (`gh secret set` reads it on its standard input),
+then a deployment, whose `demo/deploy.sh` sets it in Keycloak before any registration uses it:
+
+```bash
+openssl rand -hex 32 | gh secret set KC_REGISTRATION_CLIENT_SECRET --env demo -R ch4mpy/c4-infra
+gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
+```
+
+The former secret no longer logs in. Once the bootstrap administrator no longer logs in, set
+`KC_SETUP_ADMIN_*` for that deployment (step 6).

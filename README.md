@@ -180,14 +180,43 @@ created since survive; `--reset-realms` re-imports it), a site is validated by C
 replaces the previous one (Caddy is reloaded, never restarted), an unchanged theme is left alone; a
 changed one is installed, and shows on reload in dev (no restart), while on the demo host it
 restarts Keycloak once per registration, whatever the number of themes.
-No password goes on a command line: Keycloak's admin CLI reads it from its environment, RabbitMQ
-receives a salted hash.
+No password goes on a command line: Keycloak's admin CLI reads the registration account's secret
+from its environment, RabbitMQ receives a salted hash.
 
-It logs in as Keycloak's bootstrap administrator (`KC_BOOTSTRAP_ADMIN_USERNAME` /
-`KC_BOOTSTRAP_ADMIN_PASSWORD` in `.env`, the `KC_ADMIN_PASSWORD` secret on the demo host). Keycloak
-reads them on its very first start only, and its console invites to replace that temporary
-account: keep it, with the same password, or every registration fails. Changing the password means
-changing it in the console and in `.env` (or the secret) together.
+### The registration account
+
+`register-app.sh` logs in to Keycloak as a service account of its master realm,
+`c4-infra-registration` (`KC_REGISTRATION_CLIENT_ID` / `KC_REGISTRATION_CLIENT_SECRET` in `.env`;
+on the demo host, the `KC_REGISTRATION_CLIENT_SECRET` secret of the `demo` environment), never as a
+user. The account may:
+
+- create realms (`create-realm`): Keycloak grants a realm to whoever creates it;
+- manage the realms of the registry ([`registry.txt`](registry.txt)), those created before it
+  included: every role of the master realm's client `<realm>-realm`;
+
+and nothing else: the master realm and the realms no registry entry assigns answer it `403`. A
+registration that targets a realm the account may not manage stops, says so, and changes nothing.
+Keycloak gives an account that may create realms a reduced view of any realm (`get
+realms/<realm>`: its name, display name and a few flags, no secret nor user data): inherent to
+`create-realm`, and accepted; registrations ask `get realms/<realm>/roles` instead (missing, `403`,
+or theirs).
+
+[`registration-account.sh`](registration-account.sh):
+
+- `ensure`, which `up.sh` (dev) and `demo/deploy.sh` (demo host) run after each start: logs in as
+  the account and probes every realm of the registry. Only when the account is missing, its secret
+  isn't `.env`'s, or a realm that exists isn't granted to it, does it log in as an administrator to
+  repair it: the bootstrap administrator of `.env` while it works, else `KC_SETUP_ADMIN_USERNAME` /
+  `KC_SETUP_ADMIN_PASSWORD` from the environment, else, on a terminal, the one it asks for;
+- `rotate` (dev): a new secret into `.env`, then `ensure`. On the demo host, the secret is the
+  `demo` environment's ([docs/demo-setup.md](docs/demo-setup.md), "Rotating the registration
+  secret").
+
+Keycloak's administrators are free to change: following its console's invitation to replace the
+temporary bootstrap administrator by a permanent one and delete it, or changing its password,
+doesn't affect the registrations. Once it no longer logs in, an administrator is needed only to
+create the account again or to rotate its secret: in dev, `bash registration-account.sh ensure`
+from a terminal asks for one; on the demo host, `KC_SETUP_ADMIN_*` are set for one deployment.
 
 ### Routes file
 
@@ -280,11 +309,12 @@ From its own workflow, as `deploy@<vps>`, in `~/<app>/`:
 `~/c4-infra` holds what the deployment sends, the files of
 [`demo/deploy-files.txt`](demo/deploy-files.txt) (the compose base and its demo override, the
 shared Caddyfile and `caddy/env/demo.caddy`, the registry, `routes.sh`, `register-app.sh`,
-`demo/deploy.sh` and `demo/backup.sh`), its `.env` (mode 600, written by
+`registration-account.sh`, `demo/deploy.sh` and `demo/backup.sh`), its `.env` (mode 600, written by
 [`demo/write-env.sh`](demo/write-env.sh) on the workflow's runner: `INFRA_ENV=demo`,
 `COMPOSE_FILE=compose.yml:compose.demo.yml`, the secrets), and what the applications register
 (`caddy/apps/`, `keycloak/themes/`). The workflow then runs [`demo/deploy.sh`](demo/deploy.sh)
-there: `docker compose up` until every service is healthy, a Caddy reload, the nightly backup.
+there: `docker compose up` until every service is healthy, a Caddy reload, the registration
+account (`registration-account.sh ensure`, see "The registration account"), the nightly backup.
 
 ### Day to day
 
