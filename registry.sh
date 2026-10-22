@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# The application registry, registry.txt (its header says what each column holds). Sourced by
+# register-app.sh, and a command:
+#
+#   bash registry.sh check                              nothing on stdout, each problem on stderr;
+#                                                       exit 0 when valid, 1 otherwise
+#   bash registry.sh next                               the smallest number no entry has (1 to 38);
+#                                                       exit 1 when every one is taken
+#   bash registry.sh entry <app>                        the entry, one key=value per line: n, prefix,
+#                                                       app, realms, rabbitmq_user, themes, dev_host,
+#                                                       demo_host (lists comma-separated, empty for
+#                                                       "-"); exit 1 when <app> isn't in the
+#                                                       registry, 2 when the registry is invalid
+#   bash registry.sh upstream <app> <role> <dev|demo>   the URL the reverse proxy routes <role> to
+#                                                       (gateway, mcp, fr, en, ui); exit 1 for an
+#                                                       unknown application or role (or an invalid
+#                                                       registry), 2 when the role has no upstream
+#                                                       in that environment
+#
+# Data on stdout, messages on stderr: the skills read this output (create-dev-infra).
+#
+# Functions, once sourced:
+#
+#   registry_check             the problems of the registry, as `check`; returns 1 when there is one
+#   registry_entry <app>       sets REG_N REG_APP REG_REALMS REG_RABBITMQ_USER REG_THEMES REG_DEV_HOST
+#                              REG_DEMO_HOST (lists as in the file, empty for "-"); returns 1, saying
+#                              how to register, when <app> isn't in the registry
+#   registry_next              prints the next free number; returns 1 when 1 to 38 are all taken
+#   registry_upstream <role> <dev|demo>   prints the upstream of <role> for the entry registry_entry set
+#
+# REGISTRY_FILE (default: registry.txt next to this script) is a test seam only: on the demo host,
+# registrations run through a root-owned command that clears the environment (intent 0002).
+
+REGISTRY_FILE=${REGISTRY_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/registry.txt}
+
+# The shared stack's own names (its services, and the stack itself): an application can't take one
+REGISTRY_RESERVED=(c4-infra keycloak keycloak-db mailpit rabbitmq grafana-lgtm reverse-proxy)
+REGISTRY_MAX=38
+
+# "<line number> <line>" for each entry of the registry: neither a comment nor a blank line, the
+# \r of a line end edited on Windows removed
+registry_lines() {
+  local number=0 line skipped='^[[:space:]]*(#|$)'
+  if [ ! -f "$REGISTRY_FILE" ]; then
+    echo "The registry $REGISTRY_FILE is missing" >&2
+    return 1
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    number=$((number + 1))
+    line=${line%$'\r'}
+    [[ $line =~ $skipped ]] && continue
+    printf '%s %s\n' "$number" "$line"
+  done < "$REGISTRY_FILE"
+}
+
+# Helpers of registry_check, which run in its scope (bash's dynamic scoping): its `file`, `problems`
+# and `owner`
+_registry_problem() { # <problem>: on stderr, counted
+  echo "$1" >&2
+  problems=$((problems + 1))
+}
+_registry_claim() { # <kind> <value> <app> <line>: a value two entries (or one entry twice) claim
+  local key="$1 $2"
+  if [ -n "${owner[$key]:-}" ]; then
+    _registry_problem "$file: $1 $2: ${owner[$key]} and $3 (line $4)"
+  else
+    owner[$key]="$3 (line $4)"
+  fi
+}
+
+registry_check() {
+  local lines number fields problems=0 file
+  local n app realms rabbitmq_user themes dev_host demo_host value kind reserved
+  local -a values list_values
+  local -A owner=()
+  local name='^[a-z][a-z0-9-]*$'
+  local list='^[a-z0-9][a-z0-9_-]*(,[a-z0-9][a-z0-9_-]*)*$'
+  local single='^[a-z0-9][a-z0-9_-]*$'
+  local host='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+  file=$(basename "$REGISTRY_FILE")
+  lines=$(registry_lines) || return 1
+
+  while read -r number fields; do
+    [ -n "$number" ] || continue
+    read -r -a values <<< "$fields"
+    if [ ${#values[@]} -ne 7 ]; then
+      _registry_problem "$file:$number: ${#values[@]} columns, 7 expected (n app realms rabbitmq-user themes dev-host demo-host)"
+      continue
+    fi
+    n=${values[0]} app=${values[1]} realms=${values[2]} rabbitmq_user=${values[3]}
+    themes=${values[4]} dev_host=${values[5]} demo_host=${values[6]}
+
+    # two digits at most before the comparison: no leading zero ("04" would be another 4), no overflow
+    if ! [[ $n =~ ^[1-9][0-9]?$ ]] || [ "$n" -gt "$REGISTRY_MAX" ]; then
+      _registry_problem "$file:$number: number '$n' is not between 1 and $REGISTRY_MAX"
+    fi
+    if [[ $app =~ $name ]]; then
+      for reserved in "${REGISTRY_RESERVED[@]}"; do
+        [ "$app" != "$reserved" ] \
+          || _registry_problem "$file:$number: $app is reserved for the shared stack (its own name and its services')"
+      done
+    else
+      _registry_problem "$file:$number: application name '$app' is not lowercase letters, digits and '-'"
+    fi
+    [ "$realms" = - ] || [[ $realms =~ $list ]] \
+      || _registry_problem "$file:$number: realms '$realms' is not '-' nor a comma-separated list of lowercase letters, digits, '_' and '-'"
+    [ "$rabbitmq_user" = - ] || [[ $rabbitmq_user =~ $single ]] \
+      || _registry_problem "$file:$number: RabbitMQ user '$rabbitmq_user' is not '-' nor lowercase letters, digits, '_' and '-'"
+    [ "$themes" = - ] || [[ $themes =~ $list ]] \
+      || _registry_problem "$file:$number: themes '$themes' is not '-' nor a comma-separated list of lowercase letters, digits, '_' and '-'"
+    for value in "$dev_host" "$demo_host"; do
+      [[ $value =~ $host ]] \
+        || _registry_problem "$file:$number: host name '$value' is not a host name (lowercase, with a domain)"
+    done
+
+    _registry_claim number "$n" "$app" "$number"
+    _registry_claim application "$app" "$app" "$number"
+    for kind in realm theme; do
+      if [ "$kind" = realm ]; then value=$realms; else value=$themes; fi
+      [ "$value" != - ] || continue
+      IFS=, read -r -a list_values <<< "$value"
+      for value in "${list_values[@]}"; do
+        _registry_claim "$kind" "$value" "$app" "$number"
+      done
+    done
+    [ "$rabbitmq_user" = - ] || _registry_claim "RabbitMQ user" "$rabbitmq_user" "$app" "$number"
+    # one namespace for both columns: a demo host can't be another application's dev host
+    _registry_claim "host name" "$dev_host" "$app" "$number"
+    _registry_claim "host name" "$demo_host" "$app" "$number"
+  done <<< "$lines"
+
+  [ "$problems" -eq 0 ]
+}
+
+registry_entry() {
+  local wanted=$1 lines number n app realms rabbitmq_user themes dev_host demo_host rest
+  lines=$(registry_lines) || return 1
+  while read -r number n app realms rabbitmq_user themes dev_host demo_host rest; do
+    [ "$app" = "$wanted" ] || continue
+    [ "$realms" != - ] || realms=
+    [ "$rabbitmq_user" != - ] || rabbitmq_user=
+    [ "$themes" != - ] || themes=
+    REG_N=$n
+    REG_APP=$app
+    REG_REALMS=$realms
+    REG_RABBITMQ_USER=$rabbitmq_user
+    REG_THEMES=$themes
+    REG_DEV_HOST=$dev_host
+    REG_DEMO_HOST=$demo_host
+    return 0
+  done <<< "$lines"
+  cat >&2 <<EOF
+$wanted is not in the registry, $REGISTRY_FILE.
+A new application takes the number \`bash registry.sh next\` prints, and adds its line to registry.txt
+first, in a commit of its own (see the file's header), before anything registers.
+EOF
+  return 1
+}
+
+registry_next() {
+  local lines number n rest candidate
+  local -A taken=()
+  lines=$(registry_lines) || return 1
+  while read -r number n rest; do
+    if [ -n "$n" ]; then taken[$n]=1; fi
+  done <<< "$lines"
+  for ((candidate = 1; candidate <= REGISTRY_MAX; candidate++)); do
+    if [ -z "${taken[$candidate]:-}" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "Every number from 1 to $REGISTRY_MAX is taken: no port block is left below 49152 (README.md, 'Port registry')" >&2
+  return 1
+}
+
+# The upstream of a role, for the entry registry_entry set: in dev the port of its block, on the
+# demo host its container on the port the README fixes for that role
+registry_upstream() {
+  local role=$1 env=$2 prefix=$((10 + REG_N))
+  case "$env" in
+    dev | demo) ;;
+    *)
+      echo "Unknown environment '$env' (dev or demo)" >&2
+      return 1
+      ;;
+  esac
+  case "$env $role" in
+    'dev gateway') echo "https://host.docker.internal:${prefix}080" ;;
+    'dev mcp') echo "https://host.docker.internal:${prefix}280" ;;
+    'dev fr' | 'dev ui') echo "http://host.docker.internal:${prefix}200" ;;
+    'dev en') echo "http://host.docker.internal:${prefix}205" ;;
+    'demo gateway') echo "http://$REG_APP.gateway:7080" ;;
+    'demo fr' | 'demo ui' | 'demo en') echo "http://$REG_APP.frontend:80" ;;
+    'demo mcp')
+      echo "No upstream for the role mcp on the demo host: the README fixes no container port for the MCP server role yet (README.md, 'What an application's deployment does')" >&2
+      return 2
+      ;;
+    *)
+      echo "Unknown role '$role' (gateway, mcp, fr, en or ui)" >&2
+      return 1
+      ;;
+  esac
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  set -euo pipefail
+  usage() {
+    echo "Usage: bash $0 check | next | entry <app> | upstream <app> <role> <dev|demo>" >&2
+    exit 1
+  }
+  case "${1:-}" in
+    check)
+      [ $# -eq 1 ] || usage
+      registry_check || exit 1
+      ;;
+    next)
+      [ $# -eq 1 ] || usage
+      registry_next || exit 1
+      ;;
+    entry)
+      [ $# -eq 2 ] || usage
+      registry_check || exit 2
+      registry_entry "$2" || exit 1
+      printf '%s\n' "n=$REG_N" "prefix=$((10 + REG_N))" "app=$REG_APP" "realms=$REG_REALMS" \
+        "rabbitmq_user=$REG_RABBITMQ_USER" "themes=$REG_THEMES" "dev_host=$REG_DEV_HOST" \
+        "demo_host=$REG_DEMO_HOST"
+      ;;
+    upstream)
+      [ $# -eq 4 ] || usage
+      registry_check || exit 1
+      registry_entry "$2" || exit 1
+      status=0
+      registry_upstream "$3" "$4" || status=$?
+      exit "$status"
+      ;;
+    *) usage ;;
+  esac
+fi

@@ -1,0 +1,4 @@
+# tests/0004: a line with 6 columns, a number above 38, a host name with a port
+4 faito faito faito-api - faito.dev.localhost
+39 verif verif verif-api - verif.dev.localhost verif.c4-soft.com
+5 verif2 verif2 verif2-api - verif2.dev.localhost:14080 verif2.c4-soft.com
