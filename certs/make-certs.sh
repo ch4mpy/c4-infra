@@ -23,7 +23,8 @@ if [ ! -f "$CA_DIR/$CA_NAME.crt" ] || [ ! -f "$CA_DIR/$CA_NAME.key" ]; then
   chmod 700 "$CA_DIR"
   password_file="$CA_DIR/$CA_NAME.password.txt"
   [ -f "$password_file" ] || openssl rand -hex 16 > "$password_file"
-  bash ./self-signed.sh "$CA_NAME" "$(cat "$password_file")" "$CA_DIR"
+  # the password through self-signed.sh's environment, never on its command line
+  SERVER_SSL_KEY_PASSWORD=$(< "$password_file") bash ./self-signed.sh "$CA_NAME" "" "$CA_DIR"
   echo
   echo "Trust it once (then restart the browsers):"
   echo "  - Windows: certutil -user -addstore Root \"$CA_DIR/$CA_NAME.crt\""

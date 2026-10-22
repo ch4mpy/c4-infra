@@ -12,13 +12,14 @@ L="Papeete"
 O="Jerome Wacongne"
 EMAIL_ADDRESS="ch4mp@c4-soft.com"
 
-SSL_PASSWORD=$2
-if [ -z "${SSL_PASSWORD}" ]; then
-  SSL_PASSWORD=$SERVER_SSL_KEY_PASSWORD
+# The password comes from the environment only: openssl and keytool read it from there too (env: and
+# :env forms), so that it is on no command line and in no output
+if [ -n "$2" ]; then
+  echo "No password on a command line: export SERVER_SSL_KEY_PASSWORD, and give \"\" as the second argument" >&2
+  exit 1
 fi
-if [ -z "${SSL_PASSWORD}" ]; then
-  SSL_PASSWORD=secret
-fi
+SSL_PASSWORD=${SERVER_SSL_KEY_PASSWORD:-secret}
+export SSL_PASSWORD
 if [ -z "${JAVA_HOME}" ]; then
   JAVA_HOME=$(which java | sed 's/\/bin\/java//')
   export JAVA_HOME
@@ -72,7 +73,7 @@ if [ -f ${CERTIF_DIR}/${CN}_req.pem ]; then
   echo "${CERTIF_DIR}/${CN}_req.pem already exists, doing nothing"
 else
   echo "Generating certificate request: ${CERTIF_DIR}/${CN}_req.pem"
-  openssl req -config ${CERTIF_DIR}/${CN}.config -new -keyout ${CERTIF_DIR}/${CN}.key -passout pass:"${SSL_PASSWORD}" -out ${CERTIF_DIR}/${CN}_req.pem -reqexts v3_req
+  openssl req -config ${CERTIF_DIR}/${CN}.config -new -keyout ${CERTIF_DIR}/${CN}.key -passout env:SSL_PASSWORD -out ${CERTIF_DIR}/${CN}_req.pem -reqexts v3_req
 fi
 
 echo ""
@@ -80,7 +81,7 @@ if [ -f ${CERTIF_DIR}/${CN}.crt ]; then
   echo "${CERTIF_DIR}/${CN}.crt already exists, doing nothing"
 else
   echo "Signing certificate: ${CERTIF_DIR}/${CN}.crt"
-  openssl x509 -req -days 3650 -extfile ${CERTIF_DIR}/${CN}.config -in ${CERTIF_DIR}/${CN}_req.pem -extensions v3_req -signkey ${CERTIF_DIR}/${CN}.key -passin pass:${SSL_PASSWORD} -out ${CERTIF_DIR}/${CN}.crt
+  openssl x509 -req -days 3650 -extfile ${CERTIF_DIR}/${CN}.config -in ${CERTIF_DIR}/${CN}_req.pem -extensions v3_req -signkey ${CERTIF_DIR}/${CN}.key -passin env:SSL_PASSWORD -out ${CERTIF_DIR}/${CN}.crt
 fi
  
 echo ""
@@ -88,7 +89,7 @@ if [ -f ${CERTIF_DIR}/${CN}.p12 ]; then
   echo "${CERTIF_DIR}/${CN}.p12 already exists, doing nothing"
 else
   echo "Creating PKCS12 keystore: ${CERTIF_DIR}/${CN}.p12"
-  openssl pkcs12 -export -in ${CERTIF_DIR}/${CN}.crt -inkey ${CERTIF_DIR}/${CN}.key -passin pass:"${SSL_PASSWORD}" -name "${CN}" -out ${CERTIF_DIR}/${CN}.p12 -passout pass:"${SSL_PASSWORD}"
+  openssl pkcs12 -export -in ${CERTIF_DIR}/${CN}.crt -inkey ${CERTIF_DIR}/${CN}.key -passin env:SSL_PASSWORD -name "${CN}" -out ${CERTIF_DIR}/${CN}.p12 -passout env:SSL_PASSWORD
 fi
 
 echo ""
@@ -96,8 +97,7 @@ if [ -f ${CERTIF_DIR}/${CN}.jks ]; then
   echo "${CERTIF_DIR}/${CN}.jks already exists, doing nothing"
 else
   echo "Creating JKS keystore: ${CERTIF_DIR}/${CN}.jks"
-  echo "${JAVA_HOME}/bin/keytool" -importkeystore -srckeystore ${CERTIF_DIR}/${CN}.p12 -srckeypass "${SSL_PASSWORD}" -srcstorepass "${SSL_PASSWORD}" -srcstoretype pkcs12 -srcalias "${CN}" -destkeystore ${CERTIF_DIR}/${CN}.jks -deststoretype PKCS12 -destkeypass "${SSL_PASSWORD}" -deststorepass "${SSL_PASSWORD}" -destalias "${CN}"
-  "${JAVA_HOME}/bin/keytool" -importkeystore -srckeystore ${CERTIF_DIR}/${CN}.p12 -srckeypass "${SSL_PASSWORD}" -srcstorepass "${SSL_PASSWORD}" -srcstoretype pkcs12 -srcalias "${CN}" -destkeystore ${CERTIF_DIR}/${CN}.jks -deststoretype PKCS12 -destkeypass "${SSL_PASSWORD}" -deststorepass "${SSL_PASSWORD}" -destalias "${CN}"
+  "${JAVA_HOME}/bin/keytool" -importkeystore -srckeystore ${CERTIF_DIR}/${CN}.p12 -srckeypass:env SSL_PASSWORD -srcstorepass:env SSL_PASSWORD -srcstoretype pkcs12 -srcalias "${CN}" -destkeystore ${CERTIF_DIR}/${CN}.jks -deststoretype PKCS12 -destkeypass:env SSL_PASSWORD -deststorepass:env SSL_PASSWORD -destalias "${CN}"
 fi
 
 echo ""
