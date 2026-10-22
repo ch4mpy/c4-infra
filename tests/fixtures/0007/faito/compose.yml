@@ -1,0 +1,12 @@
+# 0007 fixture: faito's deployment on the demo host, as the README describes it after 0007: its
+# container on its own network c4-infra.faito, which its registration creates, with a name of its
+# own. The probe (tests/fixtures/0007/probe/), built in the stand-in: no pull.
+services:
+  gateway:
+    image: c4-test/probe
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+networks:
+  c4-infra.faito:
+    external: true

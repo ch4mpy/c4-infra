@@ -1,0 +1,3 @@
+# 0007 fixture: faito's site, to its gateway only (the fixture's one container)
+/           redirect  to=/gateway/
+/gateway/*  gateway
