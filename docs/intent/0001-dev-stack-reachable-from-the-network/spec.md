@@ -1,11 +1,11 @@
 # Spec: The dev stack is reachable from the local network
 
 - Intent: [0001](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: what a host exposes to the network, secrets — the Keycloak administrator of every application's realm; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, Faito's decision 0001
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -90,3 +90,4 @@ None.
 
 - v1 — 2026-10-21 — first version
 - v1 — 2026-10-21 — draft: coherence review (no opt-in, SMTP path, hosts-file wording), PA-1 and PA-2 decided
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
