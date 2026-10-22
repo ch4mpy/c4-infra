@@ -19,8 +19,12 @@ x-logging: &default-logging
 
 networks:
   default:
-    # a fixed name: the applications' containers, if any, join it as an external network
+    # a fixed name: the shared services' own network (intent 0007)
     name: c4-infra
+  keycloak-db:
+    # Keycloak's database, which only Keycloak reaches (intent 0007, REQ-3); no way out of it
+    name: c4-infra.keycloak-db
+    internal: true
 
 volumes:
   caddy_data:
@@ -64,7 +68,8 @@ services:
     container_name: c4-infra.keycloak-db
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    # on Keycloak's network only: never on c4-infra nor on an application's network
+    networks: [keycloak-db]
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -86,7 +91,7 @@ services:
     container_name: c4-infra.keycloak
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    networks: [default, keycloak-db]
     # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside
     command:
       - start
@@ -148,6 +153,10 @@ services:
     restart: unless-stopped
     logging: *default-logging
     networks: [default]
+    # its node name, rabbit@rabbitmq, resolves to the loopback first, where epmd and the Erlang
+    # distribution listen (below): its own tools (rabbitmqctl, the healthcheck) reach it there
+    extra_hosts:
+      - rabbitmq:127.0.0.1
     environment:
       # the administrator only: each application has its own virtual host and user (register-app.sh)
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER}
@@ -155,6 +164,11 @@ services:
       # one scheduler for the CLI tools (healthcheck, register-app.sh): their Erlang VM otherwise
       # busy-waits on every core
       RABBITMQ_CTL_ERL_ARGS: '+S 1'
+      # epmd (4369) and the Erlang distribution (25672) on the container's loopback only (intent
+      # 0007, REQ-10): behind its cookie, the distribution runs code in RabbitMQ; its tools run inside
+      # the container. AMQP (5672) and the Prometheus metrics (15692) stay on every interface.
+      ERL_EPMD_ADDRESS: 127.0.0.1
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '-kernel inet_dist_use_interface {127,0,0,1}'
       TZ: ${TZ}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
