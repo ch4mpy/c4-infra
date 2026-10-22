@@ -108,10 +108,12 @@ check "dev: Caddy's INFRA_ENV is dev" value_is "$work/dev.json" '.services["reve
 check "demo: Caddy's INFRA_ENV is demo" value_is "$work/demo.json" '.services["reverse-proxy"].environment.INFRA_ENV' demo
 check "dev: Caddy has the dev certificates" has_mount "$work/dev.json" reverse-proxy /certs
 check "demo: Caddy has no dev certificate" lacks_mount "$work/demo.json" reverse-proxy /certs
-check "demo: Caddy has Mailpit's password hash" \
-  value_is "$work/demo.json" '.services["reverse-proxy"].environment.MAILPIT_UI_PASSWORD_HASH' dummy
-check "demo: Caddy answers as INFRA_HOST in the network" \
-  value_is "$work/demo.json" '.services["reverse-proxy"].networks.default.aliases[0]' infra.c4-soft.com
+# (0007) Mailpit asks for its credentials itself, and the issuer's name is Caddy's on each
+# application's network (compose.apps.yml, tests/0007-dev.sh), no longer on c4-infra
+check "demo: Mailpit asks for its UI credentials (MP_UI_AUTH)" \
+  value_is "$work/demo.json" '.services.mailpit.environment.MP_UI_AUTH' demo:dummy
+check "demo: Caddy has no alias on c4-infra" \
+  value_is "$work/demo.json" '.services["reverse-proxy"].networks.default.aliases // [] | length' 0
 
 # REQ-2: dev's additions stay dev's
 check "dev: RabbitMQ's management plugin enabled" has_mount "$work/dev.json" rabbitmq /etc/rabbitmq/enabled_plugins

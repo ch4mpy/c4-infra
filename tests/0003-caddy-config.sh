@@ -42,7 +42,9 @@ generated() { # <apps dir> <app> <env>
 }
 
 DEV=(-e INFRA_ENV=dev -e INFRA_HOST=host.docker.internal -v "$(host_path "$PWD/certs"):/certs:ro")
-# the demo's basic_auth wants a bcrypt hash: one of a random password (caddy reads it on stdin)
+# the demo host's .env holds Mailpit's hash, a bcrypt hash (here of a random password, read by caddy
+# on its stdin); Caddy no longer reads it since intent 0007 (Mailpit asks for its credentials
+# itself, MP_UI_AUTH), and its configuration validates with it set
 MAILPIT_UI_PASSWORD_HASH=$(openssl rand -hex 16 | docker run --rm -i "$CADDY_IMAGE" caddy hash-password)
 export MAILPIT_UI_PASSWORD_HASH
 DEMO=(-e INFRA_ENV=demo -e INFRA_HOST=infra.c4-soft.com -e MAILPIT_UI_PASSWORD_HASH)

@@ -1,17 +1,12 @@
 # The demo host's side of the shared Caddyfile (INFRA_ENV=demo): a Let's Encrypt certificate per
-# site (Caddy's default), HSTS, Mailpit behind its basic authentication, and no RabbitMQ route.
+# site (Caddy's default), HSTS, and no RabbitMQ route. Mailpit asks for its credentials itself
+# (MP_UI_AUTH, compose.demo.yml: intent 0007), through Caddy as from a container.
 
 (env-tls) {
 }
 
 (env-hsts) {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-}
-
-(env-mailpit-auth) {
-	basic_auth {
-		demo {$MAILPIT_UI_PASSWORD_HASH}
-	}
 }
 
 (env-infra-routes) {

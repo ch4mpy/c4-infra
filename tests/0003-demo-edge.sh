@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 0003: the demo host's edge, from the one shared configuration (REQ-1, REQ-2): a throwaway Caddy
 # running caddy/ with INFRA_ENV=demo (wrapped with local_certs, no Let's Encrypt) in front of echo
-# stand-ins of the shared services. Mailpit asks for its basic authentication and RabbitMQ has no
-# route (AC-3), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-6).
+# stand-ins of the shared services, and of Mailpit itself with the demo's MP_UI_AUTH (since 0007,
+# Mailpit asks for its credentials, not Caddy). /mailpit/ asks for them and RabbitMQ has no route
+# (AC-3), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-6).
 #
 #   bash tests/0003-demo-edge.sh
 set -uo pipefail
@@ -29,24 +30,30 @@ trap cleanup EXIT
 cleanup
 mkdir -p "$work/apps" "$work/test"
 
-# the demo's basic_auth: a random password, its bcrypt hash in Caddy's environment (taken by
-# `docker run -e NAME` from this one, never on a command line)
+# the demo's Mailpit credentials: a random password, its bcrypt hash in Mailpit's MP_UI_AUTH, as
+# compose.demo.yml writes it (taken by `docker run -e NAME` from this environment, never on a
+# command line)
 password=$(openssl rand -hex 12)
-MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password)
-export MAILPIT_UI_PASSWORD_HASH
+MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
+MP_UI_AUTH=demo:$MAILPIT_UI_PASSWORD_HASH
+export MP_UI_AUTH
 
 docker network create "$NAME" > /dev/null
 # the shared services, as echo upstreams under their service names
-for service in keycloak:8080 mailpit:8025 grafana-lgtm:3000 rabbitmq:15672; do
+for service in keycloak:8080 grafana-lgtm:3000 rabbitmq:15672; do
   MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
     -e PORT="${service#*:}" -e STAND_IN_NAME="${service%:*}" \
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
     "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null
 done
-# the demo configuration as it is, under a wrapper that only swaps Let's Encrypt for Caddy's own CA
+# Mailpit, the stack's image (compose.yml), under its web root as on the demo host
+MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
+  -e MP_WEBROOT=/mailpit/ -e MP_UI_AUTH axllent/mailpit:v1.31.0 > /dev/null
+# the demo configuration as it is, under a wrapper that only swaps Let's Encrypt for Caddy's own CA;
+# Caddy has no Mailpit credential
 printf '{\n\tlocal_certs\n\tskip_install_trust\n}\n\nimport /etc/caddy/Caddyfile\n' > "$work/test/Caddyfile"
 MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
-  -e INFRA_ENV=demo -e INFRA_HOST="$HOST" -e MAILPIT_UI_PASSWORD_HASH \
+  -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \
   "$CADDY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
@@ -81,7 +88,7 @@ no_header() { # <name>
 }
 
 waited=0
-until fetch /auth/ && [ "$(cat "$work/code")" = 200 ]; do
+until fetch /auth/ && [ "$(cat "$work/code")" = 200 ] && fetch /mailpit/readyz && [ "$(cat "$work/code")" = 200 ]; do
   if [ "$waited" -ge 30 ]; then
     echo "the demo Caddy doesn't answer; its log:"
     docker logs --tail 20 "$NAME-caddy"
@@ -99,7 +106,7 @@ check "/mailpit/ with a wrong password: 401" answered 401
 printf 'user = "demo:%s"\n' "$password" > "$work/credentials"
 fetch /mailpit/ -K "$work/credentials"
 check "/mailpit/ with the credentials: 200" answered 200
-check "/mailpit/ with the credentials: answered by Mailpit" body_holds 'upstream=mailpit '
+check "/mailpit/ with the credentials: answered by Mailpit (its page)" body_holds '<title>Mailpit</title>'
 fetch /rabbitmq/
 check "/rabbitmq/: 404" answered 404
 check "/rabbitmq/: not RabbitMQ's" body_holds 'c4-infra: the applications are on their own host names'
