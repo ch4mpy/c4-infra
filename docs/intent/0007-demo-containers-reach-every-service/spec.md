@@ -2,10 +2,10 @@
 
 - Intent: [0007](intent.md)
 - Status: approved
-- Version: 1
+- Version: 2
 - Risk: high (rules: the isolation between applications, personal data — the demo visitors' mails and accounts, what a host exposes inside its Docker network; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `docs/migration.md`; c4-infra 0002 (deployment and registration as root-owned commands), 0003 (one compose base with overrides), 0004 (the registry names each application)
-- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
+- Approved: 2026-10-22, Jérôme Wacongne (PO, and tech lead for the high risk) — v2 (v1 approved 2026-10-21)
 
 ## Summary
 
@@ -28,6 +28,7 @@ Each application's containers join a network of their own, to which the registra
 - REQ-8 The same topology applies in dev, where an application's containers join its network too (Tickee's LDAP server, which Keycloak federates). (intent: affected systems)
 - REQ-9 The root-owned command that starts an application's compose project (0002 REQ-2) refuses a project that would leave its isolation: a network other than the application's own, `network_mode`, a published port (only Caddy publishes on the host), a container name or network alias outside `<app>.`, a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, the shared host's name), and what escapes a container altogether (privileged mode, the Docker socket, host paths outside the application's directory). The last group is what 0002 REQ-1 also forbids: this check is the one that enforces it. (intent: proposed outcome)
 - REQ-10 RabbitMQ's epmd (4369) and Erlang distribution (25672) listen on its container's loopback only: its tools (`rabbitmqctl`, its healthcheck, the registration's `docker exec`) run inside the container (PA-3 decided). On the demo host, RabbitMQ serves no management API (15672), as 0003 REQ-2 keeps it dev-only. (intent: proposed outcome)
+- REQ-11 Grafana LGTM's internal ports — memberlist (7946), its components' gRPC ports (9095, 9096, 9097) and its collector's health check (13133) — listen on its container's loopback only, and its components still work together (PA-4 decided). (intent: proposed outcome)
 
 ## Out of scope
 
@@ -44,7 +45,7 @@ Each application's containers join a network of their own, to which the registra
 - Caddy carries the alias `${INFRA_HOST}` on that network, so that the applications reach the issuer through it; it reaches Keycloak as `keycloak:8080` (`demo/caddy/Caddyfile`).
 - Mailpit: SMTP authentication (`MP_SMTP_AUTH`), no authentication of its UI and API on `8025`; the demo's `/mailpit/*` route asks for a basic authentication in Caddy.
 - Keycloak serves plain HTTP on `8080` (`KC_HTTP_ENABLED`); the applications may call its token endpoint and admin API there (`KC_HOSTNAME_BACKCHANNEL_DYNAMIC`); it reaches each gateway at `http://<app>.gateway:7080` for back-channel logout; its management port `9000` serves health and metrics (`keycloak/Dockerfile`).
-- Grafana LGTM (`grafana/otel-lgtm`) bundles OTLP receivers (4317, 4318), Grafana (3000, with its login), and Prometheus (9090), Tempo (3200), Loki (3100) and Pyroscope (4040), without authentication.
+- Grafana LGTM (`grafana/otel-lgtm`) bundles OTLP receivers (4317, 4318), Grafana (3000, with its login), and Prometheus (9090), Tempo (3200), Loki (3100) and Pyroscope (4040), without authentication. Version 0.32.0 also listens on every interface on 7946, 9095, 9096, 9097 and 13133 (measured in a throwaway container, 2026-10-21).
 - RabbitMQ (`rabbitmq:4.3.5` on the demo host, `rabbitmq:4.3.5-management` in dev) listens for AMQP (5672), epmd (4369) and the Erlang distribution (25672), serves Prometheus metrics (15692) when its plugin is enabled (to confirm on the image), and in dev its management API (15672).
 - In dev, Tickee's LDAP server joins `c4-infra` so that Keycloak federates it (`docs/migration.md`, Tickee).
 
@@ -103,6 +104,14 @@ None.
 - Decides: PO (accepts the risk), tech lead (the mechanism)
 - Decision: A, epmd and the distribution on the container's loopback, the metrics recorded (PO and tech lead, 2026-10-21)
 
+### PA-4 Grafana LGTM's internal ports (decided)
+
+- Issue: `grafana/otel-lgtm` 0.32.0 also listens on every interface on 7946 (memberlist), 9095-9097 (its components' gRPC) and 13133 (the collector's health check); PA-2 kept Grafana LGTM attached as it is, and these ports weren't known then.
+- Options: A record them in the README, under PA-2 C / B close them: the container's loopback only, through the components' configuration
+- Recommendation: A: they serve the components among themselves and hold no data an application could read; B needs configuration the image may not expose.
+- Decides: PO
+- Decision: B, closed to the applications' networks (PO, 2026-10-22)
+
 ## Acceptance criteria
 
 Until the demo host exists and Hurura'a is migrated, AC-1, AC-2, AC-8 to AC-11 and the reachability part of AC-3 and AC-4 run on the workstation, with the demo override and stand-in containers named after Faito and Hurura'a (as 0003 AC-7). The end-to-end part of AC-3 and AC-4 (login, back-channel logout, mail, event, traces) runs with Faito's first demo deployment.
@@ -115,8 +124,9 @@ Until the demo host exists and Hurura'a is migrated, AC-1, AC-2, AC-8 to AC-11 a
 - AC-6 The README's design and `docs/migration.md` name the application's network, and no longer tell an application to join `c4-infra`. (REQ-7)
 - AC-7 In dev, Tickee's LDAP server is on Tickee's network, Keycloak federates it, and a container on another application's network can't reach it. (REQ-8)
 - AC-8 Given a Faito compose project with any one of: `network_mode: "container:c4-infra.keycloak"`; a service named `keycloak`; an alias `keycloak` or `hururaa.gateway` on Faito's network; `container_name: hururaa.gateway`; Hurura'a's network as an external one; `ports: ["7080:7080"]`; `privileged: true`; the Docker socket, or a host path outside Faito's directory, mounted — when Faito's deployment starts it, then it is refused before any container starts. (REQ-9)
-- AC-9 From a Faito container, the shared services' ports that answer are those of REQ-2, Mailpit's UI and API (answering `401`, REQ-4) and those REQ-6 lists, and no other: in particular not RabbitMQ's 4369 and 25672, nor its 15672 on the demo host. (REQ-2, REQ-4, REQ-6, REQ-10)
+- AC-9 From a Faito container, the shared services' ports that answer are those of REQ-2, Mailpit's UI and API (answering `401`, REQ-4) and those REQ-6 lists, and no other: in particular not RabbitMQ's 4369 and 25672, nor its 15672 on the demo host, nor Grafana LGTM's 7946, 9095, 9096, 9097 and 13133. (REQ-2, REQ-4, REQ-6, REQ-10, REQ-11)
 - AC-11 Given the registration and RabbitMQ's healthcheck run after REQ-10, then `rabbitmqctl` inside the container still imports a user's definitions and the healthcheck still reports RabbitMQ healthy. (REQ-10)
+- AC-12 Given Grafana LGTM after REQ-11, then inside its container 7946, 9095, 9096, 9097 and 13133 answer on `127.0.0.1` only, and Grafana still shows the logs, traces, metrics and profiles an application sends. (REQ-11)
 - AC-10 Given Faito registered, then the shared services of REQ-2 are attached to Faito's network, `keycloak-db` to Keycloak's only, and Hurura'a's network is unchanged. (REQ-5)
 
 ## Intent questions
@@ -131,3 +141,4 @@ Until the demo host exists and Hurura'a is migrated, AC-1, AC-2, AC-8 to AC-11 a
 - v1 — 2026-10-21 — draft: second coherence review (published ports and other applications' names refused, Mailpit and RabbitMQ in the port check, RabbitMQ's other ports recorded, end-to-end criteria with Faito's first demo deployment)
 - v1 — 2026-10-21 — draft: third coherence review (REQ-6 credits each port to the decision that covers it, RabbitMQ's Erlang ports closed and no management API on the demo host, AC-9 back to a fixed list), PA-3 decided
 - v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
+- v2 — 2026-10-22 — Grafana LGTM's internal ports closed to the applications' networks (REQ-11, AC-12, AC-9, PA-4 decided by the PO); approved by the PO and tech lead
