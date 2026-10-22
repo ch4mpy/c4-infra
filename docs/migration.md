@@ -12,8 +12,36 @@ names its containers. Going back meanwhile: `docker compose -p c4-infra stop`, t
 
 On a branch of its own (each project's SDLC: an intent, then a plan), from a clean working tree.
 
-1. **Port block.** Take the project's number in the [registry](../README.md#port-registry)
-   (`n`, prefix `p = 10 + n`). Every port of the project moves into its block:
+1. **Port block.** Take the project's number in the registry, [`registry.txt`](../registry.txt)
+   (`n`, prefix `p = 10 + n`; the block rule is the [README's](../README.md#port-registry)). Turu,
+   Hurura'a and Tickee have theirs. A project without one, and the `create-dev-infra` skill for a
+   new project, rely on this contract:
+   - `bash registry.sh next`, in c4-infra, prints the number to take: the smallest one no entry
+     has, from 1 to 38;
+   - the entry is one line of `registry.txt`, in these columns:
+
+     ```text
+     n app realms rabbitmq-user themes dev-host demo-host
+     ```
+
+     spaces between the columns, commas inside a list, `-` for none. Faito's:
+
+     ```text
+     4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+     ```
+
+   - the line is added in a commit of its own, before anything registers: `register-app.sh`
+     registers nothing for an application missing from the registry, and `up.sh` and
+     `register-app.sh` stop on a line sharing a number, a name, a realm, a theme, a RabbitMQ user or
+     a host name with another (`bash registry.sh check` names both lines);
+   - what each column then allows: `n` the ports of the block, from which the reverse proxy's
+     upstreams are derived (intent 0003); `app` the name the project registers under (its RabbitMQ
+     virtual host; on the demo host its account, intent 0002, and its network `c4-infra.<app>`,
+     intent 0007); `realms`, `rabbitmq-user` and `themes` what its registrations may create or
+     change (intent 0002); `dev-host` and `demo-host` the host names its site is served on
+     (intent 0003).
+
+   Every port of the project moves into its block:
 
    | Process | Before | After |
    |---|---|---|

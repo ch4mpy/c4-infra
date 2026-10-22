@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 0004: the application registry, registry.txt, read by registry.sh.
 #
-#   bash tests/0004-registry.sh [registry|scripts]...   (every part by default)
+#   bash tests/0004-registry.sh [registry|scripts|docs]...   (every part by default)
 #
 #   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
 #              entries (AC-6), the duplicates and the malformed lines `check` refuses (AC-3), `next`
@@ -10,6 +10,8 @@
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
 #              both (AC-3, REQ-4), an application missing from it is refused (AC-1), before any
 #              docker call
+#   docs       the README's "Port registry" section points to registry.txt and holds no table of
+#              numbers (AC-7); docs/migration.md states the registry's contract
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -191,15 +193,41 @@ part_scripts() {
   check "unknown app: no docker call" called_no_docker
 }
 
-[ $# -gt 0 ] || set -- registry scripts
+# The README's "Port registry" section, up to the next heading
+port_registry_section() {
+  awk '/^### Port registry$/ { on = 1; next } on && /^#/ { exit } on' README.md
+}
+
+holds() { # <text> <file or "-" for stdin>
+  grep -qF -- "$1" "$2" || { echo "not found: $1"; return 1; }
+}
+
+no_table_of_numbers() {
+  local rows
+  rows=$(port_registry_section | grep -E '^\| *[0-9]+ *\| *[a-z]')
+  [ -z "$rows" ] || { echo "table rows:"; printf '%s\n' "$rows"; return 1; }
+}
+
+part_docs() {
+  local section
+  section=$(port_registry_section)
+  check "README: the Port registry section is there" test -n "$section"
+  check "README: the section names registry.txt" holds registry.txt - <<< "$section"
+  check "README: the section names bash registry.sh next" holds 'bash registry.sh next' - <<< "$section"
+  check "README: the section holds no table of numbers" no_table_of_numbers
+  check "migration.md names bash registry.sh next" holds 'bash registry.sh next' docs/migration.md
+  check "migration.md gives the columns" holds 'n app realms rabbitmq-user themes dev-host demo-host' docs/migration.md
+}
+
+[ $# -gt 0 ] || set -- registry scripts docs
 for part in "$@"; do
   case "$part" in
-    registry | scripts)
+    registry | scripts | docs)
       echo "# $part"
       "part_$part"
       ;;
     *)
-      echo "Unknown part: $part (registry or scripts)" >&2
+      echo "Unknown part: $part (registry, scripts or docs)" >&2
       exit 2
       ;;
   esac

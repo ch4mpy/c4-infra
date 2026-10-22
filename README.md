@@ -39,7 +39,8 @@ block, which it installs here with [`register-app.sh`](register-app.sh) every ti
 - **Keycloak on PostgreSQL**, so that a realm is exported ([`export-realm.sh`](export-realm.sh))
   and the database backed up while Keycloak keeps serving every other application.
 - **A block of 1 000 ports per application** for what runs on the host (dev servers, Spring Boot
-  apps, databases), registered below; the shared services keep their usual ports.
+  apps, databases), registered in [`registry.txt`](registry.txt) (see the port registry below);
+  the shared services keep their usual ports.
 
 ## Development
 
@@ -85,25 +86,32 @@ bash ./export-realm.sh faito ../faito/keycloak/import   # realm + users, Keycloa
 
 ### Port registry
 
-Application number `n` owns the 1 000 ports starting at `(10 + n) × 1000` (prefix `10 + n`: `14000`–`14999`
-for number 4, `20000`–`20999` for number 10); within its block, the offsets are the same for every
-application: those of the table, `090` and `190` for the gateway and the REST API that the `openapi`
-Maven profile starts to read the specs (not the dev ports: specs are regenerated while the dev
-applications run), and a management port, if an application sets one, on its port + 1. Windows reserves
-dynamic port ranges from 49152 on (and some fixed ones: `netsh interface ipv4 show
+Application number `n` owns the 1 000 ports starting at `(10 + n) × 1000` (prefix `p = 10 + n`:
+`14000`–`14999` for number 4, `20000`–`20999` for number 10). Within its block, the offsets are the
+same for every application:
+
+- front `fr` / `en`: `p200` / `p205`; gateway: `p080`; REST API: `p180`; MCP server: `p280`; REST
+  API database: `p633`;
+- `p090` and `p190`: the gateway and the REST API that the `openapi` Maven profile starts to read
+  the specs (not the dev ports: specs are regenerated while the dev applications run);
+- a management port, if an application sets one, on its port + 1.
+
+Windows reserves dynamic port ranges from 49152 on (and some fixed ones: `netsh interface ipv4 show
 excludedportrange protocol=tcp`), so blocks stay below: `n` goes up to 38.
 
-| n | Application | Host name (dev) | Front `fr` / `en` | Gateway | REST API | MCP server | REST API database |
-|---|---|---|---|---|---|---|---|
-| 1 | turu | turu.dev.localhost | 11200 / 11205 | 11080 | 11180 | 11280 | 11633 |
-| 2 | hururaa | hururaa.dev.localhost | 12200 / 12205 | 12080 | 12180 | 12280 | 12633 |
-| 3 | tickee | tickee.dev.localhost | 13200 / 13205 | 13080 | 13180 | 13280 | 13633 |
-| 4 | faito | faito.dev.localhost | 14200 / 14205 | 14080 | 14180 | 14280 | 14633 |
-
-A new application takes the next number, and adds its row here first.
+The numbers are in [`registry.txt`](registry.txt), one line per application with what it owns in
+the shared stack (its realms, RabbitMQ user, themes and host names; the file's header says how to
+write a line). `up.sh` and `register-app.sh` check it ([`registry.sh`](registry.sh)): two
+applications sharing a number, a name, a realm, a theme, a RabbitMQ user or a host name stop both,
+naming the two lines, and `register-app.sh` registers nothing for an application missing from it.
+A new application takes the number `bash registry.sh next` prints, and adds its line to
+`registry.txt` first, in a commit of its own, before anything registers.
 
 ### What an application provides
 
+- its registry entry, one line of [`registry.txt`](registry.txt) (its number, the name it
+  registers under, its realms, RabbitMQ user, themes and host names), committed before it first
+  registers;
 - its realm export(s), `keycloak/import/<realm>-realm.json`, with ids of their own (every id is a
   primary key of the shared database: a realm generated from a template gets new ones once, with
   [`new-realm-ids.sh`](new-realm-ids.sh)), and:
