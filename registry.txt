@@ -1,0 +1,23 @@
+# The applications registered with the shared stack, one line each, read by registry.sh (register-app.sh
+# and up.sh check it, and refuse an application that isn't here):
+#
+#   n app realms rabbitmq-user themes dev-host demo-host
+#
+# - n: the application's number, 1 to 38; it owns the ports (10 + n) × 1000 to (10 + n) × 1000 + 999
+#   (README.md, "Port registry");
+# - app: its name (lowercase letters, digits and "-"), the name it registers under; not a shared service's
+#   name (c4-infra, keycloak, keycloak-db, mailpit, rabbitmq, grafana-lgtm, reverse-proxy);
+# - realms, themes: its Keycloak realms and themes, comma-separated, "-" for none;
+# - rabbitmq-user: its RabbitMQ user, "-" for none;
+# - dev-host, demo-host: its host names, in dev and on the demo host (reserved before it deploys there).
+#
+# Columns are separated by spaces, and no value holds one. No two lines share a number, a name, a realm,
+# a theme, a RabbitMQ user or a host name.
+#
+# A new application takes the number `bash registry.sh next` prints, and adds its line here first, in a
+# commit of its own, before anything registers.
+
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
