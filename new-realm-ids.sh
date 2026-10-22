@@ -18,7 +18,11 @@ for file in "$@"; do
   # "id" : "<uuid>", then "username" : "<name>" on the next line: the export's layout for users
   users=$(grep -A1 -E "^    \"id\" : \"$uuid\",$" "$file" | grep -B1 '"username"' \
     | sed -n 's/.*"id" : "\(.*\)",/\1/p; s/.*"username" : "\(.*\)",/\1/p' | paste - - || true)
-  ids=($(grep -oE "$uuid" "$file" | sort -u))
+  ids=($(grep -oE "$uuid" "$file" | sort -u || true))
+  if [ ${#ids[@]} -eq 0 ]; then
+    echo "$file: no id"
+    continue
+  fi
   # one draw for every id of the file, cut into random (version 4) UUIDs
   random=$(openssl rand -hex $((16 * ${#ids[@]})))
   declare -A new_id=()

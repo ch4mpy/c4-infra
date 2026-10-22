@@ -98,8 +98,9 @@ services:
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
-      # fast while starting, then every 30 s: a probe starts a process in the container
-      start_period: 120s
+      # fast while starting (a new version migrates its database first), then every 30 s: a probe
+      # starts a process in the container
+      start_period: 240s
       start_interval: 1s
       interval: 30s
       timeout: 10s

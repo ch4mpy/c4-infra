@@ -90,7 +90,7 @@ if [ -z "$app" ]; then
   echo "--app <name> is required" >&2
   exit 1
 fi
-if [ -n "$rabbitmq_user" ] && [ -z "${!rabbitmq_password_env:-}" ]; then
+if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1
 fi
@@ -103,10 +103,15 @@ if [ ${#realms[@]} -gt 0 ]; then
   KC_CLI_PASSWORD=$(env_value KC_BOOTSTRAP_ADMIN_PASSWORD)
   export KC_CLI_PASSWORD
   kc_admin=$(env_value KC_BOOTSTRAP_ADMIN_USERNAME)
-  # -i only where the input is redirected: a deployment may run this script from a heredoc on
-  # ssh's stdin, which `docker exec -i` would otherwise swallow
+  # `kcadm -i ...` only where the input is redirected: a deployment may run this script from a
+  # heredoc on ssh's stdin, which `docker exec -i` would otherwise swallow
   kcadm() {
-    docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" \
+    local exec_options=()
+    if [ "$1" = -i ]; then
+      exec_options=(-i)
+      shift
+    fi
+    docker exec "${exec_options[@]}" -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" \
       --no-config --server http://localhost:8080/auth --realm master --user "$kc_admin"
   }
   for file in "${realms[@]}"; do
@@ -122,8 +127,7 @@ if [ ${#realms[@]} -gt 0 ]; then
     fi
     echo "Importing realm $realm"
     # on stdin: nothing to copy into the container, whatever the file's owner and mode
-    docker exec -i -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh create realms -f - \
-      --no-config --server http://localhost:8080/auth --realm master --user "$kc_admin" < "$file"
+    kcadm -i create realms -f - < "$file"
   done
 fi
 
@@ -155,7 +159,8 @@ if [ -n "$rabbitmq_user" ]; then
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   openssl rand 4 > "$work/salt"
-  { cat "$work/salt"; printf '%s' "${!rabbitmq_password_env}"; } | openssl dgst -sha256 -binary > "$work/digest"
+  password=${!rabbitmq_password_env}
+  { cat "$work/salt"; printf '%s' "${password%$'\r'}"; } | openssl dgst -sha256 -binary > "$work/digest"
   hash=$(cat "$work/salt" "$work/digest" | openssl base64 -A)
   cat > "$work/definitions.json" <<EOF
 {
@@ -178,8 +183,8 @@ if [ -n "$proxy" ]; then
   case "$PROXY" in
     nginx)
       target="$INFRA_DIR/nginx/apps/$app.conf"
-      check=(nginx -t -q)
-      reload=(nginx -s reload)
+      check=(nginx -c /etc/nginx/c4-infra/nginx.conf -t -q)
+      reload=(nginx -c /etc/nginx/c4-infra/nginx.conf -s reload)
       ;;
     caddy)
       target="$INFRA_DIR/caddy/apps/$app.caddy"
@@ -207,8 +212,14 @@ if [ -n "$proxy" ]; then
       echo "The server block $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
       exit 1
     fi
+    if ! docker exec "$REVERSE_PROXY" "${reload[@]}"; then
+      # removed, or restored: the next run installs it again rather than finding it "unchanged"
+      if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
+      rm -f "$backup"
+      echo "The reverse proxy could not reload: $proxy is not installed" >&2
+      exit 1
+    fi
     rm -f "$backup"
-    docker exec "$REVERSE_PROXY" "${reload[@]}"
     write_index
     echo "Reverse proxy: $app server installed"
   fi

@@ -23,12 +23,11 @@ services:
     ports:
       - 80:80
       - 443:443
+    # the directory, not its files: git and register-app.sh replace files with new inodes, which a
+    # single-file bind mount never shows to the running container
+    command: ['nginx', '-c', '/etc/nginx/c4-infra/nginx.conf', '-g', 'daemon off;']
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # directories, not files: a script rewriting a file gives it a new inode, which a single-file
-      # bind mount never shows to the running container
-      - ./nginx/apps/:/etc/nginx/apps/:ro
-      - ./nginx/html/:/usr/share/nginx/html/:ro
+      - ./nginx/:/etc/nginx/c4-infra/:ro
       - ./certs/:/etc/nginx/certs/:ro
     environment:
       TZ: ${TZ}
@@ -84,8 +83,9 @@ services:
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
-      # fast while starting, then every 30 s: a probe starts a process in the container
-      start_period: 120s
+      # fast while starting (a new version migrates its database first), then every 30 s: a probe
+      # starts a process in the container
+      start_period: 240s
       start_interval: 1s
       interval: 30s
       timeout: 10s

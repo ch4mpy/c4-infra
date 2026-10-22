@@ -48,4 +48,10 @@ awk '
   { print }
 ' "$exported" > "$destination/$realm-realm.json"
 rm -f "$exported"
+# a layout the awk script doesn't know must not let a key through
+if grep -q '"privateKey"\|"secret" : \[ "[A-Za-z0-9_-]\{20,\}' "$destination/$realm-realm.json"; then
+  rm -f "$destination/$realm-realm.json"
+  echo "The export still holds the realm's keys (unknown layout): nothing written" >&2
+  exit 1
+fi
 echo "Exported $destination/$realm-realm.json (keys removed)"
