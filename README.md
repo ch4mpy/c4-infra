@@ -24,7 +24,8 @@ block, which it installs here with [`register-app.sh`](register-app.sh) every ti
 - **Host names that resolve where they are used.** Browsers resolve `*.localhost` to the loopback
   on their own; the JVMs and Node processes of the host don't (Windows doesn't), and neither do the
   containers. Hence the split: everything server-side (issuer, admin API, back-channel logout,
-  OTLP, SMTP, AMQP) uses `host.docker.internal`, which Docker Desktop makes resolve everywhere;
+  OTLP, SMTP, AMQP) uses `host.docker.internal`, which resolves to the loopback everywhere (the
+  hosts-file line of the prerequisites on the host, `extra_hosts: host-gateway` in the containers);
   only the browser uses `<app>.dev.localhost`. A command-line client of an application's own origin
   (an MCP client such as Claude Code) needs a hosts-file line: `127.0.0.1 <app>.dev.localhost`.
 - **One certificate.** The leaf the proxy, Keycloak and Mailpit serve is valid for
@@ -39,9 +40,22 @@ block, which it installs here with [`register-app.sh`](register-app.sh) every ti
 
 ## Development
 
-Prerequisites: Docker Desktop, Git Bash, and the local CA trusted by the browsers (it already is
-if a project was set up on this machine before; otherwise `certs/make-certs.sh` creates it and
-says how to trust it).
+Prerequisites:
+
+- Docker Desktop and Git Bash;
+- the local CA trusted by the browsers (it already is if a project was set up on this machine
+  before; otherwise `certs/make-certs.sh` creates it and says how to trust it);
+- `host.docker.internal` resolving to the loopback on the workstation: the single line
+  `127.0.0.1 host.docker.internal` in the hosts file (`C:\Windows\System32\drivers\etc\hosts`,
+  `/etc/hosts` elsewhere), and Docker Desktop's option "Add the \*.docker.internal names to the
+  host's etc/hosts file" (Settings > General) turned off, since it writes the LAN address instead.
+  `up.sh` stops, and says so, when the name resolves elsewhere.
+
+The stack publishes its ports on `127.0.0.1` only, with no setting to open them: nothing of it
+answers from the local network (Keycloak's master console, Mailpit, Grafana and RabbitMQ hold every
+application's dev data). Testing an application from another device (a phone on the same network)
+is not supported: the device would also need host names it resolves, the local CA and return
+addresses the gateways allow.
 
 ```bash
 bash ./up.sh   # writes .env and the certificate on first run, then starts (or updates) the stack
@@ -51,7 +65,7 @@ Every application's `deploy-dev.sh` runs `up.sh` and then registers itself: ther
 need to run anything here by hand. A project still running its own copy of these services holds
 their ports: `up.sh` names its containers, to stop first.
 
-| Service | URL | Ports on the host |
+| Service | URL | Ports on the host (`127.0.0.1` only) |
 |---|---|---|
 | Landing page (links to everything registered) | https://host.docker.internal/ | 80, 443 |
 | Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | none: through the proxy only |
