@@ -1,11 +1,11 @@
 # Spec: Dev doesn't apply the demo's reverse-proxy rules
 
 - Intent: [0003](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: what a host exposes to the network, authentication — the demo host's public edge, Keycloak's console and Mailpit's protection, is rewritten; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, Faito's decision 0001, c4-infra 0001 (dev ports on the loopback)
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -111,3 +111,4 @@ None.
 - v1 — 2026-10-21 — draft: coherence review (risk high, demo exposure kept, upstreams by role from the registry, dev/demo setting kept for 0005, skills follow-up), PA-1 and PA-2 decided
 - v1 — 2026-10-21 — draft: second coherence review (demo upstreams on the fixed container ports, host names from the registry, an environment setting instead of `PROXY`, ports in the overrides only, criteria for REQ-6 to REQ-9)
 - v1 — 2026-10-21 — draft: third coherence review (schemes per role and environment, the `ui` front end, no demo port for the MCP server until one is deployed there)
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)

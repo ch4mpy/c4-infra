@@ -47,4 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
-| 0003 | [Dev doesn't apply the demo's reverse-proxy rules](0003-dev-and-demo-proxies-diverge/intent.md) | change | accepted | 2026-10-21 | 2026-10-21 |
+| 0003 | [Dev doesn't apply the demo's reverse-proxy rules](0003-dev-and-demo-proxies-diverge/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
