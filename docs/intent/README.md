@@ -47,4 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
-| 0001 | [The dev stack is reachable from the local network](0001-dev-stack-reachable-from-the-network/intent.md) | bug | proposed | 2026-10-21 | — |
+| 0001 | [The dev stack is reachable from the local network](0001-dev-stack-reachable-from-the-network/intent.md) | bug | accepted | 2026-10-21 | 2026-10-21 |
