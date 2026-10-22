@@ -176,5 +176,19 @@ services:
     environment:
       GF_SERVER_ROOT_URL: https://${INFRA_HOST}/grafana
       GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
+      # Its components' internal ports on the container's loopback only (intent 0007, REQ-11):
+      # Loki's gRPC (9095), Tempo's (9096), Pyroscope's (9097) and its memberlist (7946), the
+      # collector's health check (13133). Every component's start script appends its *_EXTRA_ARGS,
+      # split on spaces (no value may hold one). Pyroscope's components dial each other at their
+      # ring addresses, the container's own by default: on 127.0.0.1 too, or its ingest fails. Tempo
+      # has no flag for its gRPC address: a copy of the image's file, which wins as the second
+      # -config.file (grafana-lgtm/tempo-config.yaml, to regenerate with each image upgrade).
+      # tests/0007-lgtm.sh checks the ports and that logs, traces, metrics and profiles still flow.
+      LOKI_EXTRA_ARGS: -server.grpc-listen-address=127.0.0.1
+      TEMPO_EXTRA_ARGS: -config.file=/etc/c4-infra/grafana-lgtm/tempo-config.yaml
+      PYROSCOPE_EXTRA_ARGS: -server.grpc-listen-address=127.0.0.1 -memberlist.bind-addr=127.0.0.1 -memberlist.advertise-addr=127.0.0.1 -segment-writer.lifecycler.addr=127.0.0.1 -distributor.ring.instance-addr=127.0.0.1 -query-frontend.instance-addr=127.0.0.1
+      OTELCOL_EXTRA_ARGS: --set=extensions::health_check::endpoint=127.0.0.1:13133
     volumes:
       - grafana_data:/data
+      # the directory, not the file (git and rsync replace files with new inodes)
+      - ./grafana-lgtm/:/etc/c4-infra/grafana-lgtm/:ro

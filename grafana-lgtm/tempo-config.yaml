@@ -1,0 +1,54 @@
+# grafana/otel-lgtm 0.32.0's own /otel-lgtm/tempo-config.yaml, with one line added under server:
+# grpc_listen_address: 127.0.0.1, so that Tempo's gRPC port (9096) listens on the container's
+# loopback only (intent 0007, REQ-11): Tempo has no command-line flag for it. compose.yml mounts this
+# directory and passes this file as Tempo's second -config.file (TEMPO_EXTRA_ARGS), which wins over
+# the image's. With each image upgrade, regenerate it from the new image's file
+# (MSYS_NO_PATHCONV=1 docker run --rm --entrypoint cat grafana/otel-lgtm:<version>
+# /otel-lgtm/tempo-config.yaml) plus that line: tests/0007-lgtm.sh fails on any other difference.
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9096
+  grpc_listen_address: 127.0.0.1
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "127.0.0.1:4417"
+        http:
+          endpoint: "127.0.0.1:4418"
+
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
+
+querier:
+  frontend_worker:
+    frontend_address: 127.0.0.1:9096
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /data/tempo/wal
+    local:
+      path: /data/tempo/blocks
+
+metrics_generator:
+  processor:
+    span_metrics:
+      dimensions:
+        - service_name
+        - operation
+        - status_code
+  storage:
+    path: /data/tempo/generator/wal
+    remote_write:
+      - url: http://127.0.0.1:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

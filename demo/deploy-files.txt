@@ -1,5 +1,6 @@
 compose.yml
 compose.demo.yml
+grafana-lgtm/tempo-config.yaml
 caddy/Caddyfile
 caddy/env/demo.caddy
 registry.txt
