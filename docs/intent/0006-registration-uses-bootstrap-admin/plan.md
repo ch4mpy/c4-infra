@@ -1,0 +1,77 @@
+# Plan: Registrations depend on Keycloak's temporary bootstrap administrator
+
+- Spec: [v1](spec.md)
+- Status: approved
+- Branch: main (grouped pass of 2026-10-21)
+- Approved: 2026-10-22, Jérôme Wacongne (engineer, product owner and tech lead), after two rounds of cross-plan coherence review
+- Builds on: 0004 (registry: the realms each entry owns), 0003 (`demo/write-env.sh`, `demo/deploy.sh`, `demo/deploy-files.txt`, the stand-in host `tests/lib/stand-in-host.sh`), 0005 (`tests/lib/keycloak.sh`), 0001 (`tests/lib/`). 0002, implemented next, makes the secret readable by the shared stack's account only (REQ-7's last part).
+
+## Starting point
+
+- `register-app.sh` runs `kcadm.sh … --no-config --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME"` with `KC_CLI_PASSWORD` from `.env` (`KC_ADMIN_PASSWORD` on the demo host).
+- Facts checked on 2026-10-21 against the local image `c4-infra/keycloak` (26.7.4), in a throwaway container: `kcadm.sh config credentials --client <id>` reads the client secret from `KC_CLI_CLIENT_SECRET` (no `--secret` on the command line) and logs in as the service account; the config file it writes holds the secret (a `secret` key); a command with `--no-config --client <id>` and the secret in the environment only does **not** authenticate (`HTTP 401`), so registrations log in with `config credentials` into a file of the Keycloak container's `/dev/shm` (memory only), deleted on exit. A 404 reads `Resource not found for url: …`; other errors `HTTP <status> <reason>`.
+- **Not checked yet** (the probe was cut short): that a service account holding only `create-realm` can import `faito-realm.json`, whose `service-account-faito-api` holds `realm-management` roles (`manage-users`…), given Keycloak 26.3's "admin role mappings restricted to server administrators"; the 403 a realm it may not see answers; that it may delete a realm it created, and one whose `<realm>-realm` roles it was granted. Step 2 settles them before any product code; if the import is refused, PA-1's option B can't hold: stop, spec v2.
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `tests/0006-registration-without-bootstrap-password.sh` | new: the reproducing test (step 1) | REQ-1, REQ-5 |
+| `tests/0006-keycloak-facts.sh` | new: the Keycloak behaviours this plan relies on, in a throwaway `c4-infra/keycloak` (`start-dev --db=dev-mem`, no published port, its bootstrap password in an `--env-file` of a temporary directory) | REQ-1, REQ-2, REQ-4 |
+| `registration-account.sh` | new: `ensure` (below) and `rotate` (dev: a new `openssl rand -hex 32` written into `.env`, then `ensure`) | REQ-2, REQ-3, REQ-6 |
+| `register-app.sh` | modified: logs in as `KC_REGISTRATION_CLIENT_ID` with `KC_CLI_CLIENT_SECRET` (from `.env`, as data) into `/dev/shm/c4-registration-<pid>.kcadm` in the Keycloak container, removed by the `EXIT` trap (merged with RabbitMQ's); `get realms/<r>`: success → exists, `Resource not found` → import, `403` → REQ-4's message, exit 1, nothing created; no more `KC_BOOTSTRAP_ADMIN_*` | REQ-1, REQ-4, REQ-5, REQ-7 |
+| `env.sh` | modified: `add KC_REGISTRATION_CLIENT_ID=c4-infra-registration`, `add KC_REGISTRATION_CLIENT_SECRET=$(openssl rand -hex 32)` | REQ-3, REQ-7 |
+| `up.sh` | modified: `bash ./registration-account.sh ensure` after `docker compose up … --wait` | REQ-3, AC-3 |
+| `demo/write-env.sh` | modified: `KC_REGISTRATION_CLIENT_ID=c4-infra-registration`, `KC_REGISTRATION_CLIENT_SECRET` (required, failing by name like the others, and listed by `--required`) | REQ-3, REQ-7 |
+| `tests/lib/stand-in-host.sh` | unchanged, checked: its `stand_in_env` (0003) generates one value per name `write-env.sh --required` prints, so the stand-in tests (`tests/0003-demo-deploy.stand-in.sh` included) get a `KC_REGISTRATION_CLIENT_SECRET` without a change here; if the implementation of 0003 departed from that, this plan's step 5 updates `stand_in_env` (a deviation to record) | REQ-3 |
+| `demo/deploy.sh` | modified: `bash ./registration-account.sh ensure` after `docker compose up … --wait` | REQ-3 |
+| `demo/deploy-files.txt` | modified: `registration-account.sh` | REQ-3 |
+| `.github/workflows/deploy-demo.yml` | modified: the `KC_REGISTRATION_CLIENT_SECRET` secret into `write-env.sh`'s environment; the optional `KC_SETUP_ADMIN_USERNAME` / `KC_SETUP_ADMIN_PASSWORD` secrets exported in the ssh heredoc (base64-encoded there, decoded on the host: no quoting issue, still on stdin) for `demo/deploy.sh` | REQ-3, REQ-6, REQ-7 |
+| `README.md` | modified: the bootstrap-administrator warning replaced by the registration account (what it may do, `ensure`, `rotate`); following the console's invitation is safe | REQ-5, REQ-6 |
+| `docs/demo-setup.md` | modified: step 5 table and step 6 loop gain `KC_REGISTRATION_CLIENT_SECRET`; `KC_SETUP_ADMIN_*` (optional: set them for one deployment once the bootstrap administrator is replaced, when the account must be created or its secret rotated); a "Rotating the registration secret" step: `openssl rand -hex 32 \| gh secret set KC_REGISTRATION_CLIENT_SECRET --env demo -R ch4mpy/c4-infra`, then `gh workflow run deploy-demo.yml -R ch4mpy/c4-infra`; the "Don't replace Keycloak's temporary administrator" sentence removed | REQ-6, REQ-7 |
+| `tests/lib/keycloak.sh` | modified: `kc_registration <kcadm args…>` (the account's login, as `register-app.sh` does), `kc_secret_file` (the `.env` secret into a `600` temporary file, for `grep -F -f`) | AC-2 to AC-6 |
+| `tests/fixtures/0006/registry.txt`, `verif-hidden-realm.json` | new: the real entries plus `34 verif-hidden verif-hidden verif-hidden-api - verif-hidden.dev.localhost verif-hidden.c4-soft.com`; a minimal realm | AC-4 |
+| `tests/0006-account.sh` | new: AC-2 to AC-6 on the workstation | AC-2 to AC-6 |
+| `tests/0006-bootstrap-admin-replaced.stand-in.sh` | new: AC-1, AC-5 (demo side) and AC-6 (Linux host) on the stand-in host | AC-1, AC-5, AC-6 |
+| `docs/intent/0006-registration-uses-bootstrap-admin/plan.md` | new: this plan (`approved` at the gate) | bookkeeping |
+| `docs/intent/0006-registration-uses-bootstrap-admin/intent.md` | modified: status `planned` at approval | bookkeeping |
+| `docs/intent/README.md` | modified: index row 0006 → `planned` | bookkeeping |
+
+`registration-account.sh ensure`:
+
+1. Log in as the account (`config credentials`, secret from `.env` in `KC_CLI_CLIENT_SECRET`). If it works, `get realms/<r>` for every realm of the registry: success or 404 → nothing to do; 403 → needs a grant.
+2. If the login failed or a grant is needed, log in as an administrator: the bootstrap one of `.env` if it still works; else `KC_SETUP_ADMIN_USERNAME` / `KC_SETUP_ADMIN_PASSWORD` from the environment; else, on a terminal, ask (`read -r`, `read -rs`); else exit 1 saying what to do in dev and on the demo host.
+3. As the administrator: create `c4-infra-registration` in `master` from JSON on stdin (`publicClient: false`, `serviceAccountsEnabled: true`, every flow off, `secret` from `.env`; the JSON built with `printf`, a builtin: the secret on no command line), or set its secret from JSON on stdin when it exists; grant `create-realm`; grant every role of the master client `<r>-realm` for each registry realm that answered 403. A realm the account creates later is granted to it by Keycloak itself (creator's rights).
+
+## Order of work
+
+1. **Failing test**, committed alone and staged by path (`git add tests/0006-registration-without-bootstrap-password.sh`, never `git add -A`; `.claude/*.local` is git-ignored since 0001) as `test(0006): a registration fails when the bootstrap administrator's password is no longer .env's`: it copies the repository's root `*.sh`, `registry.txt` and `.env` into a temporary directory, replaces `KC_BOOTSTRAP_ADMIN_PASSWORD` there with a random value (the console's "change the password", without touching the shared Keycloak), and runs `bash "$tmp/register-app.sh" --app faito --realm ../faito/keycloak/import/faito-realm.json` (realm `faito` exists: one read, nothing changed); it expects exit 0 and `Realm faito: already in Keycloak, left as it is`. — skill: none — check: `bash tests/0006-registration-without-bootstrap-password.sh; echo "exit=$?"` fails with kcadm's `Invalid user credentials` and `exit=1`. Freeze it (`.claude/frozen-tests.local`).
+2. **Keycloak facts** (`tests/0006-keycloak-facts.sh`, committed as `test(0006): the Keycloak behaviours the registration account relies on`): (a) `config credentials --client` with `KC_CLI_CLIENT_SECRET` logs in, into `/dev/shm` (writable by the image's user); (b) `--no-config --client` alone answers 401; (c) with `create-realm` only, `create realms -f -` of `faito-realm.json` succeeds and `service-account-faito-api` keeps `query-users`, `view-users`, `manage-users`; (d) `get realms/<missing>` → `Resource not found`, `get realms/<admin's realm>` → a 403; (e) the account deletes the realm it imported, and an admin-created realm once granted the roles of `<r>-realm`; (f) `update realms/master` → 403. — skill: none — check: `bash tests/0006-keycloak-facts.sh`. **If (c) fails: stop, record it under Deviations, spec v2 (PA-1) before anything else.**
+3. **The account**: `env.sh`, `registration-account.sh`, `up.sh`; then `bash up.sh` on the workstation (realm `faito`, created by the bootstrap administrator, gets granted). — skill: none — check: `bash up.sh` ends with the account created and `faito` granted; `bash registration-account.sh ensure` again prints that the account is up to date, without any administrator login.
+4. **Registrations use it**: `register-app.sh`, `tests/lib/keycloak.sh`, `tests/fixtures/0006/`, `tests/0006-account.sh` — AC-2: `kc_registration update realms/master -s displayName=x` → 403; `kc_admin create realms -s realm=verif-unassigned -s enabled=true`, then the account's `update` and `delete` on it → 403; cleanup. AC-3: `bash ../faito/deploy-dev.sh` prints `Realm faito: already in Keycloak, left as it is`. AC-4: `kc_admin` creates `verif-hidden` with `displayName=before`; `REGISTRY_FILE=tests/fixtures/0006/registry.txt bash register-app.sh --app verif-hidden --realm tests/fixtures/0006/verif-hidden-realm.json` exits 1 saying the account may not manage it and nothing was created; `displayName` still `before`; cleanup. AC-5: the old secret kept in a `600` temporary file, `bash registration-account.sh rotate`, a registration works, `config credentials` with the old secret fails (`invalid_client`). AC-6: five registrations in a row while a loop samples `powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | Select-Object -ExpandProperty CommandLine"`, `docker top c4-infra.keycloak -eo args` and `docker inspect c4-infra.keycloak`, each piped to `grep -F -f <secret file>`: no match. — skill: none — check: `bash tests/0006-registration-without-bootstrap-password.sh && bash tests/0006-account.sh && bash tests/0005-themes.sh`.
+5. **Demo host**: `demo/write-env.sh`, `demo/deploy.sh`, `demo/deploy-files.txt`, the workflow; `tests/0006-bootstrap-admin-replaced.stand-in.sh`: deploy (the account created by `deploy.sh` with the bootstrap administrator); register Faito's realm; as the bootstrap administrator create a permanent administrator `ops` (password by `reset-password -f -` on stdin) with master's `admin` role; as `ops` delete user `admin`; `bash register-app.sh --app faito --realm faito-realm.json --reset-realms` exits 0 (`Deleting realm faito`, `Importing realm faito`); `bash demo/deploy.sh` again exits 0 (the account works, no administrator needed); rotation as the workflow does it: `.env` rewritten by `write-env.sh` with a new secret and `KC_SETUP_ADMIN_*` = `ops`, `deploy.sh` → a registration works, the former secret fails; AC-6 there: `ps -eo args`, `docker top`, `docker inspect` sampled during registrations, no match. — skill: none — check: `bash tests/0006-bootstrap-admin-replaced.stand-in.sh && bash tests/0003-demo-deploy.stand-in.sh`.
+6. **Docs**: README, `docs/demo-setup.md`. — skill: none — check: `bash tests/run.sh`; `grep -n 'temporary administrator\|bootstrap administrator' README.md docs/demo-setup.md` shows no instruction to keep it.
+
+## Risks
+
+- The import by a `create-realm`-only account is refused or drops admin role mappings (Keycloak 26.3+) → step 2 (c) before any product code; if so, spec v2 (e.g. master's `admin` role, PA-1 A, or an import completed by an administrator).
+- The kcadm config file holds the secret, in the Keycloak container's `/dev/shm` during a registration → memory only, `600` by kcadm, removed by the `EXIT` trap; not in `docker inspect` nor a process list (AC-6). A registration killed with `SIGKILL` leaves it until the container restarts → accepted (same container, same secret holder).
+- `ensure` runs at every `up.sh` → one login and one `get` per registry realm (about 2 s); an administrator is only needed when something is missing.
+- A deployment after the bootstrap administrator was replaced, with an account to repair, fails until `KC_SETUP_ADMIN_*` are set → the failure says so; `docs/demo-setup.md` documents it.
+- `--reset-realms` deletes a realm the account was granted, then imports it: the new realm is granted to its creator, the account → step 5 proves it.
+- The step-1 test copies `.env` (secrets) into a temporary directory → `mktemp -d`, `chmod 700`, removed by a `trap`.
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| AC-1 | automated test (stand-in host) | `bash tests/0006-bootstrap-admin-replaced.stand-in.sh` — bootstrap administrator replaced by `ops` and deleted, `--reset-realms` re-imports Faito's realm. The "password changed" variant: `bash tests/0006-registration-without-bootstrap-password.sh` on the workstation (failing before the fix: `Invalid user credentials`) |
+| AC-2 | automated test | `bash tests/0006-account.sh` — master and an unassigned realm: 403 |
+| AC-3 | command | after `bash up.sh` on this workstation (stack and realm `faito` from before the change): `bash ../faito/deploy-dev.sh` prints `Realm faito: already in Keycloak, left as it is`; `bash tests/0006-account.sh` checks the account holds `faito-realm`'s roles |
+| AC-4 | automated test | `bash tests/0006-account.sh` — `verif-hidden`: exit 1, "may not manage", `displayName` unchanged |
+| AC-5 | automated tests, then first demo deployment | `bash tests/0006-account.sh` (dev `rotate`), `bash tests/0006-bootstrap-admin-replaced.stand-in.sh` (the workflow's way: new secret in `.env`, `deploy.sh`). Not verifiable here — first demo deployment: `gh secret set KC_REGISTRATION_CLIENT_SECRET` then `gh workflow run deploy-demo.yml`, then an application's deployment registers |
+| AC-6 | automated tests | `bash tests/0006-account.sh` (Windows process list, `docker top`, `docker inspect`), `bash tests/0006-bootstrap-admin-replaced.stand-in.sh` (Linux `ps -eo args`) |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
