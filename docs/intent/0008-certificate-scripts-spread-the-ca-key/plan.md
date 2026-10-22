@@ -59,3 +59,5 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-22 — before step 1, **approved 2026-10-22** by the approver for the grouped pass: `docs/demo-setup.md` step 5 (Mailpit's UI password hashed by `caddy hash-password`) reads the password on its stdin, as the plan does for the scripts, and that file is part of the check that no password appears on a command line. The approval saw `caddy hash-password --plaintext '<password>'`; on `main`, 0007's docs step (`30a76da`) has already replaced it with `read -rsp … && printf '%s\n' "$password" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password`, so the file needs no change. The `passwords` part of `tests/0008-certificate-scripts.sh` checks it: no `--plaintext` in the file, and step 5's fenced command, run with a password on its stdin and `docker` behind an `argv-log.sh` wrapper, prints a bcrypt hash while the password shows neither in its output nor in the logged command lines. Files: `docs/demo-setup.md`, read by the test, unchanged. Proof: the second criterion's row also covers `docs/demo-setup.md`.
