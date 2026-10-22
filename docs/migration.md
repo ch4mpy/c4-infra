@@ -36,10 +36,10 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
      a host name with another (`bash registry.sh check` names both lines);
    - what each column then allows: `n` the ports of the block, from which the reverse proxy's
      upstreams are derived (intent 0003); `app` the name the project registers under (its RabbitMQ
-     virtual host; on the demo host its account, intent 0002, and its network `c4-infra.<app>`,
-     intent 0007); `realms`, `rabbitmq-user` and `themes` what its registrations may create or
-     change (intent 0002); `dev-host` and `demo-host` the host names its site is served on
-     (intent 0003).
+     virtual host; on the demo host its account, intent 0002; its network `c4-infra.<app>`, in dev
+     as on the demo host, intent 0007); `realms`, `rabbitmq-user` and `themes` what its
+     registrations may create or change (intent 0002); `dev-host` and `demo-host` the host names
+     its site is served on (intent 0003).
 
    Every port of the project moves into its block:
 
@@ -104,8 +104,10 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `compose-observability.yml`, `compose-rabbitmq.yml`, `compose-reverse-proxy.yml`,
    `nginx-reverse-proxy/`, `keycloak/Dockerfile`, `keycloak/HealthCheck.java` and the Keycloak and
    mail entries of `.env` and `secrets/`. Another container of the project that the shared
-   Keycloak must reach (an LDAP server of a user federation) joins the external network
-   `c4-infra`, under a unique container name.
+   Keycloak must reach (an LDAP server of a user federation) joins the project's own network
+   `c4-infra.<project>` as an external one, never `c4-infra` (the shared services' own), under a
+   unique container name: `deploy-dev.sh`'s registration creates that network and attaches the
+   shared services to it (c4-infra's README, "One network per application").
 7. **Docs**: `CLAUDE.md` / `.claude/README.md` (ports, host names, the shared stack), `README.md`.
 8. **Check**: `./deploy-dev.sh`, start the apps, log in and out on
    `https://<project>.dev.localhost/`, then end the session from Keycloak's admin console (the
@@ -127,12 +129,26 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    variables compose interpolates, and the RabbitMQ password), its routes file, its rendered realm
    file(s) and its themes, if any; nothing that is a symbolic link (`c4-app` refuses it). In
    `compose.yml`: drop `caddy`, `keycloak`, `mailpit`, `rabbitmq` and `grafana-lgtm`; the services
-   that need the shared ones (gateway, API, frontend, an LDAP server) join the external network
-   `c4-infra` and keep their unique `container_name` (`<project>.gateway`…); the databases stay on
-   the project's network only; every file it mounts or reads (`env_file`) is inside `~/<project>/`,
-   relative to it (the model is read as the project's account: it can't read any other). Its data
-   go in named volumes: what is mounted from `~/<project>/` is root's copy, made again, as sent, by
-   each `sudo c4-app` command.
+   that need the shared ones (gateway, API, frontend, an LDAP server) join the project's own network
+   `c4-infra.<project>` as an external one (its registration creates it and attaches the shared
+   services to it, under their usual names), never `c4-infra`, and keep their unique
+   `container_name` (`<project>.gateway`…); the databases stay on the project's network only; every
+   file it mounts or reads (`env_file`) is inside `~/<project>/`, relative to it (the model is read
+   as the project's account: it can't read any other). Its data go in named volumes: what is
+   mounted from `~/<project>/` is root's copy, made again, as sent, by each `sudo c4-app` command.
+   No published port, no `network_mode`, no other network, no alias or container name outside
+   `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
+   README, "Accounts"):
+
+   ```yaml
+   services:
+     gateway:
+       container_name: <project>.gateway
+       networks: [c4-infra.<project>, default]
+   networks:
+     c4-infra.<project>:
+       external: true
+   ```
 4. Its realm rendering (`deploy/keycloak/render-realms.sh`), into `deploy/<realm>-realm.json` (the
    file's name is the realm it is imported as, one of its registry entry's): no
    `org.keycloak.keys.KeyProvider` components (the dev keys are in the repository), issuer host
@@ -239,11 +255,12 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
   (or `deploy-dev.sh`), then reload the login page: the dev Keycloak caches no theme and isn't
   restarted, so the other applications' sessions stay valid.
 - `tenant2` federates the LDAP server `ldap://tickee.ldap-tenant2:389`, now started by the
-  project's own compose (move `ldap2` out of `compose-keycloak.yml`), on the `c4-infra` network,
-  in dev as in the demo.
+  project's own compose (move `ldap2` out of `compose-keycloak.yml`), on Tickee's own network
+  `c4-infra.tickee` (external), in dev as in the demo: Keycloak, attached to it by Tickee's
+  registration, federates it, and no other application's container reaches it.
 - The realm `tickee` has two BFF clients with back-channel logout (`gateway` and `tickee-bff`):
   both URLs move to the gateway's port.
-- Demo: steps above (the LDAP container joins `c4-infra`).
+- Demo: steps above (the LDAP container joins `c4-infra.tickee`).
 
 ### Faito (n° 4, ports 14xxx, realm `faito`)
 

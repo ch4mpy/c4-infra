@@ -46,16 +46,30 @@ every time it deploys.
   headers of the applications' sites are written once, in [`caddy/Caddyfile`](caddy/Caddyfile);
   only what must differ is in [`caddy/env/dev.caddy`](caddy/env/dev.caddy) and
   [`caddy/env/demo.caddy`](caddy/env/demo.caddy): the certificate (the dev leaf, Let's Encrypt),
-  HSTS (on the demo host only, so that browsers don't pin the workstation's host names), Mailpit's
-  basic authentication (demo host) and RabbitMQ's management UI (dev). A page that the demo's
-  Content-Security-Policy blocks is blocked in dev too. Each application's site is generated from
-  its [routes file](#routes-file).
+  HSTS (on the demo host only, so that browsers don't pin the workstation's host names) and
+  RabbitMQ's management UI (dev). A page that the demo's Content-Security-Policy blocks is blocked
+  in dev too. Each application's site is generated from its [routes file](#routes-file).
+- **One network per application** (intent 0007). An application's containers join
+  `c4-infra.<app>` (named after its registry entry), in dev as on the demo host (in dev, those the
+  shared services must reach, such as Tickee's LDAP server), which no other application's
+  container joins: two applications never reach each other's containers. Its registration
+  ([`networks.sh`](networks.sh) `ensure`, run by `register-app.sh`) creates it and attaches the
+  shared services to it under their usual names (`reverse-proxy`, `keycloak`, `mailpit`,
+  `rabbitmq`, `grafana-lgtm`, and on the demo host the shared host's name, Caddy's), so that Caddy
+  and Keycloak reach the application's containers and these reach the shared services; the
+  generated `compose.apps.yml` (the last file of `COMPOSE_FILE`) keeps them attached when the stack
+  is recreated. Keycloak's database is on a network of its own, `c4-infra.keycloak-db` (internal),
+  which only Keycloak joins; `c4-infra` is the shared services' own network, which no application
+  joins. On the demo host, Mailpit's UI and API ask for the demo's credentials themselves, wherever
+  they are reached from; what else answers on an application's network is listed in "Reachable from
+  an application's network" below.
 - **One compose base, an override per environment.** [`compose.yml`](compose.yml) holds every
   service and every image version; [`compose.dev.yml`](compose.dev.yml) (ports on `127.0.0.1`, the
   dev certificate, Keycloak built here, RabbitMQ's UI) and [`compose.demo.yml`](compose.demo.yml)
-  (ports 80 and 443 only, the demo's passwords and memory limits) add what differs. Published ports
-  are declared in the overrides only, since compose merges `ports` lists. `COMPOSE_FILE` in `.env`
-  names the pair: `docker compose` commands need no `-f`.
+  (ports 80 and 443 only, the demo's passwords and memory limits, Mailpit's credentials) add what
+  differs. Published ports are declared in the overrides only, since compose merges `ports` lists.
+  `COMPOSE_FILE` in `.env` names them, with `compose.apps.yml`: `docker compose` commands need no
+  `-f`.
 - **The environment is a setting**: `INFRA_ENV` in `.env`, `dev` (written by [`env.sh`](env.sh))
   or `demo` (written by [`demo/write-env.sh`](demo/write-env.sh)). Caddy reads it when it starts
   (which `caddy/env/*.caddy` it applies), `register-app.sh` at each registration (the site's host
@@ -285,7 +299,7 @@ The same stack on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:
 the compose base with its demo override, [`compose.demo.yml`](compose.demo.yml), and the same Caddy
 configuration with the demo's rules (`INFRA_ENV=demo`: a Let's Encrypt certificate per site, HSTS,
-Mailpit behind its basic authentication, no RabbitMQ UI); plain HTTP inside the Docker network,
+no RabbitMQ UI), Mailpit asking for its own credentials; plain HTTP inside the Docker networks,
 `https://infra.c4-soft.com/` for the shared services, and one site per application,
 `https://<app>.c4-soft.com/`, which each application installs from its own deployment.
 
@@ -326,8 +340,24 @@ application whose account runs it (never an argument), on its own project only:
   realms, its themes, its RabbitMQ user and virtual host, its site: see "What an application
   provides").
 
-Until intent 0007, `c4-app up` starts whatever compose model the application writes (privileged
-containers included): no application deploys to the demo host before it.
+`sudo c4-app up` checks that model before anything starts (intent 0007), and refuses, naming the
+service, the network or the volume and the rule, a project that would leave its isolation:
+
+- a network that is neither `c4-infra.<app>` (external) nor the project's own (not external, no
+  name of its own, the bridge driver); `network_mode`, `links`, `external_links`;
+- a `container_name` or a network alias outside `<app>.`; a service named after a shared service
+  (`keycloak`, `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared
+  host (`infra.c4-soft.com`);
+- a published port (`ports`; `expose` is fine): only the shared Caddy publishes;
+- what escapes a container: `privileged`, `cap_add`, `devices`, `device_cgroup_rules`; `pid`,
+  `ipc`, `uts`, `userns_mode` or `cgroup` set to `host` (or `pid` and `ipc` to another container);
+  `security_opt` holding `unconfined` or `label:disable`; `volumes_from` another container; a bind
+  mount (volumes, secrets' and configs' files, build contexts and Dockerfiles) outside
+  `/var/lib/c4-apps/<app>/`, the Docker socket included; a volume that is external, has a name of
+  its own, or `driver_opts`.
+
+Then it makes sure of the application's network (`networks.sh ensure`) and starts the model it
+checked: root's file, in a directory the application can't write.
 
 ### What an application's deployment does
 
@@ -336,9 +366,11 @@ files rsynced to `~/<app>/`, then `sudo c4-app pull`, `sudo c4-app register …`
 ([docs/migration.md](docs/migration.md), "On the demo host"):
 
 - its compose project, `~/<app>/compose.yml`, whose containers that need the shared services join
-  the external network `c4-infra`, with **unique container names** (`<app>.gateway`, `<app>.api`…):
-  Caddy and Keycloak reach them by these names, and two applications' `gateway` services on the same
-  network would be ambiguous. Its databases stay on its project's own network;
+  its own network `c4-infra.<app>` as an external one (created and given the shared services by its
+  registration), with **unique container names** (`<app>.gateway`, `<app>.api`…): Caddy and
+  Keycloak reach them by these names, on every application's network. Its databases stay on its
+  project's own network. `sudo c4-app up` refuses a project that leaves that isolation (see
+  "Accounts");
 - its realm, rendered for the demo (public host, real client secrets, Mailpit's SMTP password,
   back-channel logout on `http://<app>.gateway:7080/...`), then
   `sudo c4-app register --realm <realm>-realm.json --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
@@ -348,6 +380,39 @@ files rsynced to `~/<app>/`, then `sudo c4-app pull`, `sudo c4-app register …`
   and `/en/` are directories of that one container). No container port is fixed yet for an MCP
   server, since no application deploys one here: a routes file naming the `mcp` role is refused
   on the demo host, and the first application that deploys one fixes its port in this section.
+
+### Reachable from an application's network
+
+What answers an application's containers on `c4-infra.<app>`, besides its own containers: every
+other application's containers, and Keycloak's database, are on networks it doesn't join (intent
+0007; checked by `tests/0007-isolation.stand-in.sh` from an application's container, and by
+`tests/0007-listeners.sh` for each image as configured). In dev, the same, plus RabbitMQ's
+management UI (15672) and Mailpit without credentials.
+
+| Service | Port | What answers | Why |
+| --- | --- | --- | --- |
+| `reverse-proxy`, `infra.c4-soft.com` | 80, 443 | Caddy: the issuer, every application's site | the issuer's name inside the network (REQ-2) |
+| `keycloak` | 8080 | Keycloak over plain HTTP: the token endpoint, the admin API | the applications' calls, and back-channel logout from it (REQ-2) |
+| `keycloak` | 9000 | its management port: health and metrics, without authentication | recorded, no personal data (PA-3, decided 2026-10-21) |
+| `mailpit` | 1025 | SMTP, with Mailpit's SMTP credentials | the realms' mails (REQ-2) |
+| `mailpit` | 8025 | its UI and API: `401` without the demo's credentials (`/livez`, `/readyz` open) | Mailpit asks for them itself (REQ-4) |
+| `rabbitmq` | 5672 | AMQP: each application's own user, on its own virtual host | events (REQ-2) |
+| `rabbitmq` | 15692 | Prometheus metrics, without authentication | recorded, no personal data (PA-3) |
+| `grafana-lgtm` | 4317, 4318 | the OTLP receivers (gRPC, HTTP): any telemetry, so an application can write under another's name | Grafana LGTM attached as it is (PA-2, decided 2026-10-21) |
+| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read | Grafana LGTM attached as it is (PA-2) |
+| `grafana-lgtm` | 3000 | Grafana, behind its login on the demo host | the dashboards (REQ-2) |
+
+Kept on the containers' loopback, unreachable from any network:
+
+- RabbitMQ's epmd (4369) and Erlang distribution (25672): behind its cookie, the distribution runs
+  code in RabbitMQ, and its tools (`rabbitmqctl`, the healthcheck, the registration) run inside the
+  container (PA-3, REQ-10: `ERL_EPMD_ADDRESS` and `inet_dist_use_interface` in
+  [`compose.yml`](compose.yml));
+- Grafana LGTM's memberlist (7946), Loki's, Tempo's and Pyroscope's gRPC ports (9095, 9096, 9097)
+  and its collector's health check (13133): its components' own (PA-4, decided 2026-10-22,
+  REQ-11: the `*_EXTRA_ARGS` of [`compose.yml`](compose.yml) and
+  [`grafana-lgtm/tempo-config.yaml`](grafana-lgtm/tempo-config.yaml), a copy of the image's file
+  to regenerate with each image upgrade: `tests/0007-lgtm.sh` fails until it is).
 
 ### On the host
 

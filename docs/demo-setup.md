@@ -85,10 +85,14 @@ Generate them, e.g. `openssl rand -base64 32`, and **store them in a password ma
 | `RABBITMQ_ADMIN_PASSWORD` | the broker's administrator `admin` | set when RabbitMQ's volume is created |
 | `MAILPIT_SMTP_PASSWORD` | SMTP user `mailpit` | the applications render it into their realms |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana's `admin` user | |
-| `MAILPIT_UI_PASSWORD_HASH` | `/mailpit/`, user `demo` | the bcrypt hash of a password of your choice (below) |
+| `MAILPIT_UI_PASSWORD_HASH` | Mailpit's UI and API (`/mailpit/`, or `mailpit:8025` from a container), user `demo` | the bcrypt hash of a password of your choice (below); Mailpit reads it (`MP_UI_AUTH`) |
+
+The password typed without echo, then given to `caddy hash-password` on its stdin, never on a
+command line (`printf` is a shell builtin):
 
 ```bash
-docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext '<Mailpit UI password>'
+read -rsp 'Mailpit UI password: ' password && echo \
+  && printf '%s\n' "$password" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password; unset password
 ```
 
 The first three are fixed by the first deployment: the services don't read them again. Changing
@@ -156,8 +160,10 @@ gh run watch -R ch4mpy/c4-infra
 ## 8. Check
 
 - `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD`.
-- `https://infra.c4-soft.com/mailpit/` (user `demo`) and `https://infra.c4-soft.com/grafana/`
-  (user `admin`; anonymous access is off).
+- `https://infra.c4-soft.com/mailpit/` asks for its credentials (user `demo`, the password of step
+  5): Mailpit asks for them itself, through Caddy as from an application's container (only
+  `/mailpit/livez` and `/mailpit/readyz` answer without);
+- `https://infra.c4-soft.com/grafana/` (user `admin`; anonymous access is off).
 - On the host: `ssh c4-infra@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l'`.
 
 ## 9. Adding an application
