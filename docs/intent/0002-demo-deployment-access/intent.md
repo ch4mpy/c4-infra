@@ -4,9 +4,9 @@
 - Kind: change
 - Source: conversation (security review of the shared stack, 2026-10-21)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-21
-- Decided: —
+- Decided: 2026-10-21
 - Supersedes: —
 
 ## Problem
