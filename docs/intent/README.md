@@ -50,7 +50,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | --- | --- | --- | --- | --- | --- |
 | 0001 | [The dev stack is reachable from the local network](0001-dev-stack-reachable-from-the-network/intent.md) | bug | planned | 2026-10-21 | 2026-10-21 |
 | 0002 | [Deploying to the demo host gives every application's workflow the whole host](0002-demo-deployment-access/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
-| 0003 | [Dev doesn't apply the demo's reverse-proxy rules](0003-dev-and-demo-proxies-diverge/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
+| 0003 | [Dev doesn't apply the demo's reverse-proxy rules](0003-dev-and-demo-proxies-diverge/intent.md) | change | planned | 2026-10-21 | 2026-10-21 |
 | 0004 | [Nothing prevents two applications from taking the same port block](0004-port-registry-unchecked/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
 | 0005 | [A theme change restarts the Keycloak every application uses](0005-theme-change-restarts-keycloak/intent.md) | change | specified | 2026-10-21 | 2026-10-21 |
 | 0006 | [Registrations depend on Keycloak's temporary bootstrap administrator](0006-registration-uses-bootstrap-admin/intent.md) | bug | specified | 2026-10-21 | 2026-10-21 |

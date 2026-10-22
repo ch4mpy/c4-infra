@@ -1,0 +1,181 @@
+# Plan: Dev doesn't apply the demo's reverse-proxy rules
+
+- Spec: [v1](spec.md)
+- Status: approved
+- Branch: main (grouped pass of 2026-10-21)
+- Approved: 2026-10-22, Jérôme Wacongne (engineer, product owner and tech lead), after two rounds of cross-plan coherence review
+- Builds on: 0001 (ports on `127.0.0.1`, `tests/lib/`, `tests/run.sh`), 0004 (`registry.txt`, `registry.sh`: `registry_entry`, `registry_upstream`; the upload already sends both). Introduces the environment setting `INFRA_ENV` that 0005 relies on (0003 is delivered first).
+
+## Starting point
+
+- Dev: nginx (`nginx/nginx.conf`, `nginx/apps/<app>.conf`), `compose.yml`; demo: Caddy (`demo/caddy/Caddyfile`, `demo/caddy/apps/<app>.caddy`), `demo/compose.yml`; `register-app.sh` tells them apart by `PROXY` (`nginx` / `caddy`).
+- **Faito registers today with `reverse-proxy/faito.conf`** (an nginx block) from its own `deploy-dev.sh`, and keeps doing so until Faito 0021 lands, much later in the pass (after Faito 0016–0024). This plan keeps Faito registrable meanwhile: a `--proxy` naming a `.conf` file is replaced, with a warning, by `examples/routes/<app>.routes` when that file exists, and Faito's is written here (AC-9). Faito 0021 then copies it to its repository and passes it to `--proxy`; removing the transition afterwards is a follow-up change of c4-infra (to open once Faito 0021 is delivered).
+- Faito's front end still loads Google fonts (Faito 0018 comes later): it is AC-1's live example.
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `compose.yml` | rewritten as the **base**: every service, image version, volume, healthcheck and the logging anchor, `networks: [default]` written on each service (0007 adds networks), Caddy `caddy:2.11.4-alpine` as `reverse-proxy` (env `INFRA_HOST`, `INFRA_ENV`; `./caddy/:/etc/caddy/:ro`, `caddy_data`, `caddy_config`; healthcheck on the admin API), Keycloak `image: ${KC_IMAGE}`, RabbitMQ `rabbitmq:4.3.5`; **no `ports`**, no `build` | REQ-1, REQ-5, REQ-9, AC-5 |
+| `compose.dev.yml` | new: ports on `127.0.0.1` (80, 443, 1025, 8025, 5672, 15672, 3000, 4317, 4318); `./certs/:/certs/:ro` and `extra_hosts host.docker.internal:host-gateway` on Caddy; Keycloak `build: ./keycloak`, `KC_TRUSTSTORE_PATHS`, `ca.crt` mount, `extra_hosts`; Mailpit's SMTP TLS (`MP_SMTP_TLS_*`, certs mount; its UI no longer serves TLS: one Mailpit route for both environments); RabbitMQ `rabbitmq/rabbitmq.conf` and `rabbitmq/enabled_plugins` mounts | REQ-2, REQ-5, REQ-9, AC-10 |
+| `compose.demo.yml` | new (replaces `demo/compose.yml`): ports `80`, `443` on Caddy only, `MAILPIT_UI_PASSWORD_HASH` and the `${INFRA_HOST}` network alias on Caddy, `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, `MP_SMTP_AUTH_ALLOW_INSECURE`, Grafana's admin password and `GF_AUTH_ANONYMOUS_ENABLED: 'false'`, the `mem_limit`s | REQ-2, REQ-5, REQ-9, AC-10 |
+| `demo/compose.yml` | deleted | REQ-5 |
+| `rabbitmq/enabled_plugins` | new: `[rabbitmq_management,rabbitmq_prometheus].` (dev only: the management UI) | REQ-2 |
+| `caddy/Caddyfile` | new (from `demo/caddy/Caddyfile`): `import env/{$INFRA_ENV}.caddy` first, the snippets, the shared host's site, `import apps/*.caddy`; no global options block (the tests wrap it) — skeleton below | REQ-1, REQ-3, AC-3, AC-6 |
+| `caddy/env/dev.caddy` | new: `(env-tls)` = `tls /certs/tls.crt /certs/tls.key`; `(env-hsts)` empty; `(env-mailpit-auth)` empty; `(env-infra-routes)` = `/rabbitmq/*` → `rabbitmq:15672` and the landing page `/` (`caddy/html/index.html`) | REQ-2, REQ-3, AC-2 |
+| `caddy/env/demo.caddy` | new: `(env-tls)` empty (Let's Encrypt); `(env-hsts)` = `Strict-Transport-Security "max-age=31536000; includeSubDomains"`; `(env-mailpit-auth)` = the `basic_auth` of today; `(env-infra-routes)` empty | REQ-2, REQ-3, AC-3 |
+| `caddy/apps/.gitkeep` | new (generated sites, git-ignored) | REQ-4 |
+| `demo/caddy/Caddyfile`, `demo/caddy/apps/.gitkeep` | deleted | REQ-1 |
+| `nginx/nginx.conf`, `nginx/apps/.gitkeep` | deleted (and the untracked `nginx/apps/faito.conf`, `nginx/html/` removed from disk) | REQ-1 |
+| `routes.sh` | new, sourced by `register-app.sh` and a command (`bash routes.sh generate <routes file> <app> <dev\|demo>`): parses a routes file (grammar below), refuses anything else with `<file>:<line>: …`, and prints the Caddy site from the registry entry and `registry_upstream` | REQ-4, AC-4, AC-9, AC-11, 0004 AC-2 |
+| `examples/routes/faito.routes`, `hururaa.routes`, `turu.routes` | new: the three applications' routes (contents below); `faito.routes` is also the transition's file | REQ-8, AC-9 |
+| `register-app.sh` | modified: reads `INFRA_ENV` (refuses anything but `dev` or `demo`), no longer `PROXY`; `--proxy <routes file>` generates the site into `caddy/apps/<app>.caddy`, then `caddy validate` / `caddy reload` in `c4-infra.reverse-proxy`, restoring the previous file on failure (today's logic) — never a restart nor a recreation of Caddy, which keeps the `env-*` snippets it was started with; a `.conf` argument → the transition (warning on stderr); the landing page (`caddy/html/index.html`, dev only) lists the registered applications' dev hosts from the registry | REQ-4, REQ-7, AC-4, AC-7 |
+| `env.sh` | modified: adds `INFRA_ENV=dev`, `KC_IMAGE=c4-infra/keycloak`, `COMPOSE_FILE=compose.yml:compose.dev.yml`, `COMPOSE_PATH_SEPARATOR=:`; deletes a `PROXY=` line | REQ-7, REQ-5 |
+| `up.sh` | modified: landing page path; after `docker compose up -d --build --wait`, `caddy reload` in the proxy (restart if it fails) instead of nginx's; certificate change restarts `reverse-proxy` and `mailpit` as today | REQ-1 |
+| `demo/write-env.sh` | new: `bash demo/write-env.sh <file>` writes the demo host's `.env` from the deployment's environment variables (`umask 077`, then `chmod 600`: `rsync -a` keeps that mode on the host, as the workflow's `chmod 600` did), failing by name when a secret is missing (moved out of the workflow): adds `INFRA_ENV=demo`, `COMPOSE_FILE=compose.yml:compose.demo.yml`, `COMPOSE_PATH_SEPARATOR=:`, drops `PROXY`; `bash demo/write-env.sh --required` prints the names of the secrets it requires (the test harness generates one value per name) | REQ-6, REQ-7 |
+| `demo/deploy-files.txt` | new: the files the deployment sends, one path per line, no comment: `compose.yml`, `compose.demo.yml`, `caddy/Caddyfile`, `caddy/env/demo.caddy`, `registry.txt`, `registry.sh`, `routes.sh`, `register-app.sh`, `demo/deploy.sh`, `demo/backup.sh` | REQ-6, AC-8 |
+| `demo/deploy.sh` | new: the host's side of the deployment (moved out of the workflow's heredoc): `mkdir -p keycloak/themes caddy/apps`, `docker compose up -d --remove-orphans --wait --wait-timeout 300` (prints `docker compose ps` on failure), `caddy reload`, image prune, the nightly backup in the crontab (`cd ~/c4-infra && bash ./demo/backup.sh`) | REQ-6, AC-8 |
+| `demo/backup.sh` | modified: `cd "$(dirname "$0")/.."` (the stack's directory, now the parent) | REQ-6 |
+| `.github/workflows/deploy-demo.yml` | modified: `bash demo/write-env.sh .env` (secrets in `env:`; the file is `600` before any `rsync`), `rsync -az --files-from=demo/deploy-files.txt ./ "$VPS:~/c4-infra/"` and `rsync -az .env "$VPS:~/c4-infra/.env"`, then over ssh (stdin heredoc, as today): GHCR login, `docker compose pull --quiet`, logout, `bash ./demo/deploy.sh` | REQ-6, AC-8 |
+| `.gitignore` | modified: `caddy/apps/*`, `!caddy/apps/.gitkeep`, `caddy/html/` replace the nginx and `demo/caddy` lines | REQ-4 |
+| `README.md` | modified: Design (Caddy in dev and on the demo host, base + overrides, `INFRA_ENV`), the services table (Mailpit's 8025 over HTTP), "What an application provides" (a routes file instead of an nginx block, `--proxy reverse-proxy/<app>.routes`), a "Routes file" section (grammar, roles, upstreams per environment, the first-match rule, the 404, the headers), the demo section (no Caddy site to write; layout of `~/c4-infra`) | REQ-4, REQ-8 |
+| `docs/migration.md` | modified: dev step 5 becomes "Routes file" (grammar, `examples/routes/` for Turu, Hurura'a and Faito); demo step 4 drops the `.caddy` file; Faito: its routes file replaces `reverse-proxy/faito.conf` (Faito 0021) | REQ-8, AC-9 |
+| `docs/demo-setup.md` | modified: step 7 (what the deployment sends: `demo/deploy-files.txt`, `demo/deploy.sh`) | REQ-6 |
+| `CLAUDE.md` | modified: layout line (base `compose.yml` + `compose.dev.yml` / `compose.demo.yml`, `caddy/`, `routes.sh`, `demo/` holds the demo host's scripts); verification: `bash tests/run.sh --all` runs the stand-in host | REQ-5 |
+| `tests/stand-in-host/Dockerfile`, `entrypoint.sh`, `compose.no-acme.yml` | new: a **stand-in demo host** (below) | AC-8; reused by 0006, 0002, 0007 |
+| `tests/lib/stand-in-host.sh` | new: `stand_in_up`, `stand_in_exec`, `stand_in_load_image`, `stand_in_send <dir>`, `stand_in_env <dir>`, `stand_in_down`, and `selftest` | AC-8 |
+| `tests/fixtures/stand-in-upstream/http.caddy`, `https.caddy` | new: echo upstreams (`respond "upstream={$STAND_IN_NAME} host={host} uri={uri}"`, on `:{$PORT}`; the HTTPS one with `certs/tls.crt`) | AC-3, AC-4, AC-6, AC-7, AC-11 |
+| `tests/fixtures/0003/registry.txt` | new: the real four entries plus `36 verif-ui …` and `37 verif …` (ports 46xxx, 47xxx) | AC-4, AC-11 |
+| `tests/fixtures/0003/*.routes`, `demo.env` | new: `verif.routes` (`/gateway/*`, `/fr/*`, `/en/*`, `/` redirect, a regex route with `max-body=1KB`), `verif-ui.routes` (`/ui/*`, `/` → `/ui/`), one file per refusal case, dummy values for `docker compose config` of the demo override | AC-4, AC-10, AC-11 |
+| `tests/0003-routes.sh` | new: the generator, static (no Docker) | AC-4, AC-9, AC-11, 0004 AC-2 |
+| `tests/0003-caddy-config.sh` | new: `caddy validate` of the shared configuration with every example site, dev and demo, in throwaway Caddy containers | REQ-1, AC-9 |
+| `tests/0003-demo-edge.sh` | new: a throwaway Caddy running the demo configuration (wrapped with `local_certs`) in front of echo stand-ins | AC-3, AC-6 |
+| `tests/0003-compose.sh` | new: `docker compose config` of both environments | AC-5, AC-10 |
+| `tests/0003-dev-routes.sh` | new: against the running dev stack, with the fixture applications and echo stand-ins | AC-1 (headers), AC-2, AC-4, AC-6, AC-11 |
+| `tests/0003-env-switch.sh` | new: `INFRA_ENV=demo` on the workstation | AC-7 |
+| `tests/0003-demo-deploy.stand-in.sh` | new: the deployment on the stand-in host | AC-8 |
+| `docs/intent/0003-dev-and-demo-proxies-diverge/plan.md` | new: this plan (`approved` at the gate) | bookkeeping |
+| `docs/intent/0003-dev-and-demo-proxies-diverge/intent.md` | modified: status `planned` at approval | bookkeeping |
+| `docs/intent/README.md` | modified: index row 0003 → `planned` | bookkeeping |
+
+### The routes file (REQ-4; Faito 0021 relies on this notation)
+
+This notation is a contract: Faito 0021 registers Faito with `reverse-proxy/faito.routes`, a copy of `examples/routes/faito.routes`, and the `create-dev-infra` skill (skills 0015) generates the same. Changing it, once delivered, is a new intent.
+
+```text
+# one route per line; '#' starts a comment
+<path>  <target>  [<option>...]
+  path:    /exact  |  /prefix/*  |  ~<regular expression>   (characters: A-Z a-z 0-9 . _ ~ / -, and for a regex ^ $ * + ? ( ) | [ ])
+  target:  gateway | mcp | fr | en | ui | redirect
+  options: to=<path>          redirect only, required: a path on the same host (not //...)
+           max-body=<n>KB|MB  request body limit (413 beyond)
+           prefix=<path>      prepended to the request's path before proxying
+```
+
+- Routes are tried in the file's order, the first match serves the request; a `/<p>/*` route also redirects `/<p>` to `/<p>/` (301, as nginx did); any other path answers `404`.
+- Front-end targets (`fr`, `en`, `ui`) get the single-page-app headers (`spa-headers`: CSP, `X-Frame-Options`, `Permissions-Policy`); every response gets `X-Content-Type-Options`, `Referrer-Policy`, no `Server`, and HSTS on the demo host only.
+- No host name, scheme or port: a token holding `://` or `<name>:<digits>`, or outside the grammar, is refused with `<file>:<line>: routes name neither a host nor a port: '<token>'` (0004 AC-2, 0002 AC-3).
+
+`examples/routes/faito.routes`: `/ redirect to=/fr/`, `/gateway/* gateway`, `/fr/* fr`, `/en/* en`.
+`examples/routes/hururaa.routes`: Faito's, plus `/assets/* fr prefix=/fr` (pf-ui's absolute image paths; on the demo host `/fr/assets/…` is a file of the front-end container).
+`examples/routes/turu.routes`: `~^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$ gateway max-body=64MB` first, then `/gateway/* gateway`, `/mcp mcp`, `/.well-known/oauth-protected-resource/mcp mcp`, `/fr/* fr`, `/en/* en`, `/assets/* fr prefix=/fr`, `/ redirect to=/fr/`.
+
+### The generated site
+
+```caddyfile
+# Generated by c4-infra's register-app.sh from <app>'s routes file and registry entry (INFRA_ENV=<env>): don't edit
+<dev-host or demo-host> {
+	import site                     # encode zstd gzip, env-tls, common-headers (+ env-hsts)
+	@route1 path_regexp "<regex>"   # one named matcher per regex route
+	route {
+		handle / { redir * /fr/ temporary }
+		handle @route1 { request_body { max_size 64MB } <proxy gateway> }
+		handle /fr/* { import spa-headers  <proxy fr> }
+		handle /assets/* { import spa-headers  rewrite * /fr{uri}  <proxy fr> }
+		handle /fr { redir * /fr/ permanent }      # one per /<p>/* route without an exact /<p> one
+		handle { respond 404 }
+	}
+}
+```
+
+`<proxy role>` per environment, upstream from `registry_upstream`: dev HTTPS roles (`gateway`, `mcp`) →
+`reverse_proxy https://host.docker.internal:<p>080 { header_up Host {hostport}  transport http { tls_server_name host.docker.internal  tls_trust_pool file /certs/ca.crt } }`
+(Caddy ≥ 2.11 sets the upstream's host as `Host` for HTTPS upstreams: `{hostport}` keeps the client's, as nginx's `proxy_set_header Host $host` did); dev HTTP roles → `reverse_proxy http://host.docker.internal:<port>`; demo → `reverse_proxy http://<app>.gateway:7080` / `http://<app>.frontend:80`; demo `mcp` → the generation fails with `registry_upstream`'s message.
+
+**What `INFRA_ENV` switches at registration.** `register-app.sh` reads `INFRA_ENV` from `.env` at each run, and it only picks the generated site's host name and upstreams. It never recreates nor restarts Caddy: it validates and reloads the running one (`caddy validate`, `caddy reload` in `c4-infra.reverse-proxy`), whose `env-*` snippets stay those of the `INFRA_ENV` it was started with. So `INFRA_ENV=demo` in the workstation's `.env`, with `register-app.sh` only (no `up.sh`, no `docker compose up`), renders and serves the demo site (`faito.c4-soft.com`, `faito.gateway:7080`…) on the dev Caddy, with the dev certificate and no HSTS: AC-7's check, and Faito 0021's demo check (`.env` backed up and restored by a `trap`).
+
+### The shared `caddy/Caddyfile`
+
+```caddyfile
+import env/{$INFRA_ENV}.caddy
+(common-headers) { header { X-Content-Type-Options "nosniff"  Referrer-Policy "strict-origin-when-cross-origin"  -Server }  import env-hsts }
+(spa-headers) { …today's demo snippet, unchanged… }
+(site) { encode zstd gzip  import env-tls  import common-headers }
+{$INFRA_HOST} {
+	import site
+	handle /auth/* { reverse_proxy keycloak:8080 }
+	@realm-discovery path_regexp discovery …today's…   handle @realm-discovery { rewrite …  reverse_proxy keycloak:8080 }
+	handle /mailpit/* { import env-mailpit-auth  reverse_proxy mailpit:8025 }
+	handle /grafana/* { reverse_proxy grafana-lgtm:3000 }
+	import env-infra-routes
+	handle { respond "c4-infra: the applications are on their own host names" 404 }
+}
+import apps/*.caddy
+```
+
+### The stand-in demo host (tests only)
+
+- `tests/stand-in-host/Dockerfile`: `ubuntu:24.04` with `docker.io docker-compose-v2 sudo openssh-server rsync jq cron curl ca-certificates iptables ufw`; `entrypoint.sh` applies moby's `hack/dind` cgroup v2 lines when `/sys/fs/cgroup/cgroup.controllers` exists (this workstation is cgroup v1), starts `sshd` and `dockerd`, then sleeps.
+- Run `--privileged --name c4-infra-stand-in --hostname vps -v c4-infra-stand-in-docker:/var/lib/docker` (the volume keeps the pulled images between runs; `STAND_IN_FRESH=1` recreates it).
+- `stand_in_send <dir>`: `tar -cf - -T demo/deploy-files.txt | docker exec -i … tar -xf - -C <dir>` — exactly what the deployment sends; `stand_in_env <dir>`: runs `demo/write-env.sh <dir>/.env` **inside the stand-in** (a Linux shell, as the workflow's runner; NTFS can't hold a `600` mode), with one random value per name `demo/write-env.sh --required` prints — a bcrypt hash of a random password for a name ending in `_HASH` (`caddy hash-password` reads it on stdin: checked on 2026-10-22) — so that a secret a later plan adds to `write-env.sh` needs no change here; `KC_IMAGE=c4-infra/keycloak` (loaded with `docker save | docker load`); then `:compose.no-acme.yml` appended to `COMPOSE_FILE` and that file copied: `services: { reverse-proxy: { dns: [127.0.0.1] } }`, so that Caddy can't reach Let's Encrypt from a test.
+
+## Order of work
+
+1. **Stand-in host harness** (test infrastructure, no product change). — skill: none — check: `bash tests/lib/stand-in-host.sh selftest` (builds the image, starts it, `docker info` and `sshd -t` succeed inside, stops it).
+2. **Routes file and generator**: `routes.sh`, `examples/routes/*.routes`, `tests/fixtures/0003/`, `tests/0003-routes.sh`. Cases: Faito dev and demo (AC-4's upstreams and host names, the `/` redirect, the trailing-slash redirects, the final 404); Hurura'a dev and demo; Turu dev (regex matcher, `max_size 64MB`, `rewrite * /fr{uri}`, `https://host.docker.internal:11280` for `/mcp`) and demo (exit ≠ 0, the message names `README.md` and `What an application's deployment does`); `verif-ui` dev (`/ui/*` → `http://host.docker.internal:46200`); refusals: `host.docker.internal:12080` (0004 AC-2), `hururaa.c4-soft.com`, `keycloak:8080`, `http://x`, an unknown target, an unknown option, `to=` on a role, `redirect` without `to=`, `to=//evil.example`, a regex holding `{`, a quote in a path. — skill: none — check: `bash tests/0003-routes.sh`.
+3. **Shared Caddy configuration**: `caddy/` (Caddyfile, `env/dev.caddy`, `env/demo.caddy`, `apps/.gitkeep`), `tests/0003-caddy-config.sh`, `tests/0003-demo-edge.sh`. Caddy-config: generate every example (dev: three; demo: Faito and Hurura'a) into temporary `apps` directories and run `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` in `caddy:2.11.4-alpine` with `INFRA_ENV=dev` (repo `caddy/` at `/etc/caddy`, the temporary apps over `/etc/caddy/apps`, `certs/` at `/certs`) and with `INFRA_ENV=demo` (`INFRA_HOST=infra.c4-soft.com`, a test `MAILPIT_UI_PASSWORD_HASH`). Demo-edge: a test network with echo stand-ins aliased `keycloak` (8080), `mailpit` (8025), `grafana-lgtm` (3000), `rabbitmq` (15672); Caddy with `INFRA_ENV=demo`, an empty apps directory, and a wrapper `/test/Caddyfile` = `{ local_certs }` + `import /etc/caddy/Caddyfile`, published on `127.0.0.1:48443`; `curl --ssl-no-revoke -sk --resolve infra.c4-soft.com:48443:127.0.0.1 …`: `/mailpit/` → 401, with `-u demo:<test password>` → 200 from the `mailpit` stand-in; `/rabbitmq/` → 404; `Strict-Transport-Security` present; `/.well-known/openid-configuration/auth/realms/faito` → 200, the stand-in reporting `uri=/auth/realms/faito/.well-known/openid-configuration`. — skill: none — check: `bash tests/0003-caddy-config.sh && bash tests/0003-demo-edge.sh`.
+4. **Switch dev to Caddy, compose base and overrides** (one step: dev must not be left half-switched): `compose.yml` (base), `compose.dev.yml`, `compose.demo.yml`, `rabbitmq/enabled_plugins`, `env.sh`, `up.sh`, `register-app.sh`, `.gitignore`; `git rm -r nginx demo/compose.yml demo/caddy`, then `rm -rf nginx`. (The demo image's defaults were checked on 2026-10-22: `rabbitmq:4.3.5`'s `/etc/rabbitmq/enabled_plugins` is `[rabbitmq_prometheus].`, so the demo host serves no management API without any setting.) Then `bash up.sh` (recreates the proxy as Caddy, and the services whose merged configuration changed) and `bash ../faito/deploy-dev.sh` (Faito registers through the transition, warning printed). **Then Faito through Caddy, end to end** — Caddy now checks the gateway's certificate against `certs/ca.crt` with SNI `host.docker.internal` and rewrites `Host`, and until Faito 0022 the gateway serves the CA certificate itself. Start Faito, each in its own Git Bash terminal (until Faito 0020 its gateway doesn't start from its jar):
+   - gateway: `export JAVA_HOME=~/.sdkman/candidates/java/25.4.4.1+1-graalce; set -a; source ../faito/.env; set +a; cd ../faito/backend && ./mvnw -q -pl gateway -am install -DskipTests && ./mvnw -pl gateway spring-boot:run`;
+   - REST API: the same with `-pl faito-api`;
+   - front end: `cd ../faito/frontend/angular && npm start`.
+
+   Then `curl --ssl-no-revoke -s -w '\n%{http_code} %{content_type}\n' --resolve faito.dev.localhost:443:127.0.0.1 https://faito.dev.localhost/gateway/me` prints the real gateway's JSON (an anonymous user) and `200 application/json`; and by hand, as 0001's AC-3: log in on `https://faito.dev.localhost/fr/`, log out (back on `/fr/`, anonymous), log in again, sign the user out from `https://host.docker.internal/auth/admin/` (realm `faito`, Sessions): `https://faito.dev.localhost/gateway/me` in the same browser shows an anonymous user (back-channel logout). Write `tests/0003-compose.sh` (dev and demo `config`: every shared image the same in both; `! grep -n 'image:' compose.dev.yml compose.demo.yml`; no `ports:` in `compose.yml`; dev ports all on `127.0.0.1`; demo published ports exactly `80` and `443`; AC-5's change: in a temporary copy, `axllent/mailpit:v1.31.0` → `v0.0.0-test` in `compose.yml` only, both configs show `v0.0.0-test`) and `tests/0003-dev-routes.sh` (registers `verif` and `verif-ui` with `REGISTRY_FILE=tests/fixtures/0003/registry.txt` and the fixture routes, echo stand-ins on `127.0.0.1:47080` (HTTPS), `47200`, `47205`, `46200`; through `--resolve <host>:443:127.0.0.1`: `/gateway/x` answered by 47080 with `host=verif.dev.localhost`; `/fr/x` by 47200 with a CSP holding `font-src 'self'`; `/en/x` by 47205; `/` → 302 `/fr/`; `/fr` → 301 `/fr/`; `/nothing` → 404; a 2 KB POST to the regex path → 413 and to `/gateway/other` → 200 (first match, in order); `verif-ui` `/ui/x` answered by 46200; no `Strict-Transport-Security` on `faito.dev.localhost/` nor `host.docker.internal/`; `https://host.docker.internal/.well-known/openid-configuration/auth/realms/faito` → 200; `bash register-app.sh --app hururaa --proxy examples/routes/hururaa.routes` and `--app turu --proxy examples/routes/turu.routes` exit 0 (AC-9, dev); then removes `caddy/apps/{verif,verif-ui,hururaa,turu}.caddy`, reloads Caddy, rewrites the landing page, stops the stand-ins). — skill: none — check: `bash tests/0003-compose.sh && bash tests/0003-dev-routes.sh && bash tests/0001-loopback-ports.sh && bash tests/0004-registry.sh`; `curl --ssl-no-revoke -s -o /dev/null -w '%{http_code}' https://host.docker.internal/rabbitmq/` → `200`, `…/mailpit/` → `200`, `…/auth/realms/faito` → `200`; the `/gateway/me` call above → `200 application/json`; the manual login, logout and back-channel logout above, results in the PR.
+5. **Environment switch on the workstation**: `tests/0003-env-switch.sh`: back up `.env` (restored by a `trap`, and never running `up.sh` or `docker compose up` meanwhile: Caddy keeps its dev configuration), set `INFRA_ENV=demo`, start echo stand-ins `faito.gateway` (`:7080`) and `faito.frontend` (`:80`) on the `c4-infra` network, `bash register-app.sh --app faito --proxy examples/routes/faito.routes`; `caddy/apps/faito.caddy` names `faito.c4-soft.com`, `http://faito.gateway:7080`, `http://faito.frontend:80`; `curl -sk --resolve faito.c4-soft.com:443:127.0.0.1 https://faito.c4-soft.com/gateway/x` is answered by `faito.gateway`, `/fr/x` and `/en/x` by `faito.frontend`; then `INFRA_ENV=dev`, register again: the file names `faito.dev.localhost` and `https://host.docker.internal:14080` again. — skill: none — check: `bash tests/0003-env-switch.sh`.
+6. **Demo deployment**: `demo/write-env.sh`, `demo/deploy-files.txt`, `demo/deploy.sh`, `demo/backup.sh`, the workflow; `tests/0003-demo-deploy.stand-in.sh`: on the stand-in host, `/root/c4-infra` holding only `stand_in_send` + `stand_in_env`, and `stat -c %a /root/c4-infra/.env` is `600`; the test skips the workflow's `docker compose pull` (the loaded `KC_IMAGE` is in no registry: `docker compose up` in `demo/deploy.sh` pulls the other, missing images itself), then `bash demo/deploy.sh` exits 0 and `docker compose ps --format '{{.Name}} {{.Health}}'` shows every service `healthy`; then the applications register there: Faito with `bash register-app.sh --app faito --realm <faito-realm.json copied in> --proxy <examples/routes/faito.routes copied in> --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD` exits 0 and `caddy/apps/faito.caddy` names `faito.c4-soft.com`; Hurura'a with `--proxy examples/routes/hururaa.routes` exits 0; Turu with `--proxy examples/routes/turu.routes` exits ≠ 0 naming the README section, and no `caddy/apps/turu.caddy` is left. — skill: none — check: `bash tests/0003-demo-deploy.stand-in.sh`.
+7. **Docs**: README, `docs/migration.md`, `docs/demo-setup.md`, `CLAUDE.md`. — skill: none — check: `bash tests/run.sh` passes and `grep -rn 'nginx\|PROXY=' README.md docs/migration.md docs/demo-setup.md CLAUDE.md` finds no instruction left (history aside).
+8. **AC-1 in a browser**, with Faito's French dev server (`cd ../faito/frontend/angular && npm run start-fr`; the gateway as in step 4 if the page's calls must succeed). — skill: none — check: AC-1's proof line, screenshot or console text in the PR.
+
+## Risks
+
+- Caddy's `handle` blocks inside `route` must stay mutually exclusive and in file order → `tests/0003-dev-routes.sh` proves it (the 413 on the regex route but not on `/gateway/other`, the final 404); if not, the generator emits Caddy's own specificity order and the README's rule changes accordingly (a deviation).
+- Caddy 2.11 rewrites `Host` for HTTPS upstreams → `header_up Host {hostport}`, proven by the echo stand-in reporting `host=verif.dev.localhost`.
+- The Angular dev server itself may need more than the demo's CSP (inline or `eval` scripts) → step 8 tells it apart from the expected Google-fonts violations; a blocked dev server would be a requirement problem (REQ-3 sends the demo's headers in dev) → stop, spec v2.
+- Faito unregistrable between this change and Faito 0021 → the transition (`.conf` → `examples/routes/faito.routes`), exercised by step 4's `deploy-dev.sh`; its removal is a follow-up c4-infra change once Faito 0021 is delivered, noted in `register-app.sh` next to it.
+- `COMPOSE_FILE` with `:` on Windows → `COMPOSE_PATH_SEPARATOR=:` in `.env` (checked with a scratch project on this workstation, 2026-10-21); `export-realm.sh`, `demo/backup.sh` and the README's `docker compose ps` keep working because compose reads both from `.env`.
+- `INFRA_ENV` missing → Caddy can't import `env/.caddy` and doesn't start (fail fast); `env.sh` and `demo/write-env.sh` write it.
+- Mailpit's dev UI over plain HTTP on `127.0.0.1:8025` → nothing in Faito, Turu or Hurura'a calls `https://…:8025` (searched 2026-10-21); the README says so.
+- Step 4 recreates the proxy and possibly Keycloak (merged configuration changed: logging driver) → one minute of downtime, once, Faito's processes stopped.
+- The stand-in host (Docker in Docker on Docker Desktop) may not start dockerd from Ubuntu → fall back to `docker:29-dind` with `apk add bash sudo shadow openssh rsync jq` (a deviation); Let's Encrypt is kept out by `compose.no-acme.yml`.
+- A `.env` switched to `demo` on the workstation and then `up.sh` run → Caddy would come up with demo snippets (no certificate) → `tests/0003-env-switch.sh` restores `.env` in a `trap` and never starts compose; `register-app.sh` alone never changes Caddy's mode (see "What `INFRA_ENV` switches at registration").
+- Caddy refusing Faito's gateway certificate (until Faito 0022 the gateway serves the self-signed CA certificate itself, `CA:TRUE`, SAN `host.docker.internal`; Go accepts a leaf that is itself in the trust pool) → step 4's `/gateway/me` call shows it at once; if it fails, it is a deviation for the tech lead (dev only: `tls_insecure_skip_verify`, nginx's former `proxy_ssl_verify off`, until Faito 0022).
+- `demo/write-env.sh` writing `.env` without `600` → `rsync -a` would land every secret world-readable on the host → the script sets the mode itself, and `tests/0003-demo-deploy.stand-in.sh` asserts `600` on the host's copy.
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| AC-1 | automated test + manual check | `bash tests/0003-dev-routes.sh` (CSP with `font-src 'self'` on a front-end path). Manual: Faito's `npm run start-fr`, Chrome on `https://faito.dev.localhost/fr/`, DevTools console shows `Refused to load … fonts.googleapis.com … because it violates the following Content Security Policy directive` (and nothing else blocked) |
+| AC-2 | automated test | `bash tests/0003-dev-routes.sh` — no `Strict-Transport-Security` on `https://faito.dev.localhost/` (nor on the shared host) |
+| AC-3 | automated test, then first demo deployment | `bash tests/0003-demo-edge.sh` (`/mailpit/` 401 without credentials, `/rabbitmq/` 404, the demo configuration in a throwaway Caddy). Not verifiable here — first demo deployment: `curl -s -o /dev/null -w '%{http_code}' https://infra.c4-soft.com/mailpit/` → `401`, `…/rabbitmq/` → `404` |
+| AC-4 | automated tests | `bash tests/0003-routes.sh` (Faito's generated site, dev: `https://host.docker.internal:14080`, `http://host.docker.internal:14200`, `14205`; demo: `http://faito.gateway:7080`, `http://faito.frontend:80`), `bash tests/0003-dev-routes.sh` (the same template served, fixture application), `bash tests/0003-env-switch.sh` (demo upstreams served); step 4's `curl … https://faito.dev.localhost/gateway/me` → `200 application/json` from Faito's real gateway, and the manual login, logout and back-channel logout |
+| AC-5 | automated test | `bash tests/0003-compose.sh` — `v0.0.0-test` changed in `compose.yml` only shows in both configs; no `image:` in the overrides |
+| AC-6 | automated tests, then first demo deployment | `bash tests/0003-dev-routes.sh` (dev: `200` from Keycloak for realm `faito`), `bash tests/0003-demo-edge.sh` (demo definition: `200`, rewritten to `/auth/realms/faito/.well-known/openid-configuration`). Not verifiable here — first demo deployment: `curl -s -o /dev/null -w '%{http_code}' https://infra.c4-soft.com/.well-known/openid-configuration/auth/realms/faito` → `200` once Faito's realm is there |
+| AC-7 | automated test | `bash tests/0003-env-switch.sh` |
+| AC-8 | automated test (stand-in host), then first demo deployment | `bash tests/0003-demo-deploy.stand-in.sh`. Not verifiable here — first demo deployment: the workflow's run on the VPS ends with every service healthy |
+| AC-9 | automated tests + docs | `bash tests/0003-routes.sh` (Turu dev ok, demo refused naming the README section; Hurura'a and Faito both), `bash tests/0003-caddy-config.sh` (every generated site valid in its environment), `bash tests/0003-dev-routes.sh` (Turu and Hurura'a registered in dev), `bash ../faito/deploy-dev.sh` (Faito in dev), `bash tests/0003-demo-deploy.stand-in.sh` (Faito and Hurura'a registered on the stand-in demo host, Turu refused); `docs/migration.md` links `examples/routes/` |
+| AC-10 | automated test | `bash tests/0003-compose.sh` (dev: every published port on `127.0.0.1`; demo: exactly `80`, `443`) and `bash tests/0001-loopback-ports.sh` on the running stack |
+| AC-11 | automated tests | `bash tests/0003-routes.sh` (`verif-ui`: `/ui/*` → `http://host.docker.internal:46200`), `bash tests/0003-dev-routes.sh` (served by the 46200 stand-in) |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
