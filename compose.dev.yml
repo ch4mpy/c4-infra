@@ -21,6 +21,12 @@ services:
     environment:
       # back-channel logout calls the gateways on the host, which serve certificates of the local CA
       KC_TRUSTSTORE_PATHS: /opt/keycloak/certs/ca.crt
+      # dev only: no theme nor template cache, and static resources the browsers don't keep, so that
+      # a theme register-app.sh installs shows on reload, with no restart (the demo host keeps
+      # Keycloak's caching, and register-app.sh restarts it there when a theme changes)
+      KC_SPI_THEME__STATIC_MAX_AGE: '-1'
+      KC_SPI_THEME__CACHE_THEMES: 'false'
+      KC_SPI_THEME__CACHE_TEMPLATES: 'false'
     volumes:
       - ./certs/ca.crt:/opt/keycloak/certs/ca.crt:ro
     extra_hosts:
