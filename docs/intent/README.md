@@ -47,4 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
-| 0004 | [Nothing prevents two applications from taking the same port block](0004-port-registry-unchecked/intent.md) | change | proposed | 2026-10-21 | — |
+| 0004 | [Nothing prevents two applications from taking the same port block](0004-port-registry-unchecked/intent.md) | change | accepted | 2026-10-21 | 2026-10-21 |
