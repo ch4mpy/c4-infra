@@ -143,8 +143,9 @@ jobs:
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
 
       - name: Upload the deployment files
-        # never --delete: caddy/apps/ and keycloak/themes/ hold what the applications registered
-        run: rsync -az --exclude 'caddy/apps/*' demo/ register-app.sh "$VPS:~/c4-infra/"
+        # never --delete: caddy/apps/ and keycloak/themes/ hold what the applications registered.
+        # The registry goes next to register-app.sh, which refuses an application missing from it.
+        run: rsync -az --exclude 'caddy/apps/*' demo/ register-app.sh registry.txt registry.sh "$VPS:~/c4-infra/"
 
       - name: Pull and restart the stack
         run: |
