@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# 0003: the demo host's edge, from the one shared configuration (REQ-1, REQ-2): a throwaway Caddy
+# running caddy/ with INFRA_ENV=demo (wrapped with local_certs, no Let's Encrypt) in front of echo
+# stand-ins of the shared services. Mailpit asks for its basic authentication and RabbitMQ has no
+# route (AC-3), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-6).
+#
+#   bash tests/0003-demo-edge.sh
+set -uo pipefail
+cd "$(dirname "$0")/.."
+source tests/lib/assert.sh
+
+# the reverse proxy's image (compose.yml)
+CADDY_IMAGE=caddy:2.11.4-alpine
+NAME=c4-infra-test-edge
+HOST=infra.c4-soft.com
+PORT=48443
+
+host_path() {
+  if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
+work=$(mktemp -d)
+cleanup() {
+  docker rm -f $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
+  docker network rm "$NAME" > /dev/null 2>&1
+  rm -rf "$work"
+}
+trap cleanup EXIT
+cleanup
+mkdir -p "$work/apps" "$work/test"
+
+# the demo's basic_auth: a random password, its bcrypt hash in Caddy's environment (taken by
+# `docker run -e NAME` from this one, never on a command line)
+password=$(openssl rand -hex 12)
+MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password)
+export MAILPIT_UI_PASSWORD_HASH
+
+docker network create "$NAME" > /dev/null
+# the shared services, as echo upstreams under their service names
+for service in keycloak:8080 mailpit:8025 grafana-lgtm:3000 rabbitmq:15672; do
+  MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
+    -e PORT="${service#*:}" -e STAND_IN_NAME="${service%:*}" \
+    -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
+    "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null
+done
+# the demo configuration as it is, under a wrapper that only swaps Let's Encrypt for Caddy's own CA
+printf '{\n\tlocal_certs\n\tskip_install_trust\n}\n\nimport /etc/caddy/Caddyfile\n' > "$work/test/Caddyfile"
+MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
+  -e INFRA_ENV=demo -e INFRA_HOST="$HOST" -e MAILPIT_UI_PASSWORD_HASH \
+  -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
+  -v "$(host_path "$work/test"):/test:ro" \
+  "$CADDY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
+
+# Requests https://$HOST:$PORT<path>: sets $work/code, $work/headers (no \r) and $work/body
+fetch() { # <path> [curl option…]
+  local path=$1
+  shift
+  curl --ssl-no-revoke -sk --resolve "$HOST:$PORT:127.0.0.1" -D "$work/headers.raw" -o "$work/body" \
+    -w '%{http_code}' "$@" "https://$HOST:$PORT$path" > "$work/code"
+  tr -d '\r' < "$work/headers.raw" > "$work/headers"
+}
+
+answered() { # <status>
+  [ "$(cat "$work/code")" = "$1" ] || { echo "status $(cat "$work/code"), body:"; cat "$work/body"; return 1; }
+}
+
+body_holds() { # <text>
+  grep -qF -- "$1" "$work/body" || { echo "body:"; cat "$work/body"; return 1; }
+}
+
+body_is() { # <text>: the whole body (an echo stand-in's one line)
+  [ "$(cat "$work/body")" = "$1" ] || { echo "body:"; cat "$work/body"; return 1; }
+}
+
+header_is() { # <name> <value>
+  grep -qix -- "$1: $2" "$work/headers" || { echo "headers:"; cat "$work/headers"; return 1; }
+}
+
+no_header() { # <name>
+  ! grep -qi -- "^$1:" "$work/headers" || { echo "headers:"; cat "$work/headers"; return 1; }
+}
+
+waited=0
+until fetch /auth/ && [ "$(cat "$work/code")" = 200 ]; do
+  if [ "$waited" -ge 30 ]; then
+    echo "the demo Caddy doesn't answer; its log:"
+    docker logs --tail 20 "$NAME-caddy"
+    break
+  fi
+  sleep 1
+  waited=$((waited + 1))
+done
+
+# AC-3
+fetch /mailpit/
+check "/mailpit/ without credentials: 401" answered 401
+fetch /mailpit/ -u "demo:wrong"
+check "/mailpit/ with a wrong password: 401" answered 401
+printf 'user = "demo:%s"\n' "$password" > "$work/credentials"
+fetch /mailpit/ -K "$work/credentials"
+check "/mailpit/ with the credentials: 200" answered 200
+check "/mailpit/ with the credentials: answered by Mailpit" body_holds 'upstream=mailpit '
+fetch /rabbitmq/
+check "/rabbitmq/: 404" answered 404
+check "/rabbitmq/: not RabbitMQ's" body_holds 'c4-infra: the applications are on their own host names'
+fetch /
+check "/: 404 (no landing page on the demo host)" answered 404
+
+# the headers every site sends, HSTS on the demo host
+fetch /auth/realms/faito
+check "/auth/realms/faito: answered by Keycloak" body_is 'upstream=keycloak host=infra.c4-soft.com uri=/auth/realms/faito'
+check "HSTS" header_is Strict-Transport-Security 'max-age=31536000; includeSubDomains'
+check "X-Content-Type-Options" header_is X-Content-Type-Options nosniff
+check "Referrer-Policy" header_is Referrer-Policy strict-origin-when-cross-origin
+check "no Server header" no_header Server
+check "no single-page-app CSP on the shared host" no_header Content-Security-Policy
+fetch /grafana/
+check "/grafana/: answered by Grafana" body_holds 'upstream=grafana-lgtm '
+
+# AC-6
+fetch /.well-known/openid-configuration/auth/realms/faito
+check "realm discovery (openid-configuration): 200" answered 200
+check "realm discovery (openid-configuration): rewritten for Keycloak" \
+  body_is 'upstream=keycloak host=infra.c4-soft.com uri=/auth/realms/faito/.well-known/openid-configuration'
+fetch /.well-known/oauth-authorization-server/auth/realms/faito
+check "realm discovery (oauth-authorization-server): rewritten for Keycloak" \
+  body_is 'upstream=keycloak host=infra.c4-soft.com uri=/auth/realms/faito/.well-known/oauth-authorization-server'
+finish

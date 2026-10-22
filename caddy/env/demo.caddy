@@ -1,0 +1,18 @@
+# The demo host's side of the shared Caddyfile (INFRA_ENV=demo): a Let's Encrypt certificate per
+# site (Caddy's default), HSTS, Mailpit behind its basic authentication, and no RabbitMQ route.
+
+(env-tls) {
+}
+
+(env-hsts) {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+(env-mailpit-auth) {
+	basic_auth {
+		demo {$MAILPIT_UI_PASSWORD_HASH}
+	}
+}
+
+(env-infra-routes) {
+}

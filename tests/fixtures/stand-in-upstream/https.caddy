@@ -1,0 +1,11 @@
+# An echo upstream for the tests, over HTTPS on $PORT with the shared leaf (certs/tls.crt, mounted at
+# /certs): a gateway as dev's proxy reaches it, verified against the local CA.
+{
+	admin off
+	auto_https disable_redirects
+}
+
+https://:{$PORT} {
+	tls /certs/tls.crt /certs/tls.key
+	respond "upstream={$STAND_IN_NAME} host={host} uri={uri}"
+}

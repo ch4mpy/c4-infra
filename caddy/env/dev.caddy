@@ -1,0 +1,28 @@
+# The dev side of the shared Caddyfile (INFRA_ENV=dev): the leaf of certs/make-certs.sh, signed by
+# the local CA; no HSTS; Mailpit without authentication; RabbitMQ's management UI and the landing
+# page on the shared host. Nothing of it answers from the network: the ports are on 127.0.0.1
+# (compose.dev.yml).
+
+(env-tls) {
+	tls /certs/tls.crt /certs/tls.key
+}
+
+(env-hsts) {
+}
+
+(env-mailpit-auth) {
+}
+
+(env-infra-routes) {
+	handle /rabbitmq/* {
+		reverse_proxy rabbitmq:15672
+	}
+
+	# the landing page, written by register-app.sh: the shared services and the registered
+	# applications
+	handle / {
+		root * /etc/caddy/html
+		rewrite * /index.html
+		file_server
+	}
+}

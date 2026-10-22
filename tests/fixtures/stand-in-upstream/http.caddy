@@ -1,0 +1,10 @@
+# An echo upstream for the tests, over HTTP on $PORT: it answers its name, the Host it was sent and
+# the URI, so that a test sees which upstream a route reached, and with what.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT} {
+	respond "upstream={$STAND_IN_NAME} host={host} uri={uri}"
+}
