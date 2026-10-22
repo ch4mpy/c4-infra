@@ -5,8 +5,9 @@
 #
 #   bash tests/lib/stand-in-host.sh selftest
 #
-#   stand_in_up                      builds the image and starts the stand-in (STAND_IN_FRESH=1: with
-#                                    an empty Docker volume), then waits for its dockerd
+#   stand_in_up                      builds the image and starts the stand-in, waits for its dockerd,
+#                                    and removes an earlier run's containers, volumes and networks
+#                                    (the pulled images stay; STAND_IN_FRESH=1: them too)
 #   stand_in_exec [-i] <command…>    runs the command in the stand-in, as root; -i passes stdin, which
 #                                    the caller always redirects
 #   stand_in_load_image <image>…     copies images of this machine into the stand-in's Docker
@@ -61,6 +62,11 @@ stand_in_up() {
     sleep 1
     waited=$((waited + 1))
   done
+  # a fresh host but for the pulled images: an earlier run's containers (restarted by its dockerd),
+  # volumes (Keycloak's database, with that run's passwords) and networks are removed
+  stand_in_exec sh -c 'docker ps -aq | xargs -r docker rm -f > /dev/null
+    docker volume ls -q | xargs -r docker volume rm > /dev/null
+    docker network prune -f > /dev/null'
 }
 
 stand_in_load_image() {

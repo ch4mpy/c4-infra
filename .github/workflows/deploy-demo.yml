@@ -82,38 +82,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Write the compose .env
-        run: |
-          # fail here, by name, rather than deploy a Grafana without admin password or a Caddy
-          # basic_auth with an empty hash because one secret was never created
-          missing=()
-          for name in KC_ADMIN_PASSWORD KC_DB_PASSWORD RABBITMQ_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD \
-              MAILPIT_UI_PASSWORD_HASH GRAFANA_ADMIN_PASSWORD; do
-            [ -n "${!name:-}" ] || missing+=("$name")
-          done
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "Missing secrets of the demo environment: ${missing[*]}" >&2
-            exit 1
-          fi
-          # compose interpolates $ in .env values: escape it (the Mailpit bcrypt hash has some)
-          esc() { printf '%s' "${!1}" | sed 's/\$/$$/g'; }
-          {
-            echo "INFRA_HOST=$INFRA_HOST"
-            echo "PROXY=caddy"
-            echo "TZ=Pacific/Tahiti"
-            echo "KC_IMAGE=$KC_IMAGE"
-            echo "KC_LOG_LEVEL=INFO"
-            echo "KC_BOOTSTRAP_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}"
-            echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(esc KC_ADMIN_PASSWORD)"
-            echo "KC_DB_PASSWORD=$(esc KC_DB_PASSWORD)"
-            echo "RABBITMQ_ADMIN_USER=admin"
-            echo "RABBITMQ_ADMIN_PASSWORD=$(esc RABBITMQ_ADMIN_PASSWORD)"
-            echo "MAILPIT_SMTP_USER=mailpit"
-            echo "MAILPIT_SMTP_PASSWORD=$(esc MAILPIT_SMTP_PASSWORD)"
-            echo "MAILPIT_UI_PASSWORD_HASH=$(esc MAILPIT_UI_PASSWORD_HASH)"
-            echo "GRAFANA_ADMIN_PASSWORD=$(esc GRAFANA_ADMIN_PASSWORD)"
-          } > demo/.env
-          # rsync -a preserves the mode: the file holding every secret must not be world-readable on the host
-          chmod 600 demo/.env
+        # demo/write-env.sh fails by name when a secret is missing, and leaves .env in mode 600,
+        # before anything is uploaded
+        run: bash demo/write-env.sh .env
         env:
           KC_ADMIN_USERNAME: ${{ vars.KC_ADMIN_USERNAME }}
           KC_ADMIN_PASSWORD: ${{ secrets.KC_ADMIN_PASSWORD }}
@@ -143,9 +114,13 @@ jobs:
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
 
       - name: Upload the deployment files
-        # never --delete: caddy/apps/ and keycloak/themes/ hold what the applications registered.
-        # The registry goes next to register-app.sh, which refuses an application missing from it.
-        run: rsync -az --exclude 'caddy/apps/*' demo/ register-app.sh registry.txt registry.sh "$VPS:~/c4-infra/"
+        # Exactly the files of demo/deploy-files.txt (the compose base and its demo override, the
+        # shared Caddy configuration, the registry, the registration and the host's scripts), then
+        # .env (mode 600, kept by -a). Never --delete: caddy/apps/ and keycloak/themes/ hold what the
+        # applications registered.
+        run: |
+          rsync -az --files-from=demo/deploy-files.txt ./ "$VPS:~/c4-infra/"
+          rsync -az .env "$VPS:~/c4-infra/.env"
 
       - name: Pull and restart the stack
         run: |
@@ -154,26 +129,11 @@ jobs:
           ssh "$VPS" bash -s <<EOT
           set -euo pipefail
           cd ~/c4-infra
-          # the applications' themes, which the deploy user writes (a bind mount Docker creates
-          # would belong to root)
-          mkdir -p keycloak/themes
           echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
           docker compose pull --quiet
-          # --wait: the job fails, with the state printed below, unless every service with a
-          # healthcheck reports healthy within the timeout
-          docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker compose ps; exit 1; }
-          # up -d leaves Caddy running when only its Caddyfile changed: reload it (graceful, and
-          # an invalid Caddyfile fails the job while the previous config keeps serving)
-          docker compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
           docker logout ghcr.io
-          docker image prune -f > /dev/null
-          docker compose ps
-          # nightly backup (see demo/backup.sh), idempotent. The "|| true" keep set -e / pipefail
-          # from aborting on an empty crontab (crontab -l and grep -v both return 1).
-          mkdir -p ~/backups
-          { crontab -l 2> /dev/null || true; } | { grep -vF 'c4-infra && bash ./backup.sh' || true; } > /tmp/crontab.new
-          echo '15 3 * * * cd ~/c4-infra && bash ./backup.sh >> ~/backups/c4-infra-backup.log 2>&1' >> /tmp/crontab.new
-          crontab /tmp/crontab.new && rm /tmp/crontab.new
+          # starts the stack, reloads Caddy, installs the nightly backup (demo/deploy.sh)
+          bash ./demo/deploy.sh < /dev/null
           EOT
         env:
           GHCR_USER: ${{ github.actor }}

@@ -3,10 +3,11 @@
 # container (users, organizations, clients and role mappings of every application's realm). Each
 # application backs up its own databases.
 #
-# Runs on the host as the deploy user, from ~/c4-infra (the deploy workflow installs it in that
+# Runs on the host as the deploy user, from ~/c4-infra (demo/deploy.sh installs it in that
 # user's crontab). Restore procedure in README.md.
 set -euo pipefail
-cd "$(dirname "$0")"
+# the stack's directory, where compose finds its .env
+cd "$(dirname "$0")/.."
 
 BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 KEEP_DAYS="${KEEP_DAYS:-7}"
