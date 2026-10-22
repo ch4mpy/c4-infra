@@ -54,7 +54,7 @@ their ports: `up.sh` names its containers, to stop first.
 | Service | URL | Ports on the host |
 |---|---|---|
 | Landing page (links to everything registered) | https://host.docker.internal/ | 80, 443 |
-| Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | 3643 (HTTPS) |
+| Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | none: through the proxy only |
 | Mailpit | https://host.docker.internal/mailpit/ | 1025 (SMTP, auth `mailpit` / `secret`), 8025 |
 | Grafana LGTM | https://host.docker.internal/grafana/ | 3000, 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
 | RabbitMQ (admin user and password in `.env`) | https://host.docker.internal/rabbitmq/ | 5672 (AMQP), 15672 |
@@ -111,7 +111,7 @@ A new application takes the next number, and adds its row here first.
   bash "$C4_INFRA_DIR/register-app.sh" --app faito \
     --realm keycloak/import/faito-realm.json \
     --proxy reverse-proxy/faito.conf \
-    --rabbitmq-user faito-api --rabbitmq-password-file secrets/rabbitmq/password.txt
+    --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD   # exported, from .env
   docker compose -f compose-rest-api-db.yml up -d --wait
   ```
 
@@ -177,7 +177,7 @@ From its own workflow, as `deploy@<vps>`, in `~/<app>/`:
   ambiguous. Its databases stay on its project's own network;
 - its realm, rendered for the demo (public host, real client secrets, Mailpit's SMTP password,
   back-channel logout on `http://<app>.gateway:7080/...`), then
-  `bash ~/c4-infra/register-app.sh --app <app> --realm … --proxy <app>.caddy --rabbitmq-user … --rabbitmq-password-file …`;
+  `bash ~/c4-infra/register-app.sh --app <app> --realm … --proxy <app>.caddy --rabbitmq-user … --rabbitmq-password-env …`;
 - its Caddy site, importing the `common-headers` and `spa-headers` snippets of
   [`demo/caddy/Caddyfile`](demo/caddy/Caddyfile):
 

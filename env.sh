@@ -11,15 +11,6 @@ add() {
   grep -q "^${1%%=*}=" .env || echo "$1" >> .env
 }
 
-# Sets "KEY=value" in .env, replacing any previous value: what this repository decides, not each
-# machine (the demo workflow reads the same line).
-set_value() {
-  local key="${1%%=*}"
-  grep -v "^${key}=" .env > .env.tmp || true
-  echo "$1" >> .env.tmp
-  mv .env.tmp .env
-}
-
 # Origin of the shared services (Keycloak, Mailpit, Grafana, RabbitMQ): the one host name that the
 # browser, the JVMs running on the host and the containers all resolve.
 add "INFRA_HOST=host.docker.internal"
@@ -29,8 +20,6 @@ add "APPS_DOMAIN=dev.localhost"
 add "PROXY=nginx"
 add "TZ=Pacific/Tahiti"
 
-set_value "KC_VERSION=26.7"
-add "KC_HTTPS_PORT=3643"
 add "KC_LOG_LEVEL=INFO"
 add "KC_BOOTSTRAP_ADMIN_USERNAME=admin"
 # "secret" on purpose, as before the stack was shared: the projects' scripts and docs rely on it

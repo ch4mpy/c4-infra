@@ -5,21 +5,21 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 bash ./env.sh
-source ./.env
 certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
 bash ./certs/make-certs.sh
 certificate_after=$(cat certs/tls.crt | cksum)
 
 # A project still running its own copy of these services holds their ports: name it rather than let
-# compose fail on the first one.
+# compose fail on the first one. The ports are the ones compose.yml publishes.
 conflicts=()
-for port in 80 443 "$KC_HTTPS_PORT" 1025 8025 5672 15672 3000 4317 4318; do
-  for name in $(docker ps --filter "publish=$port" --format '{{.Names}}'); do
+running=$(docker ps --format '{{.Names}} {{.Ports}}')
+for port in $(docker compose config | sed -n 's/^ *published: "\([0-9]*\)"$/\1/p'); do
+  while read -r name ports; do
     case "$name" in
-      c4-infra.*) ;;
-      *) conflicts+=("$name (port $port)") ;;
+      c4-infra.* | "") ;;
+      *) [[ " $ports" == *":$port->"* ]] && conflicts+=("$name (port $port)") ;;
     esac
-  done
+  done <<< "$running"
 done
 if [ ${#conflicts[@]} -gt 0 ]; then
   echo "These containers hold ports of the shared stack:" >&2
@@ -31,6 +31,10 @@ fi
 [ -f nginx/html/index.html ] || bash ./register-app.sh --index-only
 
 docker compose up -d --build --wait
+# nginx.conf is a mounted file, which compose recreates nothing for: reload it (graceful), or
+# restart the proxy when a reload can't apply it (a changed pid path, for instance)
+MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy nginx -s reload 2> /dev/null \
+  || docker restart c4-infra.reverse-proxy > /dev/null
 
 # The services read the certificate at startup, and compose recreates nothing when only a mounted
 # file changed

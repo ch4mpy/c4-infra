@@ -3,7 +3,7 @@
 # application's deployment runs it every time.
 #
 #   register-app.sh --app <name> [--realm <file>]... [--themes <dir>] [--proxy <file>]
-#                   [--rabbitmq-user <user> --rabbitmq-password-file <file>] [--reset-realms]
+#                   [--rabbitmq-user <user> --rabbitmq-password-env <variable>] [--reset-realms]
 #
 #   --realm         a realm export (kc.sh export --users realm_file), named <realm>-realm.json. The
 #                   realm is imported only when Keycloak doesn't have it yet, so that the users and
@@ -12,7 +12,8 @@
 #   --proxy         the application's server block: an nginx .conf in dev (PROXY=nginx in .env), a
 #                   Caddyfile site on the demo host (PROXY=caddy)
 #   --rabbitmq-*    a virtual host named after the application, and its user, with every permission
-#                   on that virtual host and none elsewhere; the password is read from a file
+#                   on that virtual host and none elsewhere; the password is read from the named
+#                   environment variable (the one the application itself reads)
 #   --index-only    only rewrite the dev landing page (https://host.docker.internal/)
 #
 # No password ever goes on a command line (the host's process list and `docker inspect` show
@@ -44,7 +45,7 @@ realms=()
 themes=""
 proxy=""
 rabbitmq_user=""
-rabbitmq_password_file=""
+rabbitmq_password_env=""
 reset_realms=false
 index_only=false
 while [ $# -gt 0 ]; do
@@ -54,7 +55,7 @@ while [ $# -gt 0 ]; do
     --themes) themes=$2; shift 2 ;;
     --proxy) proxy=$2; shift 2 ;;
     --rabbitmq-user) rabbitmq_user=$2; shift 2 ;;
-    --rabbitmq-password-file) rabbitmq_password_file=$2; shift 2 ;;
+    --rabbitmq-password-env) rabbitmq_password_env=$2; shift 2 ;;
     --reset-realms) reset_realms=true; shift ;;
     --index-only) index_only=true; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -89,24 +90,25 @@ if [ -z "$app" ]; then
   echo "--app <name> is required" >&2
   exit 1
 fi
-if [ -n "$rabbitmq_user" ] && [ ! -r "$rabbitmq_password_file" ]; then
-  echo "--rabbitmq-user needs --rabbitmq-password-file <file>" >&2
+if [ -n "$rabbitmq_user" ] && [ -z "${!rabbitmq_password_env:-}" ]; then
+  echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1
 fi
 
-# Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network.
+# Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network,
+# each call authenticated on its own (no stored session: a registration makes one or two calls).
 # The registration depends on the bootstrap administrator of .env: replacing it in the admin
 # console, or changing its password there, makes the registrations fail (see README.md).
 if [ ${#realms[@]} -gt 0 ]; then
+  KC_CLI_PASSWORD=$(env_value KC_BOOTSTRAP_ADMIN_PASSWORD)
+  export KC_CLI_PASSWORD
+  kc_admin=$(env_value KC_BOOTSTRAP_ADMIN_USERNAME)
   # -i only where the input is redirected: a deployment may run this script from a heredoc on
   # ssh's stdin, which `docker exec -i` would otherwise swallow
   kcadm() {
-    docker exec "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" --config /tmp/kcadm.config
+    docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" \
+      --no-config --server http://localhost:8080/auth --realm master --user "$kc_admin"
   }
-  KC_CLI_PASSWORD=$(env_value KC_BOOTSTRAP_ADMIN_PASSWORD) \
-    docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh config credentials \
-    --server http://localhost:8080/auth --realm master \
-    --user "$(env_value KC_BOOTSTRAP_ADMIN_USERNAME)" --config /tmp/kcadm.config > /dev/null
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
     if kcadm get "realms/$realm" --fields realm > /dev/null 2>&1; then
@@ -120,7 +122,8 @@ if [ ${#realms[@]} -gt 0 ]; then
     fi
     echo "Importing realm $realm"
     # on stdin: nothing to copy into the container, whatever the file's owner and mode
-    docker exec -i "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh create realms -f - --config /tmp/kcadm.config < "$file"
+    docker exec -i -e KC_CLI_PASSWORD "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh create realms -f - \
+      --no-config --server http://localhost:8080/auth --realm master --user "$kc_admin" < "$file"
   done
 fi
 
@@ -146,12 +149,13 @@ fi
 
 # RabbitMQ: a virtual host per application, and its user. Imported as definitions (created, or
 # updated in place: permissions, connections and the other applications are left alone), with
-# the password as a salted SHA-256 hash, RabbitMQ's own format.
+# the password as a salted SHA-256 hash, RabbitMQ's own format. rabbitmqctl doesn't read them from
+# its standard input: the file goes into the container first.
 if [ -n "$rabbitmq_user" ]; then
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   openssl rand 4 > "$work/salt"
-  { cat "$work/salt"; tr -d '\r\n' < "$rabbitmq_password_file"; } | openssl dgst -sha256 -binary > "$work/digest"
+  { cat "$work/salt"; printf '%s' "${!rabbitmq_password_env}"; } | openssl dgst -sha256 -binary > "$work/digest"
   hash=$(cat "$work/salt" "$work/digest" | openssl base64 -A)
   cat > "$work/definitions.json" <<EOF
 {
@@ -162,14 +166,14 @@ if [ -n "$rabbitmq_user" ]; then
                     "configure": ".*", "write": ".*", "read": ".*" }]
 }
 EOF
-  definitions="/tmp/$app-definitions.json"
-  docker exec -i "$RABBITMQ" sh -c "cat > '$definitions'" < "$work/definitions.json"
-  docker exec "$RABBITMQ" rabbitmqctl -q import_definitions "$definitions" > /dev/null
-  docker exec "$RABBITMQ" rm -f "$definitions"
+  docker exec -i "$RABBITMQ" sh -c \
+    'cat > "$1" && rabbitmqctl -q import_definitions "$1" > /dev/null; status=$?; rm -f "$1"; exit $status' \
+    sh "/tmp/$app-definitions.json" < "$work/definitions.json"
   echo "RabbitMQ: virtual host $app, user $rabbitmq_user"
 fi
 
-# Reverse proxy: the application's server block, checked before it is kept
+# Reverse proxy: the application's server block, checked before it is kept (and left alone, with
+# no reload, when it hasn't changed)
 if [ -n "$proxy" ]; then
   case "$PROXY" in
     nginx)
@@ -187,21 +191,25 @@ if [ -n "$proxy" ]; then
       exit 1
       ;;
   esac
-  backup=$(mktemp)
-  had_previous=false
-  if [ -f "$target" ]; then
-    cp "$target" "$backup"
-    had_previous=true
-  fi
-  cp "$proxy" "$target"
-  if ! docker exec "$REVERSE_PROXY" "${check[@]}"; then
-    if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
+  if [ -f "$target" ] && cmp -s "$proxy" "$target"; then
+    echo "Reverse proxy: $app server unchanged"
+  else
+    backup=$(mktemp)
+    had_previous=false
+    if [ -f "$target" ]; then
+      cp "$target" "$backup"
+      had_previous=true
+    fi
+    cp "$proxy" "$target"
+    if ! docker exec "$REVERSE_PROXY" "${check[@]}"; then
+      if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
+      rm -f "$backup"
+      echo "The server block $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
+      exit 1
+    fi
     rm -f "$backup"
-    echo "The server block $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
-    exit 1
+    docker exec "$REVERSE_PROXY" "${reload[@]}"
+    write_index
+    echo "Reverse proxy: $app server installed"
   fi
-  rm -f "$backup"
-  docker exec "$REVERSE_PROXY" "${reload[@]}"
-  write_index
-  echo "Reverse proxy: $app server installed"
 fi

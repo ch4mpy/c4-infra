@@ -27,26 +27,16 @@ jobs:
       contents: read
       packages: write
     outputs:
-      kc_image_tag: ${{ steps.tag.outputs.kc_image_tag }}
+      image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v7
 
-      # GHCR wants a lowercase image owner
-      - name: Compute the image owner
-        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
-
-      # The Keycloak version and the content of keycloak/ (its git tree): a push that touches
-      # neither keeps the image, so the deployment doesn't restart the Keycloak every application
-      # uses
-      - name: Compute the Keycloak image tag
-        id: tag
-        run: |
-          KC_VERSION=$(sed -n 's/^set_value "KC_VERSION=\(.*\)"$/\1/p' env.sh)
-          [ -n "$KC_VERSION" ] || { echo "KC_VERSION not found in env.sh" >&2; exit 1; }
-          echo "KC_VERSION=$KC_VERSION" >> "$GITHUB_ENV"
-          echo "kc_image_tag=$KC_VERSION-$(git rev-parse --short=12 HEAD:keycloak)" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v4
+      # Tagged with the content of keycloak/ (its git tree, the Keycloak version of the Dockerfile
+      # included): a push that doesn't touch it keeps the image, so the deployment doesn't restart
+      # the Keycloak every application uses. GHCR wants a lowercase owner.
+      - name: Compute the Keycloak image
+        id: image
+        run: echo "image=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/c4-infra-keycloak:$(git rev-parse --short=12 HEAD:keycloak)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v4
         with:
@@ -57,11 +47,14 @@ jobs:
       - name: Look for the image in GHCR
         id: existing
         run: |
-          if docker manifest inspect "$REGISTRY/$IMAGE_OWNER/c4-infra-keycloak:$KC_IMAGE_TAG" > /dev/null 2>&1; then
+          if docker manifest inspect "$KC_IMAGE" > /dev/null 2>&1; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           fi
         env:
-          KC_IMAGE_TAG: ${{ steps.tag.outputs.kc_image_tag }}
+          KC_IMAGE: ${{ steps.image.outputs.image }}
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.existing.outputs.found != 'true'
 
       - name: Push c4-infra-keycloak
         if: steps.existing.outputs.found != 'true'
@@ -69,10 +62,7 @@ jobs:
         with:
           context: keycloak
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/c4-infra-keycloak:${{ steps.tag.outputs.kc_image_tag }}
-          build-args: |
-            KC_VERSION=${{ env.KC_VERSION }}
+          tags: ${{ steps.image.outputs.image }}
           pull: true
 
   deploy:
@@ -87,12 +77,9 @@ jobs:
     env:
       INFRA_HOST: ${{ vars.INFRA_HOST || 'infra.c4-soft.com' }}
       VPS: deploy@${{ secrets.VPS_HOST }}
-      KC_IMAGE_TAG: ${{ needs.build.outputs.kc_image_tag }}
+      KC_IMAGE: ${{ needs.build.outputs.image }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Compute the image owner
-        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Write the compose .env
         run: |
@@ -113,8 +100,7 @@ jobs:
             echo "INFRA_HOST=$INFRA_HOST"
             echo "PROXY=caddy"
             echo "TZ=Pacific/Tahiti"
-            echo "IMAGE_OWNER=$IMAGE_OWNER"
-            echo "KC_IMAGE_TAG=$KC_IMAGE_TAG"
+            echo "KC_IMAGE=$KC_IMAGE"
             echo "KC_LOG_LEVEL=INFO"
             echo "KC_BOOTSTRAP_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}"
             echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(esc KC_ADMIN_PASSWORD)"
@@ -158,10 +144,7 @@ jobs:
 
       - name: Upload the deployment files
         # never --delete: caddy/apps/ and keycloak/themes/ hold what the applications registered
-        run: |
-          ssh "$VPS" 'mkdir -p ~/c4-infra/caddy/apps ~/c4-infra/keycloak/themes'
-          rsync -az --exclude 'caddy/apps/*' demo/ "$VPS:~/c4-infra/"
-          rsync -az register-app.sh "$VPS:~/c4-infra/register-app.sh"
+        run: rsync -az --exclude 'caddy/apps/*' demo/ register-app.sh "$VPS:~/c4-infra/"
 
       - name: Pull and restart the stack
         run: |
@@ -170,6 +153,9 @@ jobs:
           ssh "$VPS" bash -s <<EOT
           set -euo pipefail
           cd ~/c4-infra
+          # the applications' themes, which the deploy user writes (a bind mount Docker creates
+          # would belong to root)
+          mkdir -p keycloak/themes
           echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
           docker compose pull --quiet
           # --wait: the job fails, with the state printed below, unless every service with a

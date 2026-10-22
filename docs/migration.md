@@ -92,7 +92,7 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 4. Its Caddy site, `deploy/caddy/<project>.caddy` (example in the README), and its workflow:
    `rsync` to `~/<project>/` as `deploy@<vps>`, `docker compose up -d --wait`, then
    `bash ~/c4-infra/register-app.sh --app <project> --realm … --proxy <project>.caddy --rabbitmq-user …
-   --rabbitmq-password-file …` (no password on a command line). Its secrets no longer include Keycloak's, Mailpit's, RabbitMQ's admin
+   --rabbitmq-password-env …` (no password on a command line). Its secrets no longer include Keycloak's, Mailpit's, RabbitMQ's admin
    or Grafana's.
 5. Users created during a demo live in the former Keycloak: export the realm from it
    (`kc.sh export --realm <realm> --users realm_file`) before switching, and register that export.

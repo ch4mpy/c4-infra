@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Exports a realm, users included, from the shared Keycloak without stopping it: a one-off
-# container of the same image runs kc.sh export against the same database.
+# container of the keycloak service (its image and database settings, none of its ports) runs
+# kc.sh export against the same database.
 #
 #   export-realm.sh <realm> <destination directory>
 #
-# Writes <destination directory>/<realm>-realm.json, the file register-app.sh imports.
+# Writes <destination directory>/<realm>-realm.json, the file register-app.sh imports, without the
+# realm's keys: whoever reads a key can sign tokens the applications accept, and Keycloak generates
+# new ones when it imports a realm that has none.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
@@ -19,24 +22,30 @@ if [ $# -ne 2 ]; then
 fi
 realm=$1
 destination=$2
+mkdir -p "$destination"
+destination=$(cd "$destination" && pwd)
 
-INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
-source "$INFRA_DIR/.env"
-# handed to the container by name (-e KC_DB_PASSWORD), never on the docker command line
-export KC_DB_PASSWORD
+cd "$(dirname "$0")"
 
 container="c4-infra.keycloak-export-$realm"
 docker rm -f "$container" > /dev/null 2>&1 || true
 trap 'docker rm -f "$container" > /dev/null 2>&1 || true' EXIT
 
-docker create --name "$container" --network c4-infra \
-  -e KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak \
-  -e KC_DB_USERNAME=keycloak \
-  -e KC_DB_PASSWORD \
-  "c4-infra/keycloak:$KC_VERSION" \
-  export --optimized --realm "$realm" --users realm_file --dir /tmp/export > /dev/null
-docker start -a "$container"
+docker compose run --no-deps --name "$container" keycloak \
+  export --optimized --realm "$realm" --users realm_file --dir /tmp/export
 
-mkdir -p "$destination"
-docker cp "$container:/tmp/export/$realm-realm.json" "$(host_path "$destination/$realm-realm.json")"
-echo "Exported $destination/$realm-realm.json"
+exported=$(mktemp)
+docker cp "$container:/tmp/export/$realm-realm.json" "$(host_path "$exported")"
+# the key providers' array, from its opening line to its closing one, becomes an empty array
+awk '
+  skip && /^    \} \],?$/ {
+    skip = 0
+    print "    \"org.keycloak.keys.KeyProvider\" : [ ]" (/,$/ ? "," : "")
+    next
+  }
+  skip { next }
+  /^    "org\.keycloak\.keys\.KeyProvider" : \[ \{$/ { skip = 1; next }
+  { print }
+' "$exported" > "$destination/$realm-realm.json"
+rm -f "$exported"
+echo "Exported $destination/$realm-realm.json (keys removed)"

@@ -53,22 +53,15 @@ services:
       retries: 20
 
   keycloak:
-    build:
-      context: ./keycloak
-      args:
-        KC_VERSION: ${KC_VERSION}
-    image: c4-infra/keycloak:${KC_VERSION}
+    # the Keycloak version is the Dockerfile's
+    build: ./keycloak
+    image: c4-infra/keycloak
     container_name: c4-infra.keycloak
     restart: unless-stopped
+    # plain HTTP inside the Docker network: the reverse proxy is the only way in from the host
     command:
       - start
       - --optimized
-      - --https-certificate-file=/opt/keycloak/certs/tls.crt
-      - --https-certificate-key-file=/opt/keycloak/certs/tls.key
-    ports:
-      # HTTPS straight to Keycloak (the projects' admin API clients use it); the reverse proxy and
-      # register-app.sh use the plain HTTP port, inside the Docker network only
-      - ${KC_HTTPS_PORT}:${KC_HTTPS_PORT}
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
@@ -78,24 +71,25 @@ services:
       # every realm's issuer is https://host.docker.internal/auth/realms/<realm>
       KC_HOSTNAME: https://${INFRA_HOST}/auth/
       KC_HTTP_ENABLED: 'true'
-      KC_HTTPS_PORT: ${KC_HTTPS_PORT}
       KC_PROXY_HEADERS: xforwarded
       # back-channel logout calls the gateways on the host, which serve the CA certificate itself
       KC_TRUSTSTORE_PATHS: /opt/keycloak/certs/ca.crt
       KC_LOG_LEVEL: ${KC_LOG_LEVEL}
       TZ: ${TZ}
     volumes:
-      - ./certs/:/opt/keycloak/certs/:ro
+      - ./certs/ca.crt:/opt/keycloak/certs/ca.crt:ro
       - ./keycloak/themes/:/opt/keycloak/themes/:ro
     extra_hosts:
       - host.docker.internal:host-gateway
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
-      test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'https://localhost:9000/auth/health/ready']
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
+      test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
+      # fast while starting, then every 30 s: a probe starts a process in the container
+      start_period: 120s
+      start_interval: 1s
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -136,15 +130,21 @@ services:
       # the administrator only: each application has its own virtual host and user (register-app.sh)
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_PASSWORD}
+      # one scheduler for the CLI tools (healthcheck, register-app.sh): their Erlang VM otherwise
+      # busy-waits on every core
+      RABBITMQ_CTL_ERL_ARGS: '+S 1'
       TZ: ${TZ}
     volumes:
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/20-c4-infra.conf:ro
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
-      interval: 3s
-      timeout: 30s
-      retries: 20
+      # fast while starting, then every 30 s: a probe starts a process in the container
+      start_period: 120s
+      start_interval: 1s
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   grafana-lgtm:
     image: grafana/otel-lgtm:0.32.0

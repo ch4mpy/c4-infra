@@ -69,9 +69,9 @@ services:
       retries: 20
 
   keycloak:
-    # tagged with the Keycloak version and the content of keycloak/: unchanged by a push that
-    # doesn't touch it, so that deployments don't restart the Keycloak every application uses
-    image: ghcr.io/${IMAGE_OWNER}/c4-infra-keycloak:${KC_IMAGE_TAG}
+    # tagged with the content of keycloak/: unchanged by a push that doesn't touch it, so that
+    # deployments don't restart the Keycloak every application uses (deploy-demo.yml)
+    image: ${KC_IMAGE}
     container_name: c4-infra.keycloak
     restart: unless-stopped
     logging: *default-logging
@@ -98,10 +98,12 @@ services:
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
+      # fast while starting, then every 30 s: a probe starts a process in the container
+      start_period: 120s
+      start_interval: 1s
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -134,14 +136,20 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_ADMIN_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_ADMIN_PASSWORD}
+      # one scheduler for the CLI tools (healthcheck, register-app.sh): their Erlang VM otherwise
+      # busy-waits on every core
+      RABBITMQ_CTL_ERL_ARGS: '+S 1'
       TZ: ${TZ}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
-      interval: 5s
+      # fast while starting, then every 30 s: a probe starts a process in the container
+      start_period: 120s
+      start_interval: 1s
+      interval: 30s
       timeout: 10s
-      retries: 20
+      retries: 3
     mem_limit: 400m
 
   grafana-lgtm:
