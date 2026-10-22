@@ -27,7 +27,8 @@ if [ ! -f "$CA_DIR/$CA_NAME.crt" ] || [ ! -f "$CA_DIR/$CA_NAME.key" ]; then
   echo
   echo "Trust it once (then restart the browsers):"
   echo "  - Windows: certutil -user -addstore Root \"$CA_DIR/$CA_NAME.crt\""
-  echo "  - each JDK running the projects: bash <project>/certs/add-to-jre-cacerts.sh $CA_DIR/$CA_NAME.jks <password> $CA_NAME"
+  # the certificate only, from ./ca.crt: the CA's private key stays in $CA_DIR
+  echo "  - each JDK running the projects, its certificate only: bash $(printf '%q' "$PWD/trust-ca-in-jdk.sh") <JDK home>"
   echo
 fi
 
