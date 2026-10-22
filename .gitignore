@@ -1,0 +1,14 @@
+### ENV & SECRETS ###
+.env
+certs/*.crt
+certs/*.key
+certs/*.csr
+
+### FILLED BY register-app.sh ###
+nginx/apps/*
+!nginx/apps/.gitkeep
+nginx/html/index.html
+keycloak/themes/*
+!keycloak/themes/.gitkeep
+demo/caddy/apps/*
+!demo/caddy/apps/.gitkeep

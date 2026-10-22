@@ -1,0 +1,2 @@
+# Scripts run in containers and on Linux hosts: LF everywhere, whatever core.autocrlf says
+* text=auto eol=lf

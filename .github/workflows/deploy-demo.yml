@@ -1,0 +1,193 @@
+# Builds the shared Keycloak image, publishes it to GHCR, then deploys the shared stack on the demo
+# VPS with Docker Compose (see README.md for the one-time setup and the secrets). The applications
+# deploy themselves, with their own workflows, on top of it.
+name: Deploy demo
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build and push the Keycloak image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      kc_image_tag: ${{ steps.tag.outputs.kc_image_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # GHCR wants a lowercase image owner
+      - name: Compute the image owner
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      # The Keycloak version and the content of keycloak/ (its git tree): a push that touches
+      # neither keeps the image, so the deployment doesn't restart the Keycloak every application
+      # uses
+      - name: Compute the Keycloak image tag
+        id: tag
+        run: |
+          KC_VERSION=$(sed -n 's/^set_value "KC_VERSION=\(.*\)"$/\1/p' env.sh)
+          [ -n "$KC_VERSION" ] || { echo "KC_VERSION not found in env.sh" >&2; exit 1; }
+          echo "KC_VERSION=$KC_VERSION" >> "$GITHUB_ENV"
+          echo "kc_image_tag=$KC_VERSION-$(git rev-parse --short=12 HEAD:keycloak)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Look for the image in GHCR
+        id: existing
+        run: |
+          if docker manifest inspect "$REGISTRY/$IMAGE_OWNER/c4-infra-keycloak:$KC_IMAGE_TAG" > /dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          KC_IMAGE_TAG: ${{ steps.tag.outputs.kc_image_tag }}
+
+      - name: Push c4-infra-keycloak
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: keycloak
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/c4-infra-keycloak:${{ steps.tag.outputs.kc_image_tag }}
+          build-args: |
+            KC_VERSION=${{ env.KC_VERSION }}
+          pull: true
+
+  deploy:
+    name: Deploy on the VPS
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: demo
+    permissions:
+      contents: read
+      packages: read
+    env:
+      INFRA_HOST: ${{ vars.INFRA_HOST || 'infra.c4-soft.com' }}
+      VPS: deploy@${{ secrets.VPS_HOST }}
+      KC_IMAGE_TAG: ${{ needs.build.outputs.kc_image_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute the image owner
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Write the compose .env
+        run: |
+          # fail here, by name, rather than deploy a Grafana without admin password or a Caddy
+          # basic_auth with an empty hash because one secret was never created
+          missing=()
+          for name in KC_ADMIN_PASSWORD KC_DB_PASSWORD RABBITMQ_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD \
+              MAILPIT_UI_PASSWORD_HASH GRAFANA_ADMIN_PASSWORD; do
+            [ -n "${!name:-}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing secrets of the demo environment: ${missing[*]}" >&2
+            exit 1
+          fi
+          # compose interpolates $ in .env values: escape it (the Mailpit bcrypt hash has some)
+          esc() { printf '%s' "${!1}" | sed 's/\$/$$/g'; }
+          {
+            echo "INFRA_HOST=$INFRA_HOST"
+            echo "PROXY=caddy"
+            echo "TZ=Pacific/Tahiti"
+            echo "IMAGE_OWNER=$IMAGE_OWNER"
+            echo "KC_IMAGE_TAG=$KC_IMAGE_TAG"
+            echo "KC_LOG_LEVEL=INFO"
+            echo "KC_BOOTSTRAP_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}"
+            echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(esc KC_ADMIN_PASSWORD)"
+            echo "KC_DB_PASSWORD=$(esc KC_DB_PASSWORD)"
+            echo "RABBITMQ_ADMIN_USER=admin"
+            echo "RABBITMQ_ADMIN_PASSWORD=$(esc RABBITMQ_ADMIN_PASSWORD)"
+            echo "MAILPIT_SMTP_USER=mailpit"
+            echo "MAILPIT_SMTP_PASSWORD=$(esc MAILPIT_SMTP_PASSWORD)"
+            echo "MAILPIT_UI_PASSWORD_HASH=$(esc MAILPIT_UI_PASSWORD_HASH)"
+            echo "GRAFANA_ADMIN_PASSWORD=$(esc GRAFANA_ADMIN_PASSWORD)"
+          } > demo/.env
+          # rsync -a preserves the mode: the file holding every secret must not be world-readable on the host
+          chmod 600 demo/.env
+        env:
+          KC_ADMIN_USERNAME: ${{ vars.KC_ADMIN_USERNAME }}
+          KC_ADMIN_PASSWORD: ${{ secrets.KC_ADMIN_PASSWORD }}
+          KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          RABBITMQ_ADMIN_PASSWORD: ${{ secrets.RABBITMQ_ADMIN_PASSWORD }}
+          MAILPIT_SMTP_PASSWORD: ${{ secrets.MAILPIT_SMTP_PASSWORD }}
+          MAILPIT_UI_PASSWORD_HASH: ${{ secrets.MAILPIT_UI_PASSWORD_HASH }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+
+      - uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust the VPS host key
+        # Pinned when the VPS_KNOWN_HOSTS secret holds the host's known_hosts line(s), so that a
+        # host answering with another key fails the deployment instead of receiving every secret.
+        # Without it, trust-on-first-use on each run (the runner is new every time).
+        run: |
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            echo "::warning::VPS_KNOWN_HOSTS is not set: trusting whatever host key $VPS_HOST presents"
+            ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          fi
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+
+      - name: Upload the deployment files
+        # never --delete: caddy/apps/ and keycloak/themes/ hold what the applications registered
+        run: |
+          ssh "$VPS" 'mkdir -p ~/c4-infra/caddy/apps ~/c4-infra/keycloak/themes'
+          rsync -az --exclude 'caddy/apps/*' demo/ "$VPS:~/c4-infra/"
+          rsync -az register-app.sh "$VPS:~/c4-infra/register-app.sh"
+
+      - name: Pull and restart the stack
+        run: |
+          # unquoted heredoc: the credentials are expanded here and travel on stdin, not on a
+          # command line visible in the VPS process list
+          ssh "$VPS" bash -s <<EOT
+          set -euo pipefail
+          cd ~/c4-infra
+          echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
+          docker compose pull --quiet
+          # --wait: the job fails, with the state printed below, unless every service with a
+          # healthcheck reports healthy within the timeout
+          docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker compose ps; exit 1; }
+          # up -d leaves Caddy running when only its Caddyfile changed: reload it (graceful, and
+          # an invalid Caddyfile fails the job while the previous config keeps serving)
+          docker compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker logout ghcr.io
+          docker image prune -f > /dev/null
+          docker compose ps
+          # nightly backup (see demo/backup.sh), idempotent. The "|| true" keep set -e / pipefail
+          # from aborting on an empty crontab (crontab -l and grep -v both return 1).
+          mkdir -p ~/backups
+          { crontab -l 2> /dev/null || true; } | { grep -vF 'c4-infra && bash ./backup.sh' || true; } > /tmp/crontab.new
+          echo '15 3 * * * cd ~/c4-infra && bash ./backup.sh >> ~/backups/c4-infra-backup.log 2>&1' >> /tmp/crontab.new
+          crontab /tmp/crontab.new && rm /tmp/crontab.new
+          EOT
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
