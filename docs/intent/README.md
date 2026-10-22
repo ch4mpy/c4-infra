@@ -47,3 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
+| 0007 | [On the demo host, an application's containers reach every shared service and every other application](0007-demo-containers-reach-every-service/intent.md) | bug | proposed | 2026-10-21 | — |
