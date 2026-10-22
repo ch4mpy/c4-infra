@@ -60,6 +60,7 @@
 - A deployment after the bootstrap administrator was replaced, with an account to repair, fails until `KC_SETUP_ADMIN_*` are set → the failure says so; `docs/demo-setup.md` documents it.
 - `--reset-realms` deletes a realm the account was granted, then imports it: the new realm is granted to its creator, the account → step 5 proves it.
 - The step-1 test copies `.env` (secrets) into a temporary directory → `mktemp -d`, `chmod 700`, removed by a `trap`.
+- Keycloak gives an account holding `create-realm` a reduced view of any realm on `get realms/<r>` (`realm`, `displayName`, `bruteForceProtected`, `supportedLocales`, `organizationsEnabled`), whether or not it may manage it (step 2's deviation) → accepted: inherent to `create-realm`, no secret nor user data in it; registrations decide with `get realms/<r>/roles` instead; the README says so.
 
 ## Proof
 
