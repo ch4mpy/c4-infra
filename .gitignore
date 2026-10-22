@@ -12,3 +12,6 @@ keycloak/themes/*
 !keycloak/themes/.gitkeep
 demo/caddy/apps/*
 !demo/caddy/apps/.gitkeep
+
+### CLAUDE CODE'S LOCAL STATE (the frozen-tests list of sdlc-plan...), never committed ###
+.claude/*.local
