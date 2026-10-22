@@ -1,0 +1,6 @@
+# Added to COMPOSE_FILE on the stand-in host only (tests/lib/stand-in-host.sh, stand_in_env): Docker's
+# DNS forwards every name outside the network to a resolver that doesn't exist, so that Caddy can't
+# reach Let's Encrypt from a test. The containers' own names still resolve.
+services:
+  reverse-proxy:
+    dns: [127.0.0.1]
