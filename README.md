@@ -80,8 +80,14 @@ every time it deploys.
 Prerequisites:
 
 - Docker Desktop and Git Bash;
-- the local CA trusted by the browsers (it already is if a project was set up on this machine
-  before; otherwise `certs/make-certs.sh` creates it and says how to trust it);
+- the local CA trusted by the browsers and by each JDK the projects run on (by the browsers, it
+  already is if a project was set up on this machine before; otherwise `certs/make-certs.sh`
+  creates it and says how to trust it). For each JDK, `bash certs/trust-ca-in-jdk.sh <JDK home>`
+  imports the certificate only (`certs/ca.crt`, alias `host.docker.internal`; the CA's key stays in
+  `~/.ssh`), says "already trusted" when it is, and replaces whatever else that alias holds, such
+  as the CA's private key that a former advice imported with the CA's whole keystore. The JDK's
+  trust store password comes from `CACERTS_PASSWORD` (default `changeit`); a JDK installed for
+  every user needs an administrator's terminal;
 - `host.docker.internal` resolving to the loopback on the workstation: the single line
   `127.0.0.1 host.docker.internal` in the hosts file (`C:\Windows\System32\drivers\etc\hosts`,
   `/etc/hosts` elsewhere), and Docker Desktop's option "Add the \*.docker.internal names to the
