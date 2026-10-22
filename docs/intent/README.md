@@ -47,4 +47,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 
 | No. | Intent | Kind | Status | Opened | Decided |
 | --- | --- | --- | --- | --- | --- |
-| 0006 | [Registrations depend on Keycloak's temporary bootstrap administrator](0006-registration-uses-bootstrap-admin/intent.md) | bug | proposed | 2026-10-21 | — |
+| 0006 | [Registrations depend on Keycloak's temporary bootstrap administrator](0006-registration-uses-bootstrap-admin/intent.md) | bug | accepted | 2026-10-21 | 2026-10-21 |
