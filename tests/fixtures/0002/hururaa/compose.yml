@@ -1,12 +1,12 @@
-# 0002 fixture: hururaa's deployment on the demo host as the README describes it (before 0007):
-# its containers on the shared network c4-infra, with unique names. Echo servers, from the image
+# 0002 fixture: hururaa's deployment on the demo host as the README describes it (since 0007):
+# its containers on its own network c4-infra.hururaa, with unique names. Echo servers, from the image
 # the shared stack's reverse proxy already uses (no pull of an image of its own).
 services:
   gateway:
     image: caddy:2.11.4-alpine
     container_name: hururaa.gateway
     command: [caddy, respond, --listen, ':7080', hururaa.gateway]
-    networks: [c4-infra]
+    networks: [c4-infra.hururaa]
 networks:
-  c4-infra:
+  c4-infra.hururaa:
     external: true

@@ -1,0 +1,23 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): a Faito compose.yml that keeps to its isolation,
+# which sudo c4-app up starts: its network c4-infra.faito (external) and one of the project's own, an
+# alias and a container name under faito., an exposed (not published) port, a volume of its own and a
+# bind mount inside its directory
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    expose: ['7080']
+    networks:
+      c4-infra.faito:
+        aliases: [faito.gw]
+      internal: {}
+    volumes:
+      - cache:/cache
+      - ./compose.yml:/srv/compose.yml:ro
+networks:
+  c4-infra.faito:
+    external: true
+  internal: {}
+volumes:
+  cache: {}

@@ -1,0 +1,19 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a volume binding a host path through driver_opts (an escape of REQ-9's kind),
+# which sudo c4-app up refuses before any container starts
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    volumes: [data:/data]
+networks:
+  c4-infra.faito:
+    external: true
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/hururaa/hururaa

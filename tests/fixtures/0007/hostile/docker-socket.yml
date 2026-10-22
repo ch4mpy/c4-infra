@@ -1,0 +1,12 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with the Docker socket mounted (AC-8),
+# which sudo c4-app up refuses before any container starts
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    volumes: [/var/run/docker.sock:/var/run/docker.sock]
+networks:
+  c4-infra.faito:
+    external: true

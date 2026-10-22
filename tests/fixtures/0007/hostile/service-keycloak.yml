@@ -1,0 +1,11 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a service named
+# keycloak (AC-8), which sudo c4-app up refuses before any container starts
+services:
+  keycloak:
+    image: caddy:2.11.4-alpine
+    container_name: faito.keycloak
+    command: [caddy, respond, --listen, ':8080', faito.keycloak]
+    networks: [c4-infra.faito]
+networks:
+  c4-infra.faito:
+    external: true

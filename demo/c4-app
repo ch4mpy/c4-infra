@@ -10,7 +10,10 @@
 #                                   --registry, logs in first with the token read on stdin, in a
 #                                   temporary Docker configuration removed at once
 #   sudo c4-app up                  starts the project, or brings it up to date, and waits until it
-#                                   runs (healthy where it has a healthcheck)
+#                                   runs (healthy where it has a healthcheck); refuses, before any
+#                                   container starts, a project that leaves its isolation (below),
+#                                   then makes sure of the application's network c4-infra.<application>
+#                                   (networks.sh ensure)
 #   sudo c4-app down                stops and removes the project's containers (its volumes stay)
 #   sudo c4-app register <option>…  bash /home/c4-infra/c4-infra/register-app.sh --app <application>
 #                                   with register-app.sh's options (README.md) but --app: paths are
@@ -24,6 +27,21 @@
 # as the application (`docker compose config`: no daemon, and no file its account can't read, such
 # as another application's env_file), into the one file root's `docker compose` runs,
 # /var/lib/c4-apps/<application>/.c4-app.model.json, as the project <application>.
+#
+# `up` checks that same model first (intent 0007, REQ-9), and names each refusal (the service, the
+# network or the volume, and the rule):
+#   - networks: each one is either external and named c4-infra.<application>, or the project's own
+#     (not external, no name of its own, the bridge driver); no network_mode, links nor
+#     external_links;
+#   - names: a container_name or a network alias outside <application>.; a service named after a
+#     shared service (keycloak, mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db) or the
+#     shared host (INFRA_HOST);
+#   - ports: no published port (expose is fine): only the shared reverse proxy publishes;
+#   - escapes: privileged, cap_add, devices, device_cgroup_rules; pid, ipc, uts, userns_mode or
+#     cgroup set to host (or pid and ipc to another container's); security_opt holding unconfined or
+#     label:disable; volumes_from another container; a bind mount (volumes, secrets' and configs'
+#     files, build contexts and Dockerfiles) outside /var/lib/c4-apps/<application>/, the Docker
+#     socket included; a volume that is external, has a name of its own, or driver_opts.
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -124,6 +142,75 @@ read_model() {
   chown root:root "$next"
   chmod 0640 "$next"
   mv "$next" "$model"
+}
+
+# What leaves the application's isolation (intent 0007, the header's list), one line per refusal
+CHECKS=$(cat <<'JQ'
+def inside: . as $p | (($p == $root) or ($p | startswith($root + "/"))) and (($p | test("(^|/)[.][.](/|$)")) | not);
+def remote: test("^(https?://|git://|git@|docker-image://|service:)");
+def reserved: ["keycloak", "mailpit", "rabbitmq", "grafana-lgtm", "reverse-proxy", "keycloak-db"]
+  + (if $host == "" then [] else [$host] end);
+(.networks // {} | to_entries[] | .key as $k | (.value // {}) |
+  if .external == true then
+    if .name != "c4-infra.\($app)" then "network \($k): external, and not c4-infra.\($app) (\(.name))" else empty end
+  else
+    (if (.name // "\($app)_\($k)") != "\($app)_\($k)" then "network \($k): a name of its own (\(.name))" else empty end),
+    (if (.driver // "bridge") != "bridge" then "network \($k): driver \(.driver), not bridge" else empty end)
+  end),
+(.volumes // {} | to_entries[] | .key as $k | (.value // {}) |
+  (if .external == true then "volume \($k): external (\(.name // $k))"
+   elif (.name // "\($app)_\($k)") != "\($app)_\($k)" then "volume \($k): a name of its own (\(.name))"
+   else empty end),
+  (if (.driver_opts // {}) != {} then "volume \($k): driver_opts" else empty end)),
+(.secrets // {} | to_entries[] | select(.value.file != null) | select(.value.file | inside | not)
+  | "secret \(.key): the file \(.value.file), outside \($root)/"),
+(.configs // {} | to_entries[] | select(.value.file != null) | select(.value.file | inside | not)
+  | "config \(.key): the file \(.value.file), outside \($root)/"),
+(.services // {} | to_entries[] | .key as $s | .value as $v |
+  (if ($s | IN(reserved[])) then "service \($s): named after a shared service" else empty end),
+  (if $v.network_mode != null then "service \($s): network_mode \($v.network_mode)" else empty end),
+  (if ($v.links // []) != [] then "service \($s): links" else empty end),
+  (if ($v.external_links // []) != [] then "service \($s): external_links" else empty end),
+  (if $v.container_name != null and ($v.container_name | startswith("\($app).") | not)
+   then "service \($s): container_name \($v.container_name), outside \($app)." else empty end),
+  ($v.networks // {} | to_entries[] | .key as $n | ((.value // {}).aliases // [])[]
+    | select(startswith("\($app).") | not) | "service \($s): alias \(.) on network \($n), outside \($app)."),
+  (if ($v.ports // []) != []
+   then "service \($s): published ports (\($v.ports | map(.published // .target | tostring) | join(", ")))" else empty end),
+  (if $v.privileged == true then "service \($s): privileged" else empty end),
+  (if ($v.cap_add // []) != [] then "service \($s): cap_add \($v.cap_add | join(", "))" else empty end),
+  (if ($v.devices // []) != [] then "service \($s): devices" else empty end),
+  (if ($v.device_cgroup_rules // []) != [] then "service \($s): device_cgroup_rules" else empty end),
+  (("pid", "ipc", "uts", "userns_mode", "cgroup") as $ns | ($v[$ns] // empty)
+    | select(. == "host" or startswith("container:")) | "service \($s): \($ns) \(.)"),
+  (($v.security_opt // [])[] | select(test("unconfined") or test("^label[:=]disable$"))
+    | "service \($s): security_opt \(.)"),
+  (($v.volumes_from // [])[] | select(startswith("container:")) | "service \($s): volumes_from \(.)"),
+  (($v.volumes // [])[] | select(.type == "bind") | select((.source // "") | inside | not)
+    | "service \($s): a bind mount of \(.source), outside \($root)/"),
+  (if $v.build != null then
+     (($v.build.context // empty) | select(remote | not) | select(inside | not)
+       | "service \($s): build context \(.), outside \($root)/"),
+     (($v.build.additional_contexts // {}) | to_entries[] | .value | select(remote | not) | select(inside | not)
+       | "service \($s): build context \(.), outside \($root)/"),
+     (($v.build.dockerfile // empty) | select(startswith("/")) | select(inside | not)
+       | "service \($s): Dockerfile \(.), outside \($root)/")
+   else empty end))
+JQ
+)
+
+# The model refused, before any container starts, when it leaves the application's isolation
+check_model() {
+  local host refusals
+  host=$(grep -m1 '^INFRA_HOST=' "$STACK/.env" 2> /dev/null | cut -d= -f2- || true)
+  host=${host%$'\r'}
+  if ! refusals=$(jq -r --arg app "$app" --arg root "$staging" --arg host "$host" "$CHECKS" "$model"); then
+    fail "the model of $source_dir/compose.yml can't be checked (above): refused"
+  fi
+  if [ -n "$refusals" ]; then
+    printf '%s\n' "$refusals" | sed 's/^/c4-app: refused: /' >&2
+    fail "$source_dir/compose.yml leaves the application's isolation (above): nothing was started (README.md, \"What an application's deployment does\")"
+  fi
 }
 
 # root's docker compose, on the model only (no .env read again: the model is interpolated already)
@@ -231,6 +318,9 @@ case "$command" in
     [ $# -eq 0 ] || usage
     stage
     read_model
+    # the file compose runs is the one checked: root's, in a directory the application can't write
+    check_model
+    bash "$STACK/networks.sh" ensure "$app" < /dev/null
     compose up -d --wait --remove-orphans
     ;;
   down)

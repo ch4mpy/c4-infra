@@ -1,0 +1,12 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with cap_add: NET_ADMIN (an escape of REQ-9's kind),
+# which sudo c4-app up refuses before any container starts
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    cap_add: [NET_ADMIN]
+networks:
+  c4-infra.faito:
+    external: true

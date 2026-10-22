@@ -1,17 +1,17 @@
-# 0002 fixture: faito's deployment on the demo host as the README describes it (before 0007):
-# its containers on the shared network c4-infra, with unique names. Echo servers, from the image
+# 0002 fixture: faito's deployment on the demo host as the README describes it (since 0007):
+# its containers on its own network c4-infra.faito, with unique names. Echo servers, from the image
 # the shared stack's reverse proxy already uses (no pull of an image of its own).
 services:
   gateway:
     image: caddy:2.11.4-alpine
     container_name: faito.gateway
     command: [caddy, respond, --listen, ':7080', faito.gateway]
-    networks: [c4-infra]
+    networks: [c4-infra.faito]
   frontend:
     image: caddy:2.11.4-alpine
     container_name: faito.frontend
     command: [caddy, respond, --listen, ':80', faito.frontend]
-    networks: [c4-infra]
+    networks: [c4-infra.faito]
 networks:
-  c4-infra:
+  c4-infra.faito:
     external: true

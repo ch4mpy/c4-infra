@@ -1,0 +1,12 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a published port, 7080:7080 (AC-8),
+# which sudo c4-app up refuses before any container starts
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    ports: ["7080:7080"]
+networks:
+  c4-infra.faito:
+    external: true
