@@ -1,11 +1,11 @@
 # Spec: Nothing prevents two applications from taking the same port block
 
 - Intent: [0004](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rule: the isolation between applications — one application's traffic routed to another one's processes; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design and port registry
-- Approved: —
+- Approved: 2026-10-21, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -88,3 +88,4 @@ The registry file.
 - v1 — 2026-10-21 — draft: coherence review (risk high, entries carry what 0002 confines, ports by role as in 0003, registry sent to the demo host, skills follow-up), PA-1 decided
 - v1 — 2026-10-21 — draft: second coherence review (themes in the entry, demo upstreams on the fixed container ports, a command for the next free number, criterion for REQ-7)
 - v1 — 2026-10-21 — draft: third coherence review (AC-6 proves the entry's fields; refusing another application's theme stays 0002's, AC-3 there)
+- v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
