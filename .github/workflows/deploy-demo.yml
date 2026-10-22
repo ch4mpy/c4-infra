@@ -89,6 +89,8 @@ jobs:
           KC_ADMIN_USERNAME: ${{ vars.KC_ADMIN_USERNAME }}
           KC_ADMIN_PASSWORD: ${{ secrets.KC_ADMIN_PASSWORD }}
           KC_DB_PASSWORD: ${{ secrets.KC_DB_PASSWORD }}
+          # the registration account's secret (docs/demo-setup.md, "Rotating the registration secret")
+          KC_REGISTRATION_CLIENT_SECRET: ${{ secrets.KC_REGISTRATION_CLIENT_SECRET }}
           RABBITMQ_ADMIN_PASSWORD: ${{ secrets.RABBITMQ_ADMIN_PASSWORD }}
           MAILPIT_SMTP_PASSWORD: ${{ secrets.MAILPIT_SMTP_PASSWORD }}
           MAILPIT_UI_PASSWORD_HASH: ${{ secrets.MAILPIT_UI_PASSWORD_HASH }}
@@ -124,6 +126,12 @@ jobs:
 
       - name: Pull and restart the stack
         run: |
+          # The administrator demo/deploy.sh logs in as when the registration account must be created
+          # or repaired once the bootstrap administrator is gone: optional secrets, set for one
+          # deployment (docs/demo-setup.md). Base64 here, decoded on the host: any character survives
+          # the heredoc's quoting (printf is a builtin there: still on no command line).
+          setup_user=$(printf '%s' "$KC_SETUP_ADMIN_USERNAME" | base64 -w0)
+          setup_password=$(printf '%s' "$KC_SETUP_ADMIN_PASSWORD" | base64 -w0)
           # unquoted heredoc: the credentials are expanded here and travel on stdin, not on a
           # command line visible in the VPS process list
           ssh "$VPS" bash -s <<EOT
@@ -132,9 +140,15 @@ jobs:
           echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin
           docker compose pull --quiet
           docker logout ghcr.io
-          # starts the stack, reloads Caddy, installs the nightly backup (demo/deploy.sh)
+          KC_SETUP_ADMIN_USERNAME=\$(printf '%s' '$setup_user' | base64 -d)
+          KC_SETUP_ADMIN_PASSWORD=\$(printf '%s' '$setup_password' | base64 -d)
+          export KC_SETUP_ADMIN_USERNAME KC_SETUP_ADMIN_PASSWORD
+          # starts the stack, reloads Caddy, makes sure of the registration account, installs the
+          # nightly backup (demo/deploy.sh)
           bash ./demo/deploy.sh < /dev/null
           EOT
         env:
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KC_SETUP_ADMIN_USERNAME: ${{ secrets.KC_SETUP_ADMIN_USERNAME }}
+          KC_SETUP_ADMIN_PASSWORD: ${{ secrets.KC_SETUP_ADMIN_PASSWORD }}

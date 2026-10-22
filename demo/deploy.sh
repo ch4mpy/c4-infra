@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The demo host's side of the deployment: .github/workflows/deploy-demo.yml runs it over ssh, in
 # ~/c4-infra, once the files of demo/deploy-files.txt and .env are there and the images pulled.
-# Starts the stack or brings it up to date, reloads Caddy, prunes the old images and installs the
-# nightly backup. Idempotent.
+# Starts the stack or brings it up to date, reloads Caddy, makes sure of the registration account,
+# prunes the old images and installs the nightly backup. Idempotent.
 set -euo pipefail
 # the stack's directory: compose reads COMPOSE_FILE (compose.yml:compose.demo.yml) from its .env
 cd "$(dirname "$0")/.."
@@ -17,6 +17,11 @@ docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker comp
 # configuration fails the deployment while the previous one keeps serving). Its stdin is closed: the
 # workflow sends this script's caller on ssh's stdin.
 docker compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile < /dev/null
+# The account registrations log in as: created when missing, its secret set to .env's (a rotation),
+# the registry's realms granted to it. An administrator is only needed then: the bootstrap one of
+# .env while it works, else KC_SETUP_ADMIN_USERNAME / KC_SETUP_ADMIN_PASSWORD, which the workflow
+# exports from the secrets of the demo environment when they are set (docs/demo-setup.md).
+bash ./registration-account.sh ensure < /dev/null
 docker image prune -f > /dev/null
 docker compose ps
 
