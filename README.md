@@ -280,7 +280,7 @@ database gives it the configuration, at the cost of everything Keycloak holds: t
 other administrators and the applications' realms. In dev:
 
 ```bash
-docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db
+docker compose rm -sf keycloak keycloak-import keycloak-db && docker volume rm c4-infra_keycloak_db
 bash up.sh                        # Keycloak creates the master realm, up.sh the registration account
 bash ../<app>/deploy-dev.sh       # each application imports its realm again
 ```

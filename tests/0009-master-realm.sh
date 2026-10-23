@@ -30,15 +30,20 @@ work=$(mktemp -d)
 cp .env "$work/env.saved"
 trap 'docker rm -f "$NAME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
 
-# The dev model's Keycloak: the variables the import reads (never KC_DB_*), and the CA it trusts
+# The dev model: the variables the import reads (never KC_DB_*), keycloak-import's since 0012, and
+# the CA Keycloak trusts
 check "the dev model is read (compose.yml + compose.dev.yml, .env)" \
   docker compose -f compose.yml -f compose.dev.yml --env-file .env config --format json -o "$(host_path "$work/dev.json")"
-jq -r '.services.keycloak.environment | to_entries[]
-  | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*|KC_TRUSTSTORE_PATHS)$")) | "\(.key)=\(.value)"' \
+jq -r '(.services["keycloak-import"].environment | to_entries[]
+    | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*)$"))),
+  (.services.keycloak.environment | to_entries[] | select(.key == "KC_TRUSTSTORE_PATHS"))
+  | "\(.key)=\(.value)"' \
   < "$work/dev.json" > "$work/kc.env"
-check "its Keycloak gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort its start)" \
-  test "$(jq -r '.services.keycloak.environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
+check "keycloak-import gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort)" \
+  test "$(jq -r '.services["keycloak-import"].environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
   = "C4_MASTER_ADMIN_PASSWORD C4_MASTER_ADMIN_USERNAME C4_MASTER_RESET_PASSWORD_ALLOWED C4_MASTER_SMTP_HOST C4_MASTER_SMTP_STARTTLS"
+check "0012: the running Keycloak gets none of them, nor Mailpit's SMTP credentials" \
+  test "$(jq -r '.services.keycloak.environment | keys | map(select(test("^(C4_MASTER_|KC_BOOTSTRAP_ADMIN_|MAILPIT_SMTP_)"))) | join(" ")' < "$work/dev.json")" = ""
 value() { sed -n "s/^$1=//p" "$work/kc.env"; }
 check "and INFRA_HOST (host.docker.internal)" test "$(value INFRA_HOST)" = host.docker.internal
 # The throwaway's own host name (its administrator's address, the sender's): the test finds and

@@ -31,9 +31,9 @@ images() { # <config file>: "<service> <image>", one per line, sorted
 
 same_images() {
   local dev demo
-  # Keycloak's is KC_IMAGE in both: built here, pulled from GHCR on the demo host
-  dev=$(images "$work/dev.json" | grep -v '^keycloak ')
-  demo=$(images "$work/demo.json" | grep -v '^keycloak ')
+  # Keycloak's (and keycloak-import's) is KC_IMAGE in both: built here, pulled from GHCR on the demo host
+  dev=$(images "$work/dev.json" | grep -v -e '^keycloak ' -e '^keycloak-import ')
+  demo=$(images "$work/demo.json" | grep -v -e '^keycloak ' -e '^keycloak-import ')
   [ "$dev" = "$demo" ] && [ -n "$dev" ] || { echo "dev:"; echo "$dev"; echo "demo:"; echo "$demo"; return 1; }
 }
 

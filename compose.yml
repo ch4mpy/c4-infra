@@ -85,6 +85,48 @@ services:
       timeout: 5s
       retries: 20
 
+  keycloak-import:
+    # A one-shot, before Keycloak at each start of the stack (Keycloak depends on it): it creates the
+    # master realm from keycloak-import/master-realm.json on an empty database (intent 0009), and
+    # leaves a realm that exists as it is (--override false), then exits. The master realm's secrets
+    # reach this short-lived process only, never the running Keycloak's environment, which a theme
+    # could show on its pages (intent 0012).
+    image: ${KC_IMAGE}
+    container_name: c4-infra.keycloak-import
+    restart: 'no'
+    logging: *default-logging
+    # its database only: it serves nothing
+    networks: [keycloak-db]
+    command:
+      - import
+      - --optimized
+      - --dir
+      - /opt/keycloak/data/import
+      - --override
+      - 'false'
+    environment:
+      # What the master realm's import reads (${NAME} in keycloak-import/master-realm.json). As
+      # environment rather than arguments: a command line is readable in the host's process list.
+      # The administrator isn't KC_BOOTSTRAP_ADMIN_*, which Keycloak would then create as well, and
+      # abort on that name (intent 0009).
+      C4_MASTER_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      C4_MASTER_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      INFRA_HOST: ${INFRA_HOST}
+      MAILPIT_SMTP_USER: ${MAILPIT_SMTP_USER}
+      MAILPIT_SMTP_PASSWORD: ${MAILPIT_SMTP_PASSWORD}
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_LOG_LEVEL: ${KC_LOG_LEVEL}
+      TZ: ${TZ}
+    volumes:
+      # the directory, not its file: rsync replaces files with new inodes; outside keycloak/, whose
+      # content tags the demo host's image (a change here restarts nothing)
+      - ./keycloak-import/:/opt/keycloak/data/import/:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
   keycloak:
     # built from keycloak/ in dev (compose.dev.yml: c4-infra/keycloak); on the demo host, the image
     # the workflow pushed to GHCR, tagged with the content of keycloak/, so that a deployment that
@@ -94,23 +136,14 @@ services:
     restart: unless-stopped
     logging: *default-logging
     networks: [default, keycloak-db]
-    # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside
-    # --import-realm: the master realm is created from keycloak-import/master-realm.json on an empty
-    # database (intent 0009); a realm that exists is never imported again
+    # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside. No
+    # import: keycloak-import created the master realm before it starts.
     command:
       - start
       - --optimized
-      - --import-realm
     environment:
-      # What the master realm's import reads (${NAME} in keycloak-import/master-realm.json), only
-      # when Keycloak creates that realm. As environment rather than arguments: a command line is
-      # readable in the host's process list. The administrator isn't KC_BOOTSTRAP_ADMIN_*, which
-      # Keycloak would then create as well, and abort its start on that name (intent 0009).
-      C4_MASTER_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
-      C4_MASTER_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
-      INFRA_HOST: ${INFRA_HOST}
-      MAILPIT_SMTP_USER: ${MAILPIT_SMTP_USER}
-      MAILPIT_SMTP_PASSWORD: ${MAILPIT_SMTP_PASSWORD}
+      # No secret but its database's, which only Keycloak reaches (intent 0007): a theme's pages
+      # could show any variable of this environment (intent 0012)
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
@@ -122,9 +155,6 @@ services:
       TZ: ${TZ}
     volumes:
       - ./keycloak/themes/:/opt/keycloak/themes/:ro
-      # the directory, not its file: rsync replaces files with new inodes; outside keycloak/, whose
-      # content tags the demo host's image (a change here restarts nothing)
-      - ./keycloak-import/:/opt/keycloak/data/import/:ro
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']
@@ -138,6 +168,8 @@ services:
     depends_on:
       keycloak-db:
         condition: service_healthy
+      keycloak-import:
+        condition: service_completed_successfully
 
   mailpit:
     image: axllent/mailpit:v1.31.0

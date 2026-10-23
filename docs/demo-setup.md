@@ -248,7 +248,7 @@ the master realm's other administrators, the registration account and the applic
 As `ubuntu`:
 
 ```bash
-ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db'"
+ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker compose rm -sf keycloak keycloak-import keycloak-db && docker volume rm c4-infra_keycloak_db'"
 gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
 ```
 
