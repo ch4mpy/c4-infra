@@ -1,0 +1,21 @@
+{
+  "realm": "verif-lockout",
+  "enabled": true,
+  "bruteForceProtected": false,
+  "failureFactor": 30,
+  "bruteForceStrategy": "MULTIPLE",
+  "clients": [
+    { "clientId": "verif-cli", "publicClient": true, "directAccessGrantsEnabled": true, "standardFlowEnabled": false }
+  ],
+  "users": [
+    {
+      "username": "visitor",
+      "enabled": true,
+      "email": "visitor@verif-lockout.test",
+      "emailVerified": true,
+      "firstName": "Verif",
+      "lastName": "Visitor",
+      "credentials": [ { "type": "password", "value": "visitor-password", "temporary": false } ]
+    }
+  ]
+}
