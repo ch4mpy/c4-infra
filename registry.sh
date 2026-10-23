@@ -322,9 +322,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       [ $# -eq 4 ] || usage
       registry_check || exit 1
       registry_entry "$2" || exit 1
-      status=0
-      registry_upstream "$3" "$4" || status=$?
-      exit "$status"
+      registry_upstream "$3" "$4" || exit $?
       ;;
     *) usage ;;
   esac
