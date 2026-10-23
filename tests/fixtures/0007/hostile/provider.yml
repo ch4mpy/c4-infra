@@ -1,0 +1,16 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): a provider service, whose provider.type is any
+# host executable root's compose would run, which sudo c4-app up refuses (review round 1, 2026-10-22)
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+  helper:
+    provider:
+      type: /bin/sh
+      options:
+        command: id
+networks:
+  c4-infra.faito:
+    external: true

@@ -194,8 +194,8 @@ site_owner=$(stand_in_exec stat -c %U "$STACK/caddy/apps/faito.caddy" 2>&1 | tr 
 check "AC-2: caddy/apps/faito.caddy exists, owned by c4-infra ($site_owner)" test "$site_owner" = c4-infra
 check "AC-2: RabbitMQ has the user faito-api" \
   stand_in_exec sh -c 'docker exec c4-infra.rabbitmq rabbitmqctl -q list_users | grep -q "^faito-api"'
-model_owner=$(stand_in_exec stat -c '%U:%G %a' /var/lib/c4-apps/faito/.c4-app.model.json | tr -d '\r')
-check "AC-2: the model root's compose ran is root's ($model_owner)" test "$model_owner" = "root:root 640"
+model_owner=$(stand_in_exec stat -c '%U:%G %a' /var/lib/c4-apps/.run.faito/model.json | tr -d '\r')
+check "AC-2: the model root's compose ran is root's, in the root-only snapshot ($model_owner)" test "$model_owner" = "root:root 640"
 
 # AC-3: that registration's faito-realm.json, whose "realm" field says public-facing, imported while
 # realm faito didn't exist

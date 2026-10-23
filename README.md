@@ -337,34 +337,46 @@ application whose account runs it (never an argument), on its own project only:
   temporary Docker configuration removed at once), `sudo c4-app up`, `sudo c4-app down`: its compose
   project, named after it. Each command copies `~/<app>/` (read as the application) into
   `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
-  symbolic link or a special file; the compose model is read as the application (`docker compose
-  config`: no file its account can't read, such as another application's `env_file`), and root's
-  `docker compose` runs that model only;
+  symbolic link or a special file; that copy is only the containers' mount sources. The compose
+  model is read as the application (`docker compose config`: no file its account can't read, such as
+  another application's `env_file`) and, once checked, kept with the files root itself reads in a
+  **root-only snapshot**, `/var/lib/c4-apps/.run.<app>/` (mode `0700 root:root`, outside anything a
+  container may mount); root's `docker compose` runs that snapshot model, for every command;
 - `sudo c4-app register <register-app.sh's options>`, without `--app`: paths relative to
   `~/<app>/`, which must stay inside it, and `--rabbitmq-password-env <VAR>` taken from
   `~/<app>/.env`. The registration then runs with the registration account's secret, which the
   application's account can't read, and touches only what its registry entry assigns to it (its
   realms, its themes, its RabbitMQ user and virtual host, its site: see "What an application
-  provides").
+  provides"). It reads the realm, routes and theme files from the snapshot too, so a container can't
+  swap them under it.
 
-`sudo c4-app up` checks that model before anything starts (intent 0007), and refuses, naming the
-service, the network or the volume and the rule, a project that would leave its isolation:
+`sudo c4-app up`, `down` and `pull` all check that model before root's compose touches it (intent
+0007): compose runs a provider's and a hook's executables, so an unchecked model must never reach
+it. The check is an **allowlist** — the top-level keys, the service keys, and, for the nested
+objects that can escape (`build`, `deploy`, `security_opt`, `volumes` and `networks` entries), their
+sub-keys and values — and refuses anything else, naming the service (or network/volume) and the key:
 
-- a network that is neither `c4-infra.<app>` (external) nor the project's own (not external, no
-  name of its own, the bridge driver); `network_mode`, `links`, `external_links`;
-- a `container_name` or a network alias outside `<app>.`; a service named after a shared service
-  (`keycloak`, `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared
-  host (`infra.c4-soft.com`);
-- a published port (`ports`; `expose` is fine): only the shared Caddy publishes;
-- what escapes a container: `privileged`, `cap_add`, `devices`, `device_cgroup_rules`; `pid`,
-  `ipc`, `uts`, `userns_mode` or `cgroup` set to `host` (or `pid` and `ipc` to another container);
-  `security_opt` holding `unconfined` or `label:disable`; `volumes_from` another container; a bind
-  mount (volumes, secrets' and configs' files, build contexts and Dockerfiles) outside
-  `/var/lib/c4-apps/<app>/`, the Docker socket included; a volume that is external, has a name of
-  its own, or `driver_opts`.
+- **a service may set** its `image`/`build`, `container_name` and network aliases under `<app>.`,
+  `command`/`entrypoint`/`environment`/`env_file`, `expose`, its own networks and named volumes,
+  **read-only** bind mounts inside `/var/lib/c4-apps/<app>/`, `healthcheck`, `depends_on`, resource
+  limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
+  no-new-privileges`). A service name is `[a-z0-9_-]+` — no dot, which would be an alias on the
+  shared network;
+- **refused with their own message**: a service named after a shared service (`keycloak`,
+  `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared host
+  (`infra.c4-soft.com`); a published port (`expose` is fine: only the shared Caddy publishes);
+  `privileged`, `cap_add`, `devices`, `device_cgroup_rules`; `network_mode`, `links`,
+  `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` set to `host` or another
+  container; a read-write bind mount, or one of the staging root or outside it (the Docker socket,
+  another application's files…); a network or volume that is external, has a name or driver of its
+  own, or `driver_opts`; a `build` context or Dockerfile outside the staging tree;
+- **refused by the allowlist** (not an application's to set): `use_api_socket`,
+  `post_start`/`pre_stop` hooks, a `provider` service, `build.network`/`privileged`/`entitlements`/
+  `ssh`, a `deploy` reservation of host devices, and anything else not listed above. A need for one
+  of these is a new intent, not a change an application makes on its own.
 
-Then it makes sure of the application's network (`networks.sh ensure`) and starts the model it
-checked: root's file, in a directory the application can't write.
+Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
+model it checked, outside anything the application or its containers can write.
 
 ### What an application's deployment does
 

@@ -1,0 +1,11 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): a dotted service name (faito.gateway), which
+# would become the network alias faito.gateway on c4-infra.<app>, where Caddy and Keycloak are too;
+# sudo c4-app up refuses it (review round 1, 2026-10-22, finding 5)
+services:
+  faito.gateway:
+    image: caddy:2.11.4-alpine
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+networks:
+  c4-infra.faito:
+    external: true

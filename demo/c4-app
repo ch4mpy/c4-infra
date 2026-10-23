@@ -23,25 +23,39 @@
 # Each command works on a copy of ~/<application>/<application>/ (sent there by the application's
 # workflow), read as the application and written by root into /var/lib/c4-apps/<application>/
 # (root:<application>, mode 0750: the application reads it, never writes it); a symbolic link or a
-# special file in it is refused, and every path given must stay inside it. The compose model is read
-# as the application (`docker compose config`: no daemon, and no file its account can't read, such
-# as another application's env_file), into the one file root's `docker compose` runs,
-# /var/lib/c4-apps/<application>/.c4-app.model.json, as the project <application>.
+# special file in it is refused. That copy is only the containers' mount sources at run time; what
+# root itself reads — the compose model, and (for register) the realm, routes and theme files — is a
+# fresh root-only snapshot in /var/lib/c4-apps/.run.<application>/ (mode 0700 root:root), outside
+# anything a container may mount, taken once the checks have passed and used from there. The compose
+# model is read as the application (`docker compose config`: no daemon, and no file its account can't
+# read, such as another application's env_file) into .run.<application>/model.json, which root's
+# `docker compose` runs as the project <application>; root reads nothing of the application's copy on
+# its behalf.
 #
-# `up` checks that same model first (intent 0007, REQ-9), and names each refusal (the service, the
-# network or the volume, and the rule):
-#   - networks: each one is either external and named c4-infra.<application>, or the project's own
-#     (not external, no name of its own, the bridge driver); no network_mode, links nor
-#     external_links;
-#   - names: a container_name or a network alias outside <application>.; a service named after a
-#     shared service (keycloak, mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db) or the
-#     shared host (INFRA_HOST);
-#   - ports: no published port (expose is fine): only the shared reverse proxy publishes;
-#   - escapes: privileged, cap_add, devices, device_cgroup_rules; pid, ipc, uts, userns_mode or
-#     cgroup set to host (or pid and ipc to another container's); security_opt holding unconfined or
-#     label:disable; volumes_from another container; a bind mount (volumes, secrets' and configs'
-#     files, build contexts and Dockerfiles) outside /var/lib/c4-apps/<application>/, the Docker
-#     socket included; a volume that is external, has a name of its own, or driver_opts.
+# `up`, `down` and `pull` all check that model first, before root's compose touches it (intent 0007,
+# REQ-9): compose runs a provider's and a hook's executables, so an unchecked model must never reach
+# it. The check is an allowlist — the top-level keys, the service keys, and the sub-keys/values of
+# the nested objects that can escape (build, deploy, security_opt, volumes and networks entries) that
+# an application may use; anything else is refused, naming the service (or network/volume) and the
+# key (CHECKS below; the list is also in README.md, "What an application's deployment does"). What is
+# allowed, in short:
+#   - top level: services, networks, volumes, secrets, configs;
+#   - a service: its image/build, container_name and network aliases under <application>., its
+#     command/entrypoint/environment/env_file, expose (never ports), its own networks and named
+#     volumes, read-only bind mounts inside /var/lib/c4-apps/<application>/, healthcheck, depends_on,
+#     resource limits, and the usual hardening (read_only, cap_drop, user, tmpfs, init,
+#     security_opt: no-new-privileges). A service name is [a-z0-9_-]+ (no dot: a dotted name would
+#     be an alias on the shared network).
+#   - refused with their own clearer message: a service named after a shared service (keycloak,
+#     mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db) or the shared host (INFRA_HOST); a
+#     published port; privileged, cap_add, devices, device_cgroup_rules; network_mode, links,
+#     external_links, volumes_from; pid/ipc/uts/userns_mode/cgroup set to host or another container;
+#     a read-write bind mount, or one of the staging root or outside it (the Docker socket, another
+#     application's files…); an external network or volume, one with a name or driver of its own, or
+#     driver_opts; a build context or Dockerfile outside the staging tree.
+#   - refused by the allowlist (not an application's to set): use_api_socket, post_start/pre_stop
+#     hooks, a provider service, build.network/privileged/entitlements/ssh, and anything else not
+#     listed above.
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -95,7 +109,11 @@ registry_entry "$app" || fail "$app is not in the shared stack's registry ($STAC
 
 source_dir=/home/$app/$app
 staging=$STAGING_ROOT/$app
-model=$staging/.c4-app.model.json
+# root-only, outside anything a container may mount (not inside $staging): the model root's compose
+# runs, and the snapshot of the inputs root reads for register
+snap=$STAGING_ROOT/.run.$app
+snap_src=$snap/src
+model=$snap/model.json
 [ -d "$source_dir" ] || fail "$source_dir is missing: the application's workflow sends its files there first"
 
 # One command at a time per application
@@ -103,11 +121,13 @@ install -d -m 0755 -o root -g root "$STAGING_ROOT"
 exec 9> "$STAGING_ROOT/.$app.lock"
 flock -w 600 9 || fail "another c4-app command of $app is still running"
 
-# The staging copy: read as the application (what its account can't read isn't copied), checked,
-# then synchronized into the staging directory, whose inode stays (bind mounts inside it)
+# The staging copy: read as the application (what its account can't read isn't copied), checked for
+# symbolic and special files, then synchronized into the staging directory (0750 root:<app>, the
+# containers' mount sources; the application reads it, never writes it). The root-only snapshot
+# directory is (re)created empty here, holding nothing the application put there.
 stage() {
   local incoming=$STAGING_ROOT/.$app.incoming found
-  rm -rf "$incoming"
+  rm -rf "$incoming" "$snap"
   install -d -m 0700 -o root -g root "$incoming"
   if ! runuser -u "$app" -- tar -C "$source_dir" -cf - . \
     | tar -C "$incoming" -xf - --no-same-owner --no-same-permissions; then
@@ -120,16 +140,24 @@ stage() {
     rm -rf "$incoming"
     fail "$source_dir holds a symbolic link or a special file, refused: ${found//$'\n'/, }"
   fi
-  # the model is root's, never the application's
-  rm -f "$incoming/.c4-app.model.json" "$incoming/.c4-app.model.json.new"
   chown -R "root:$app" "$incoming"
   chmod -R u+rwX,g+rX,g-w,o-rwx "$incoming"
   install -d -m 0750 -o root -g "$app" "$staging"
   rsync -a --delete "$incoming/" "$staging/"
   rm -rf "$incoming"
+  # the snapshot directory root reads from: root-only, no container may mount it (not inside $staging)
+  install -d -m 0700 -o root -g root "$snap"
 }
 
-# The compose model, read as the application, into the one root-owned file root's compose runs
+# A root-only snapshot of the staging tree, taken after stage()'s checks: register reads the realm,
+# routes and theme files from here, which no container can rewrite (symlink-free: stage refused them)
+snapshot_src() {
+  rm -rf "$snap_src"
+  cp -a "$staging" "$snap_src"
+}
+
+# The compose model, read as the application, into the root-only model file root's compose runs. The
+# redirection and the mv are root's, into $snap (root-only): no container can plant a symlink there.
 read_model() {
   local next=$model.new
   [ -f "$staging/compose.yml" ] || fail "$source_dir/compose.yml is missing"
@@ -144,37 +172,69 @@ read_model() {
   mv "$next" "$model"
 }
 
-# What leaves the application's isolation (intent 0007, the header's list), one line per refusal
+# What leaves the application's isolation: an allowlist (the header's list; README's too). The keys
+# an application may set — top-level, per service, and the sub-keys/values of the nested objects that
+# can escape (build, deploy, security_opt, volumes and networks entries) — are listed; anything else
+# is refused, naming the service (or network/volume) and the key. The escapes a specific message
+# reads more clearly keep that message. One line per refusal.
 CHECKS=$(cat <<'JQ'
 def inside: . as $p | (($p == $root) or ($p | startswith($root + "/"))) and (($p | test("(^|/)[.][.](/|$)")) | not);
 def remote: test("^(https?://|git://|git@|docker-image://|service:)");
 def reserved: ["keycloak", "mailpit", "rabbitmq", "grafana-lgtm", "reverse-proxy", "keycloak-db"]
   + (if $host == "" then [] else [$host] end);
+def svc_allowed: [
+  "image", "container_name", "command", "entrypoint", "environment", "env_file", "expose",
+  "networks", "volumes", "depends_on", "healthcheck", "restart", "labels", "annotations", "user",
+  "working_dir", "hostname", "read_only", "cap_drop", "init", "tmpfs", "stop_grace_period",
+  "stop_signal", "stop_timeout", "mem_limit", "mem_reservation", "memswap_limit", "cpus", "cpuset",
+  "cpu_shares", "shm_size", "pids_limit", "ulimits", "deploy", "build", "secrets", "configs",
+  "pull_policy", "platform", "stdin_open", "tty", "security_opt"];
+def svc_refused: ["network_mode", "links", "external_links", "ports", "privileged", "cap_add",
+  "devices", "device_cgroup_rules", "pid", "ipc", "uts", "userns_mode", "cgroup", "volumes_from"];
+def top_allowed: ["name", "services", "networks", "volumes", "secrets", "configs"];
+def build_allowed: ["context", "dockerfile", "additional_contexts", "args", "target", "labels",
+  "tags", "cache_from", "no_cache", "pull", "platforms"];
+def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "update_config",
+  "rollback_config", "placement", "mode", "endpoint_mode"];
+
+(keys[] | select(IN(top_allowed[]) | not)
+  | "top-level key \(.): not allowed (an application provides services, networks, volumes, secrets, configs)"),
+
 (.networks // {} | to_entries[] | .key as $k | (.value // {}) |
-  if .external == true then
-    if .name != "c4-infra.\($app)" then "network \($k): external, and not c4-infra.\($app) (\(.name))" else empty end
+  (if .external == true then
+    (if .name != "c4-infra.\($app)" then "network \($k): external, and not c4-infra.\($app) (\(.name))" else empty end)
   else
     (if (.name // "\($app)_\($k)") != "\($app)_\($k)" then "network \($k): a name of its own (\(.name))" else empty end),
     (if (.driver // "bridge") != "bridge" then "network \($k): driver \(.driver), not bridge" else empty end)
   end),
+  (if (.driver_opts // {}) != {} then "network \($k): driver_opts" else empty end)),
+
 (.volumes // {} | to_entries[] | .key as $k | (.value // {}) |
   (if .external == true then "volume \($k): external (\(.name // $k))"
    elif (.name // "\($app)_\($k)") != "\($app)_\($k)" then "volume \($k): a name of its own (\(.name))"
    else empty end),
+  (if (.driver // "local") != "local" then "volume \($k): driver \(.driver), not local" else empty end),
   (if (.driver_opts // {}) != {} then "volume \($k): driver_opts" else empty end)),
+
 (.secrets // {} | to_entries[] | select(.value.file != null) | select(.value.file | inside | not)
   | "secret \(.key): the file \(.value.file), outside \($root)/"),
 (.configs // {} | to_entries[] | select(.value.file != null) | select(.value.file | inside | not)
   | "config \(.key): the file \(.value.file), outside \($root)/"),
+
 (.services // {} | to_entries[] | .key as $s | .value as $v |
+  (if ($s | test("^[a-z0-9][a-z0-9_-]*$") | not)
+   then "service \($s): its name is outside a-z 0-9 _ - (a dotted name would be an alias on \($app)'s network, where the shared services are)" else empty end),
   (if ($s | IN(reserved[])) then "service \($s): named after a shared service" else empty end),
+  ($v | keys[] | select(IN(svc_allowed[]) or IN(svc_refused[]) | not)
+    | "service \($s): \(.) is not allowed (outside the isolation allowlist: README, \"What an application's deployment does\")"),
   (if $v.network_mode != null then "service \($s): network_mode \($v.network_mode)" else empty end),
   (if ($v.links // []) != [] then "service \($s): links" else empty end),
   (if ($v.external_links // []) != [] then "service \($s): external_links" else empty end),
   (if $v.container_name != null and ($v.container_name | startswith("\($app).") | not)
    then "service \($s): container_name \($v.container_name), outside \($app)." else empty end),
-  ($v.networks // {} | to_entries[] | .key as $n | ((.value // {}).aliases // [])[]
-    | select(startswith("\($app).") | not) | "service \($s): alias \(.) on network \($n), outside \($app)."),
+  ($v.networks // {} | to_entries[] | .key as $n | (.value // {}) |
+    ((.aliases // [])[] | select(startswith("\($app).") | not) | "service \($s): alias \(.) on network \($n), outside \($app)."),
+    (keys[] | select(. != "aliases") | "service \($s): network \($n) sets \(.), only aliases allowed")),
   (if ($v.ports // []) != []
    then "service \($s): published ports (\($v.ports | map(.published // .target | tostring) | join(", ")))" else empty end),
   (if $v.privileged == true then "service \($s): privileged" else empty end),
@@ -183,18 +243,29 @@ def reserved: ["keycloak", "mailpit", "rabbitmq", "grafana-lgtm", "reverse-proxy
   (if ($v.device_cgroup_rules // []) != [] then "service \($s): device_cgroup_rules" else empty end),
   (("pid", "ipc", "uts", "userns_mode", "cgroup") as $ns | ($v[$ns] // empty)
     | select(. == "host" or startswith("container:")) | "service \($s): \($ns) \(.)"),
-  (($v.security_opt // [])[] | select(test("unconfined") or test("^label[:=]disable$"))
-    | "service \($s): security_opt \(.)"),
-  (($v.volumes_from // [])[] | select(startswith("container:")) | "service \($s): volumes_from \(.)"),
-  (($v.volumes // [])[] | select(.type == "bind") | select((.source // "") | inside | not)
-    | "service \($s): a bind mount of \(.source), outside \($root)/"),
+  (($v.security_opt // [])[] | select(test("^no-new-privileges(:(true|false))?$") | not)
+    | "service \($s): security_opt \(.) (only no-new-privileges)"),
+  (($v.volumes_from // [])[] | "service \($s): volumes_from \(.)"),
+  (($v.volumes // [])[] | select(.type == "bind") |
+    if (.source // "") == $root then "service \($s): a bind mount of the staging root \($root) itself"
+    elif ((.source // "") | inside | not) then "service \($s): a bind mount of \(.source), outside \($root)/"
+    elif .read_only != true then "service \($s): a read-write bind mount of \(.source) (a bind mount must be read-only: add :ro)"
+    else empty end),
+  (if ($v.deploy.resources.reservations.devices // []) != []
+   then "service \($s): deploy reserves host devices" else empty end),
+  (if $v.deploy != null then ($v.deploy | keys[] | select(IN(deploy_allowed[]) | not)
+    | "service \($s): deploy.\(.) is not allowed") else empty end),
   (if $v.build != null then
+     ($v.build | keys[] | select(IN(build_allowed[]) | not)
+       | "service \($s): build.\(.) is not allowed (outside the isolation allowlist)"),
      (($v.build.context // empty) | select(remote | not) | select(inside | not)
        | "service \($s): build context \(.), outside \($root)/"),
      (($v.build.additional_contexts // {}) | to_entries[] | .value | select(remote | not) | select(inside | not)
        | "service \($s): build context \(.), outside \($root)/"),
-     (($v.build.dockerfile // empty) | select(startswith("/")) | select(inside | not)
-       | "service \($s): Dockerfile \(.), outside \($root)/")
+     (($v.build.dockerfile // empty) as $df | ($v.build.context // $root) as $ctx |
+       if ($df | startswith("/")) then (if ($df | inside) then empty else "service \($s): Dockerfile \($df), outside \($root)/" end)
+       elif ($ctx | remote) or (($ctx | inside) | not) then empty
+       else (($ctx + "/" + $df) | if inside then empty else "service \($s): Dockerfile \($df) resolves outside \($root)/" end) end)
    else empty end))
 JQ
 )
@@ -217,22 +288,23 @@ compose() {
   docker compose --project-directory "$staging" -p "$app" -f "$model" --env-file /dev/null "$@"
 }
 
-# A path the application gives, relative to ~/<application>/, as its staging copy's
+# A path the application gives, relative to ~/<application>/, in the root-only snapshot (snapshot_src
+# runs first): register-app.sh reads it there, where no container can rewrite it
 staged_path() { # <path>
   local resolved
   case "$1" in
     '' | /*) fail "'$1': a path relative to ~/$app/ is expected" ;;
   esac
-  resolved=$(realpath -m -- "$staging/$1")
+  resolved=$(realpath -m -- "$snap_src/$1")
   case "$resolved" in
-    "$staging"/*) printf '%s' "$resolved" ;;
+    "$snap_src"/*) printf '%s' "$resolved" ;;
     *) fail "$1 is outside ~/$app/: refused" ;;
   esac
 }
 
-# The value of KEY in the staging .env, read as data as compose reads it: the value the
+# The value of KEY in the snapshot .env, read as data as compose reads it: the value the
 # application's containers get (registry.sh's dotenv_value: "$$" is a "$", " #" starts a comment)
-env_value() { dotenv_value "$staging/.env" "$1"; }
+env_value() { dotenv_value "$snap_src/.env" "$1"; }
 
 cmd_pull() {
   local registry="" user="" config status=0
@@ -245,6 +317,9 @@ cmd_pull() {
   done
   stage
   read_model
+  # root's compose never runs an unchecked model, for any command (compose pull reads it, and would
+  # run a provider's own fetch)
+  check_model
   if [ -z "$registry" ]; then
     compose pull --quiet
     return
@@ -265,6 +340,7 @@ cmd_pull() {
 cmd_register() {
   local args=() var value
   stage
+  snapshot_src
   while [ $# -gt 0 ]; do
     case "$1" in
       --realm | --themes | --proxy)
@@ -309,7 +385,7 @@ case "$command" in
     [ $# -eq 0 ] || usage
     stage
     read_model
-    # the file compose runs is the one checked: root's, in a directory the application can't write
+    # the file compose runs is the one checked: root's, outside anything a container may mount
     check_model
     bash "$STACK/networks.sh" ensure "$app" < /dev/null
     compose up -d --wait --remove-orphans
@@ -318,6 +394,8 @@ case "$command" in
     [ $# -eq 0 ] || usage
     stage
     read_model
+    # down runs pre_stop hooks and a provider's down: the model it hands compose is checked too
+    check_model
     compose down --remove-orphans
     ;;
   register) cmd_register "$@" ;;

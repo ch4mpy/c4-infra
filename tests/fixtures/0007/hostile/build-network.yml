@@ -1,0 +1,14 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): a build with network: host,
+# which sudo c4-app up refuses before any container starts (review round 1, 2026-10-22)
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    build:
+      context: .
+      network: host
+networks:
+  c4-infra.faito:
+    external: true

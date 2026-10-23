@@ -42,6 +42,18 @@ declare -A REFUSAL=(
   [external-volume.yml]='volume data: external (hururaa_rest_api_data)'
   [volume-bind-driver.yml]='volume data: driver_opts'
   [build-outside.yml]="service gateway: build context /var/lib/c4-apps/hururaa, outside $STAGING/"
+  # review round 1 (2026-10-22): the escapes that passed the former denylist, now the allowlist's
+  [use-api-socket.yml]='service gateway: use_api_socket is not allowed'
+  [post-start-privileged.yml]='service gateway: post_start is not allowed'
+  [provider.yml]='service helper: provider is not allowed'
+  [seccomp-file.yml]="service gateway: security_opt seccomp=$STAGING/compose.yml (only no-new-privileges)"
+  [service-dotted-name.yml]='service faito.gateway: its name is outside a-z 0-9 _ -'
+  [build-network.yml]='service gateway: build.network is not allowed'
+  [build-ssh.yml]='service gateway: build.ssh is not allowed'
+  [build-dockerfile-dotdot.yml]="service gateway: Dockerfile ../../c4-app.model.json resolves outside $STAGING/"
+  [bind-rw.yml]="service gateway: a read-write bind mount of $STAGING/compose.yml"
+  [bind-staging-root.yml]="service gateway: a bind mount of the staging root $STAGING itself"
+  [deploy-devices.yml]='service gateway: deploy reserves host devices'
 )
 
 umask 077
@@ -97,13 +109,22 @@ networks=$(stand_in_exec docker inspect -f '{{range $name, $_ := .NetworkSetting
 check "valid.yml: faito.gateway is on c4-infra.faito and faito_internal only ($networks)" \
   test "$networks" = 'c4-infra.faito faito_internal '
 
-# the model compose started is the one checked
-model_mode=$(stand_in_exec stat -c '%U:%G %a' "$STAGING/.c4-app.model.json" | tr -d '\r')
-check "the model is root's ($model_mode)" test "$model_mode" = 'root:root 640'
+# the model compose started is the one checked: root's, in the root-only snapshot directory, outside
+# anything a container may mount (review round 1, 2026-10-22, finding 4: the model left the staging
+# tree, which the application's own containers can mount, for /var/lib/c4-apps/.run.<app>/)
+SNAP=/var/lib/c4-apps/.run.faito
+model_mode=$(stand_in_exec stat -c '%U:%G %a' "$SNAP/model.json" | tr -d '\r')
+check "the model root's compose ran is root's, in the snapshot directory ($model_mode)" test "$model_mode" = 'root:root 640'
+snap_mode=$(stand_in_exec stat -c '%U:%G %a' "$SNAP" | tr -d '\r')
+check "the snapshot directory is root-only ($snap_mode)" test "$snap_mode" = 'root:root 700'
+check "no model file is left in the staging tree (faito's containers mount it)" \
+  stand_in_exec test ! -e "$STAGING/.c4-app.model.json"
+check "the snapshot directory is outside the staging tree (no bind mount can reach it)" \
+  bash -c 'case "$1" in "$2"/*) exit 1 ;; *) exit 0 ;; esac' sh "$SNAP" "$STAGING"
 as_faito write-staging.log "touch $STAGING/x"
 check "faito can't write the staging directory" refused write-staging.log
-as_faito swap-model.log "ln -sf /home/faito/faito/compose.yml $STAGING/.c4-app.model.json"
-check "faito can't swap the model for a link" refused swap-model.log
+as_faito read-snap.log "cat $SNAP/model.json"
+check "faito can't even read the root-only snapshot" refused read-snap.log
 started=$(stand_in_exec docker inspect -f '{{.Id}} {{.State.StartedAt}}' faito.gateway | tr -d '\r')
 check "a hostile file (privileged.yml) is sent next to compose.yml, as hostile.yml" send "$FIXTURES/privileged.yml" hostile.yml
 as_faito swap.log "rm ~/faito/compose.yml && ln -s hostile.yml ~/faito/compose.yml && sudo c4-app up"
