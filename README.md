@@ -369,21 +369,20 @@ sub-keys and values — and refuses anything else, naming the service (or networ
 - **refused with their own message**: a service named after a shared service (`keycloak`,
   `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared host
   (`infra.c4-soft.com`); a published port (`expose` is fine: only the shared Caddy publishes);
-  `privileged`, `cap_add`, `devices`, `device_cgroup_rules`; `network_mode`, `links`,
-  `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` set to `host` or another
-  container; a read-write bind mount, or one of the staging root or outside it (the Docker socket,
-  another application's files…); a network or volume that is external, has a name or driver of its
-  own, or `driver_opts`; a `build` context or Dockerfile outside the staging tree; a service that
-  builds and sets an `image`, or whose name has a `-`. Compose names a built image
+  `privileged`, `cap_add`, `devices`, `device_cgroup_rules`, a `deploy` reservation of host devices;
+  `network_mode`, `links`, `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup`
+  set to `host` or another container; a read-write bind mount, or one of the staging root or outside
+  it (the Docker socket, another application's files…); a network or volume that is external, has a
+  name or driver of its own, or `driver_opts`; a `build` context or Dockerfile outside the staging
+  tree; a service that builds and sets an `image`, or whose name has a `-`. Compose names a built image
   `<project>-<service>` (`faito-gateway`), in the Docker daemon every application shares: an image
   name of the application's own choosing could be another application's, which root's build would
   replace for that application's next `up`; and with a `-` in a service's name, application `a`'s
   `b-c` and application `a-b`'s `c` would both build `a-b-c`;
 - **refused by the allowlist** (not an application's to set): `use_api_socket`,
   `post_start`/`pre_stop` hooks, a `provider` service, `build.network`/`privileged`/`entitlements`/
-  `ssh`/`tags` (`tags` names the image too), a `deploy` reservation of host devices, and anything
-  else not listed above. A need for one of these is a new intent, not a change an application makes
-  on its own.
+  `ssh`/`tags` (`tags` names the image too), and anything else not listed above. A need for one of
+  these is a new intent, not a change an application makes on its own.
 
 Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
 model it checked, outside anything the application or its containers can write.
