@@ -117,4 +117,16 @@ REGISTRY_FILE="$PWD/$FIXTURES/registry-rabbitmq-admin.txt" register --app verif-
 check "with it, register-app.sh refuses verif-admin" refused
 check "saying the registry is invalid" says "The registry is invalid"
 check "before any docker call" no_docker_call
+
+# Review round 1 (2026-10-22): nor a theme built into Keycloak (base, keycloak), which a theme
+# directory of that name would replace for every realm
+registry_refuses registry-builtin-theme.txt "registry-builtin-theme.txt:6: theme keycloak is built into Keycloak"
+registry_refuses registry-builtin-theme.txt "registry-builtin-theme.txt:7: theme base is built into Keycloak"
+mkdir -p "$work/themes/keycloak/login"
+echo 'parent=base' > "$work/themes/keycloak/login/theme.properties"
+REGISTRY_FILE="$PWD/$FIXTURES/registry-builtin-theme.txt" register --app verif-theme --themes "$work/themes"
+check "with it, register-app.sh refuses verif-theme" refused
+check "saying the registry is invalid" says "The registry is invalid"
+check "before any docker call" no_docker_call
+
 finish

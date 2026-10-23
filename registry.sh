@@ -22,8 +22,8 @@
 # Functions, once sourced:
 #
 #   registry_check             the problems of the registry, as `check`; returns 1 when there is one
-#                              (among them, an entry claiming Keycloak's master realm or RabbitMQ's
-#                              administrator, RABBITMQ_ADMIN_USER)
+#                              (among them, an entry claiming Keycloak's master realm, a theme built
+#                              into Keycloak, or RabbitMQ's administrator, RABBITMQ_ADMIN_USER)
 #   registry_entry <app>       sets REG_N REG_APP REG_REALMS REG_RABBITMQ_USER REG_THEMES REG_DEV_HOST
 #                              REG_DEMO_HOST (lists as in the file, empty for "-"); returns 1, saying
 #                              how to register, when <app> isn't in the registry
@@ -39,6 +39,10 @@ REGISTRY_FILE=${REGISTRY_FILE:-$REGISTRY_DIR/registry.txt}
 # The shared stack's own names (its services, and the stack itself): an application can't take one
 REGISTRY_RESERVED=(c4-infra keycloak keycloak-db mailpit rabbitmq grafana-lgtm reverse-proxy)
 REGISTRY_MAX=38
+# The themes built into Keycloak 26 (its theme jars' META-INF/keycloak-themes.json): a registered
+# theme directory of that name would replace it for every realm, master included. The dotted ones
+# are outside a theme name's characters already; listed for the next image that adds one.
+REGISTRY_KEYCLOAK_THEMES=(base keycloak keycloak.v2 keycloak.v3)
 
 # What the shared stack itself owns in Keycloak and RabbitMQ, which no entry may claim: a
 # registration may delete and import its entry's realms and set its RabbitMQ user's password
@@ -139,6 +143,12 @@ registry_check() {
       for value in "${list_values[@]}"; do
         [ "$kind $value" != "realm master" ] \
           || _registry_problem "$file:$number: realm master is Keycloak's own (the shared stack's): no entry may claim it"
+        if [ "$kind" = theme ]; then
+          for reserved in "${REGISTRY_KEYCLOAK_THEMES[@]}"; do
+            [ "$value" != "$reserved" ] \
+              || _registry_problem "$file:$number: theme $value is built into Keycloak (every realm's): no entry may claim it"
+          done
+        fi
         _registry_claim "$kind" "$value" "$app" "$number"
       done
     done
