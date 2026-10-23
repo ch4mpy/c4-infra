@@ -95,14 +95,22 @@ services:
     logging: *default-logging
     networks: [default, keycloak-db]
     # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside
+    # --import-realm: the master realm is created from keycloak-import/master-realm.json on an empty
+    # database (intent 0009); a realm that exists is never imported again
     command:
       - start
       - --optimized
+      - --import-realm
     environment:
-      # As environment rather than --bootstrap-admin-* arguments: a command line is readable in
-      # `docker inspect` and in the host's process list. Only read on the very first start.
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      # What the master realm's import reads (${NAME} in keycloak-import/master-realm.json), only
+      # when Keycloak creates that realm. As environment rather than arguments: a command line is
+      # readable in the host's process list. The administrator isn't KC_BOOTSTRAP_ADMIN_*, which
+      # Keycloak would then create as well, and abort its start on that name (intent 0009).
+      C4_MASTER_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      C4_MASTER_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      INFRA_HOST: ${INFRA_HOST}
+      MAILPIT_SMTP_USER: ${MAILPIT_SMTP_USER}
+      MAILPIT_SMTP_PASSWORD: ${MAILPIT_SMTP_PASSWORD}
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
@@ -114,6 +122,9 @@ services:
       TZ: ${TZ}
     volumes:
       - ./keycloak/themes/:/opt/keycloak/themes/:ro
+      # the directory, not its file: rsync replaces files with new inodes; outside keycloak/, whose
+      # content tags the demo host's image (a change here restarts nothing)
+      - ./keycloak-import/:/opt/keycloak/data/import/:ro
     healthcheck:
       # compiled into the image; a small JVM next to Keycloak's
       test: ['CMD', 'java', '-Xmx16m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-cp', '/opt/keycloak/healthcheck', 'HealthCheck', 'http://localhost:9000/auth/health/ready']

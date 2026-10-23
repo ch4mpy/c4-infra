@@ -9,6 +9,7 @@ routes.sh
 register-app.sh
 registration-account.sh
 networks.sh
+keycloak-import/master-realm.json
 demo/deploy.sh
 demo/backup.sh
 demo/c4-app

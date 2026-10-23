@@ -37,6 +37,17 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
+# Keycloak writes these into the master realm's JSON as they are (keycloak-import/master-realm.json):
+# a double quote or a backslash breaks the import, and Keycloak doesn't start (intent 0009)
+for name in KC_ADMIN_USERNAME KC_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
+  case "${!name:-}" in
+    *'"'* | *'\'*)
+      echo "$name holds a double quote or a backslash, which the master realm's import can't take: choose another value (openssl rand -hex 32)" >&2
+      exit 1
+      ;;
+  esac
+done
+
 # compose interpolates $ in .env values: escape it (the Mailpit bcrypt hash has some)
 esc() { printf '%s' "${!1}" | sed 's/\$/$$/g'; }
 
