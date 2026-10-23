@@ -3,9 +3,12 @@
 # application's isolation, before any container starts (AC-8, REQ-9):
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts faito);
-#   - each file of tests/fixtures/0007/hostile/ but valid.yml, sent as ~faito/faito/compose.yml over
-#     ssh as faito: sudo c4-app up exits non-zero, its output names the service, network or volume
-#     and the rule, no container of the project faito exists, and no network c4-infra.faito either;
+#   - each file of tests/fixtures/0007/hostile/ but valid.yml and name-other-app.yml, sent as
+#     ~faito/faito/compose.yml over ssh as faito: sudo c4-app up exits non-zero, its output names the
+#     service, network or volume and the rule, no container of the project faito exists, and no
+#     network c4-infra.faito either;
+#   - name-other-app.yml (valid.yml with name: hururaa) starts as the project faito, never hururaa,
+#     and down removes it;
 #   - valid.yml (its network c4-infra.faito and one of the project's own, an alias and a container
 #     name under faito., an exposed port, a volume of its own, a bind mount inside its directory)
 #     starts: faito.gateway runs, on those two networks;
@@ -54,6 +57,11 @@ declare -A REFUSAL=(
   [bind-rw.yml]="service gateway: a read-write bind mount of $STAGING/compose.yml"
   [bind-staging-root.yml]="service gateway: a bind mount of the staging root $STAGING itself"
   [deploy-devices.yml]='service gateway: deploy reserves host devices'
+  # review round 2 (2026-10-22): a built image named after another application's, which root's
+  # compose would replace in the shared daemon (compose names a built image <project>-<service>)
+  [build-with-image.yml]='service gateway: image hururaa-gateway with build (a service that builds takes no image: compose names it faito-gateway)'
+  [build-tags.yml]='service gateway: build.tags is not allowed (outside the isolation allowlist)'
+  [build-name-collision.yml]="service demo-gateway: a service that builds has no - in its name (faito-demo-gateway would also be the image of an application faito-demo's service gateway)"
 )
 
 umask 077
@@ -98,6 +106,23 @@ for file in "${!REFUSAL[@]}"; do
   check "$file: no container of the project faito exists" no_container
 done
 check "no refusal created c4-infra.faito" no_network
+
+# a top-level name of another application's doesn't make the project that application's: c4-app
+# passes -p <application> to the model's compose and to root's (review round 2, 2026-10-22)
+no_container_of() { # <project>
+  local found
+  found=$(stand_in_exec docker ps -aq --filter "label=com.docker.compose.project=$1" | tr -d '\r')
+  [ -z "$found" ] || { echo "containers of the project $1: $found"; return 1; }
+}
+check "name-other-app.yml (name: hururaa) is sent as ~faito/faito/compose.yml" send "$FIXTURES/name-other-app.yml"
+as_faito name-other-app.log "sudo c4-app up"
+check "name-other-app.yml: sudo c4-app up exits 0" exited_0 name-other-app.log
+project=$(stand_in_exec docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' faito.gateway 2>&1 | tr -d '\r')
+check "name-other-app.yml: faito.gateway is of the project faito ($project)" test "$project" = faito
+check "name-other-app.yml: no container of the project hururaa" no_container_of hururaa
+as_faito name-other-app-down.log "sudo c4-app down"
+check "name-other-app.yml: sudo c4-app down exits 0" exited_0 name-other-app-down.log
+check "name-other-app.yml: down removed the project faito's containers" no_container
 
 # a project that keeps to its isolation starts
 check "valid.yml is sent as ~faito/faito/compose.yml" send "$FIXTURES/valid.yml"

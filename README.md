@@ -335,7 +335,8 @@ application whose account runs it (never an argument), on its own project only:
 
 - `sudo c4-app pull [--registry <host> --registry-user <user>]` (the registry's token on stdin, in a
   temporary Docker configuration removed at once), `sudo c4-app up`, `sudo c4-app down`: its compose
-  project, named after it. Each command copies `~/<app>/` (read as the application) into
+  project, named after it (`-p <app>`, for the model and for root's compose: a top-level `name:` of
+  its file changes nothing). Each command copies `~/<app>/` (read as the application) into
   `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
   symbolic link or a special file; that copy is only the containers' mount sources. The compose
   model is read as the application (`docker compose config`: no file its account can't read, such as
@@ -356,7 +357,8 @@ it. The check is an **allowlist** — the top-level keys, the service keys, and,
 objects that can escape (`build`, `deploy`, `security_opt`, `volumes` and `networks` entries), their
 sub-keys and values — and refuses anything else, naming the service (or network/volume) and the key:
 
-- **a service may set** its `image`/`build`, `container_name` and network aliases under `<app>.`,
+- **a service may set** its `image` or its `build` (not both), `container_name` and network aliases
+  under `<app>.`,
   `command`/`entrypoint`/`environment`/`env_file`, `expose`, its own networks and named volumes,
   **read-only** bind mounts inside `/var/lib/c4-apps/<app>/`, `healthcheck`, `depends_on`, resource
   limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
@@ -369,11 +371,17 @@ sub-keys and values — and refuses anything else, naming the service (or networ
   `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup` set to `host` or another
   container; a read-write bind mount, or one of the staging root or outside it (the Docker socket,
   another application's files…); a network or volume that is external, has a name or driver of its
-  own, or `driver_opts`; a `build` context or Dockerfile outside the staging tree;
+  own, or `driver_opts`; a `build` context or Dockerfile outside the staging tree; a service that
+  builds and sets an `image`, or whose name has a `-`. Compose names a built image
+  `<project>-<service>` (`faito-gateway`), in the Docker daemon every application shares: an image
+  name of the application's own choosing could be another application's, which root's build would
+  replace for that application's next `up`; and with a `-` in a service's name, application `a`'s
+  `b-c` and application `a-b`'s `c` would both build `a-b-c`;
 - **refused by the allowlist** (not an application's to set): `use_api_socket`,
   `post_start`/`pre_stop` hooks, a `provider` service, `build.network`/`privileged`/`entitlements`/
-  `ssh`, a `deploy` reservation of host devices, and anything else not listed above. A need for one
-  of these is a new intent, not a change an application makes on its own.
+  `ssh`/`tags` (`tags` names the image too), a `deploy` reservation of host devices, and anything
+  else not listed above. A need for one of these is a new intent, not a change an application makes
+  on its own.
 
 Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
 model it checked, outside anything the application or its containers can write.

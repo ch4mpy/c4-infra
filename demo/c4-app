@@ -30,7 +30,8 @@
 # model is read as the application (`docker compose config`: no daemon, and no file its account can't
 # read, such as another application's env_file) into .run.<application>/model.json, which root's
 # `docker compose` runs as the project <application>; root reads nothing of the application's copy on
-# its behalf.
+# its behalf. The project's name is always the application's: both composes get -p <application>,
+# which wins over a top-level name: of the application's file.
 #
 # `up`, `down` and `pull` all check that model first, before root's compose touches it (intent 0007,
 # REQ-9): compose runs a provider's and a hook's executables, so an unchecked model must never reach
@@ -40,22 +41,26 @@
 # key (CHECKS below; the list is also in README.md, "What an application's deployment does"). What is
 # allowed, in short:
 #   - top level: services, networks, volumes, secrets, configs;
-#   - a service: its image/build, container_name and network aliases under <application>., its
-#     command/entrypoint/environment/env_file, expose (never ports), its own networks and named
-#     volumes, read-only bind mounts inside /var/lib/c4-apps/<application>/, healthcheck, depends_on,
-#     resource limits, and the usual hardening (read_only, cap_drop, user, tmpfs, init,
-#     security_opt: no-new-privileges). A service name is [a-z0-9_-]+ (no dot: a dotted name would
-#     be an alias on the shared network).
+#   - a service: its image or its build (not both), container_name and network aliases under
+#     <application>., its command/entrypoint/environment/env_file, expose (never ports), its own
+#     networks and named volumes, read-only bind mounts inside /var/lib/c4-apps/<application>/,
+#     healthcheck, depends_on, resource limits, and the usual hardening (read_only, cap_drop, user,
+#     tmpfs, init, security_opt: no-new-privileges). A service name is [a-z0-9_-]+ (no dot: a dotted
+#     name would be an alias on the shared network).
 #   - refused with their own clearer message: a service named after a shared service (keycloak,
 #     mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db) or the shared host (INFRA_HOST); a
 #     published port; privileged, cap_add, devices, device_cgroup_rules; network_mode, links,
 #     external_links, volumes_from; pid/ipc/uts/userns_mode/cgroup set to host or another container;
 #     a read-write bind mount, or one of the staging root or outside it (the Docker socket, another
 #     application's files…); an external network or volume, one with a name or driver of its own, or
-#     driver_opts; a build context or Dockerfile outside the staging tree.
+#     driver_opts; a build context or Dockerfile outside the staging tree; a service that builds and
+#     sets an image, or whose name has a -. Compose names a built image <project>-<service>, in the
+#     daemon every application shares: an image name of the application's choosing could be another
+#     application's, which root's build would replace for that application's next up; and with a -
+#     in a service's name, application a's b-c and application a-b's c would both build a-b-c.
 #   - refused by the allowlist (not an application's to set): use_api_socket, post_start/pre_stop
-#     hooks, a provider service, build.network/privileged/entitlements/ssh, and anything else not
-#     listed above.
+#     hooks, a provider service, build.network/privileged/entitlements/ssh/tags (tags names the image
+#     too), and anything else not listed above.
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -193,7 +198,7 @@ def svc_refused: ["network_mode", "links", "external_links", "ports", "privilege
   "devices", "device_cgroup_rules", "pid", "ipc", "uts", "userns_mode", "cgroup", "volumes_from"];
 def top_allowed: ["name", "services", "networks", "volumes", "secrets", "configs"];
 def build_allowed: ["context", "dockerfile", "additional_contexts", "args", "target", "labels",
-  "tags", "cache_from", "no_cache", "pull", "platforms"];
+  "cache_from", "no_cache", "pull", "platforms"];
 def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "update_config",
   "rollback_config", "placement", "mode", "endpoint_mode"];
 
@@ -256,6 +261,13 @@ def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "updat
   (if $v.deploy != null then ($v.deploy | keys[] | select(IN(deploy_allowed[]) | not)
     | "service \($s): deploy.\(.) is not allowed") else empty end),
   (if $v.build != null then
+     # the image a service builds is compose's <project>-<service>, in the daemon every application
+     # shares: no name of its own (image, build.tags: another application's, which its next up would
+     # run), and no - in the service's name (app a's b-c and app a-b's c would both be a-b-c)
+     (if $v.image != null
+      then "service \($s): image \($v.image) with build (a service that builds takes no image: compose names it \($app)-\($s))" else empty end),
+     (if ($s | contains("-"))
+      then "service \($s): a service that builds has no - in its name (\($app)-\($s) would also be the image of an application \($app)-\($s | sub("-.*$"; ""))'s service \($s | sub("^[^-]*-"; "")))" else empty end),
      ($v.build | keys[] | select(IN(build_allowed[]) | not)
        | "service \($s): build.\(.) is not allowed (outside the isolation allowlist)"),
      (($v.build.context // empty) | select(remote | not) | select(inside | not)

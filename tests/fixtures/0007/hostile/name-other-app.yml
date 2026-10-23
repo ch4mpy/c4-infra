@@ -1,0 +1,24 @@
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): valid.yml's project with a top-level name of
+# Hurura'a's; c4-app names the project after the application (-p faito, for the model and for root's
+# compose), so sudo c4-app up starts it as the project faito, never hururaa (review round 2,
+# 2026-10-22)
+name: hururaa
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    expose: ['7080']
+    networks:
+      c4-infra.faito:
+        aliases: [faito.gw]
+      internal: {}
+    volumes:
+      - cache:/cache
+      - ./compose.yml:/srv/compose.yml:ro
+networks:
+  c4-infra.faito:
+    external: true
+  internal: {}
+volumes:
+  cache: {}
