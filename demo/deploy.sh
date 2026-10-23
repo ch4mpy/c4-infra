@@ -19,6 +19,10 @@ fi
 # What the applications register: their themes and their sites, in directories of the c4-infra
 # account (a bind mount Docker creates would belong to root)
 mkdir -p keycloak/themes caddy/apps
+# The master realm's import (intent 0009), which Keycloak reads as its own user, not root: readable
+# by all, whatever mode the upload kept (a umask 077 where the files come from makes them 600, and
+# Keycloak then fails its first start); it holds ${NAME} placeholders, no secret
+chmod -R a+rX keycloak-import
 # compose.apps.yml (COMPOSE_FILE): the shared services stay on each registered application's network
 # when compose recreates them (intent 0007)
 bash ./networks.sh compose-file

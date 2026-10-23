@@ -64,6 +64,10 @@ fi
 
 [ -f caddy/html/index.html ] || bash ./register-app.sh --index-only
 
+# The master realm's import (intent 0009), which Keycloak reads as its own user, not root: readable
+# by all, whatever mode the checkout has (a umask 077 makes it 600 on Linux); no secret in it
+chmod -R a+rX keycloak-import
+
 docker compose up -d --build --wait
 # compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy
 # after a pull): reload Caddy (graceful). A configuration it refuses leaves the previous one
