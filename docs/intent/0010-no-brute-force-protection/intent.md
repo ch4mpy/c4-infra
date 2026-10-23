@@ -4,9 +4,9 @@
 - Kind: change
 - Source: conversation (first deployment of the demo host, 2026-10-23)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-23
-- Decided: —
+- Decided: 2026-10-23
 - Supersedes: —
 
 ## Problem
