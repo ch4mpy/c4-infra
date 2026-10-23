@@ -83,7 +83,7 @@ _routes_proxy() { # <upstream> <indent>
 routes_generate() { # <routes file> <dev|demo>
   local file=$1 env=$2 name number=0 problems=0 line host path target option key value upstream
   local i k p under own regex
-  local -a tokens paths=() targets=() tos=() bodies=() prefixes=() upstreams=()
+  local -a tokens kinds=(path target) paths=() targets=() tos=() bodies=() prefixes=() upstreams=()
   local -A seen_options exact=()
   case "$env" in
     dev) host=$REG_DEV_HOST ;;
@@ -112,18 +112,10 @@ routes_generate() { # <routes file> <dev|demo>
       continue
     fi
 
-    # a host, a scheme or a port, wherever it is
-    if _routes_names_host "$path" path; then
-      _routes_problem "routes name neither a host nor a port: '$path'"
-      continue
-    fi
-    if _routes_names_host "$target" target; then
-      _routes_problem "routes name neither a host nor a port: '$target'"
-      continue
-    fi
-    for option in "${tokens[@]:2}"; do
-      if _routes_names_host "$option" option; then
-        _routes_problem "routes name neither a host nor a port: '$option'"
+    # a host, a scheme or a port, wherever it is: the path, the target, then each option
+    for i in "${!tokens[@]}"; do
+      if _routes_names_host "${tokens[$i]}" "${kinds[$i]:-option}"; then
+        _routes_problem "routes name neither a host nor a port: '${tokens[$i]}'"
         continue 2
       fi
     done
