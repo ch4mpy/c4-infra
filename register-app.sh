@@ -271,7 +271,7 @@ if [ -n "$themes" ]; then
 fi
 if [ ${#theme_problems[@]} -gt 0 ]; then
   printf '%s\n' "${theme_problems[@]}" >&2
-  echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"Themes\"); nothing was registered." >&2
+  echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"What an application provides\"); nothing was registered." >&2
   exit 1
 fi
 

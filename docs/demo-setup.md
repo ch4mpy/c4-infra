@@ -241,7 +241,7 @@ The former secret no longer logs in. Once the bootstrap administrator no longer 
 
 ## 11. Re-creating Keycloak's database
 
-Keycloak creates its master realm pre-configured ([README](../README.md), "The master realm") on an
+The one-shot `keycloak-import` creates the master realm pre-configured ([README](../README.md), "The master realm") on an
 empty database only. A host deployed before intent 0009 (the first one, deployed on 2026-10-23)
 gets that configuration once its database is re-created, which loses everything Keycloak holds:
 the master realm's other administrators, the registration account and the applications' realms.
@@ -252,15 +252,15 @@ ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker com
 gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
 ```
 
-The deployment starts Keycloak on an empty database: it creates the master realm, with the
+The deployment runs `keycloak-import` on an empty database: it creates the master realm, with the
 administrator of the `demo` environment (`KC_ADMIN_USERNAME`, `KC_ADMIN_PASSWORD`), and
 `demo/deploy.sh` creates the registration account again. Each application imports its realm again
 at its next deployment.
 
 ## 12. Changing Mailpit's SMTP password
 
-A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and Keycloak's
-containers are recreated with it (Keycloak restarts). The master realm keeps the former password:
+A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and `keycloak-import`'s
+containers are recreated with it (Keycloak doesn't restart). The master realm keeps the former password:
 in the console, realm master, *Realm settings* → *Email*, type the new one, save, then *Test
 connection*. So does every application realm already in Keycloak (a registration leaves a realm
 that exists as it is): the same in each one's *Email* settings; only a realm imported again
