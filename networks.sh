@@ -113,7 +113,7 @@ compose_file() { # [<INFRA_ENV>, when the caller has read it already]
 }
 
 ensure() { # <app>
-  local app=$1 network=c4-infra.$1 service container aliases host infra_env
+  local app=$1 network=c4-infra.$1 service container state aliases host infra_env
   valid_name "$app" || return 1
   # named from the registry only (intent 0004 reserves the shared services' names)
   registry_entry "$app" > /dev/null || return 1
@@ -126,11 +126,11 @@ ensure() { # <app>
   fi
   for service in "${SHARED[@]}"; do
     container=c4-infra.$service
-    [ "$(docker inspect -f '{{.State.Running}}' "$container" 2> /dev/null | tr -d '\r')" = true ] || continue
-    if docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' "$container" \
-      | tr -d '\r' | grep -qxF "$network"; then
-      continue
-    fi
+    # whether it runs, then the networks it is on, in one call: "true c4-infra c4-infra.<app>…"
+    state=$(docker inspect -f '{{.State.Running}}{{range $name, $_ := .NetworkSettings.Networks}} {{$name}}{{end}}' \
+      "$container" 2> /dev/null | tr -d '\r') || true
+    [ "${state%% *}" = true ] || continue
+    if [[ " $state " == *" $network "* ]]; then continue; fi
     aliases=(--alias "$service")
     if [ "$service" = reverse-proxy ] && [ "$infra_env" = demo ] && [ -n "$host" ]; then
       aliases+=(--alias "$host")
