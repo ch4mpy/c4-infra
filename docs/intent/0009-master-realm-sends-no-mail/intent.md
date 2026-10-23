@@ -4,9 +4,9 @@
 - Kind: bug
 - Source: conversation (first deployment of the demo host, 2026-10-23)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-23
-- Decided: —
+- Decided: 2026-10-23
 - Supersedes: —
 
 ## Problem
@@ -25,6 +25,8 @@ Steps to reproduce: deploy the demo host, or `bash up.sh` in dev; open `/auth/ad
 
 The master realm's mails reach Mailpit with no manual step, in dev and on the demo host, the host already deployed included. Success criterion: after `bash up.sh` or a deployment, on a fresh stack as on the current demo host, the console's *Test connection* of the master realm delivers a mail that shows in Mailpit, and it still does once the bootstrap administrator has been replaced (0006).
 
+The settings are written once, when the master realm has none: they don't follow a later change of Mailpit's SMTP password (`MAILPIT_SMTP_PASSWORD`, which the applications' realms only follow on their next deployment as well); a documented step writes them again then. Dev is in scope as well as the demo host (decided on acceptance).
+
 ## Affected users and systems
 
 - Demo operator, Developer.
@@ -39,5 +41,4 @@ The master realm's mails reach Mailpit with no manual step, in dev and on the de
 
 ## Open questions
 
-- When Mailpit's SMTP password changes (`MAILPIT_SMTP_PASSWORD`), does the master realm follow it, or are its settings written once? — product owner
 - *Suggested solution*: the stack sets the master realm's SMTP server itself, as an administrator, when it starts (`up.sh`, `demo/deploy.sh`), next to the registration account's check — to be settled in the spec. — tech lead
