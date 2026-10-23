@@ -169,6 +169,9 @@ gh run watch -R ch4mpy/c4-infra
 - `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD` (no
   *Forgot password?* on that page); realm master, *Realm settings* → *Email*: Mailpit
   (`mailpit:1025`), and *Test connection* delivers to `admin@infra.c4-soft.com`, in `/mailpit/`.
+  Whoever reads Mailpit could follow a password-reset link sent to a master realm's account: on the
+  demo host, never turn *Forgot password* back on in the master realm, nor send its users a
+  *Credential reset* / *Update password* mail from the console (set the password there instead).
 - `https://infra.c4-soft.com/mailpit/` asks for its credentials (user `demo`, the password of step
   5): Mailpit asks for them itself, through Caddy as from an application's container (only
   `/mailpit/livez` and `/mailpit/readyz` answer without);
@@ -255,7 +258,9 @@ at its next deployment.
 A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and Keycloak's
 containers are recreated with it (Keycloak restarts). The master realm keeps the former password:
 in the console, realm master, *Realm settings* → *Email*, type the new one, save, then *Test
-connection*. Each application renders it into its own realms at its next deployment.
+connection*. So does every application realm already in Keycloak (a registration leaves a realm
+that exists as it is): the same in each one's *Email* settings; only a realm imported again
+(`--reset-realms`, which loses its users) takes the password its application renders.
 
 ```bash
 gh secret set MAILPIT_SMTP_PASSWORD --env demo -R ch4mpy/c4-infra   # paste the value, then Enter

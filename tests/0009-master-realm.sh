@@ -2,7 +2,8 @@
 # 0009: the master realm Keycloak creates in dev (AC-1, AC-3, AC-9, AC-10), in a throwaway Keycloak
 # of the stack's image (start-dev on a file database, no published port) given what the dev model
 # gives the stack's Keycloak for that import: its variables (never KC_DB_*), keycloak-import/, the
-# local CA and host.docker.internal. Its mails go to this workstation's Mailpit.
+# local CA and host.docker.internal. Its mails go to this workstation's Mailpit. Then demo/write-env.sh's
+# refusal of the values the import can't take (no Docker).
 #
 #   bash tests/0009-master-realm.sh
 #
@@ -26,20 +27,23 @@ umask 077
 work=$(mktemp -d)
 trap 'docker rm -f "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
 
-# The dev model's Keycloak: the variables the import reads, and the CA it trusts
-docker compose -f compose.yml -f compose.dev.yml --env-file .env config --format json > "$work/dev.json" 2> "$work/dev.err"
-check "the dev model is read (compose.yml + compose.dev.yml, .env)" test -s "$work/dev.json"
+# The dev model's Keycloak: the variables the import reads (never KC_DB_*), and the CA it trusts
+check "the dev model is read (compose.yml + compose.dev.yml, .env)" \
+  docker compose -f compose.yml -f compose.dev.yml --env-file .env config --format json -o "$(host_path "$work/dev.json")"
 jq -r '.services.keycloak.environment | to_entries[]
   | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*|KC_TRUSTSTORE_PATHS)$")) | "\(.key)=\(.value)"' \
   < "$work/dev.json" > "$work/kc.env"
 check "its Keycloak gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort its start)" \
   test "$(jq -r '.services.keycloak.environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
   = "C4_MASTER_ADMIN_PASSWORD C4_MASTER_ADMIN_USERNAME C4_MASTER_RESET_PASSWORD_ALLOWED C4_MASTER_SMTP_HOST C4_MASTER_SMTP_STARTTLS"
-check "no database setting goes to the throwaway" test "$(grep -c '^KC_DB' "$work/kc.env")" = 0
 value() { sed -n "s/^$1=//p" "$work/kc.env"; }
+check "and INFRA_HOST (host.docker.internal)" test "$(value INFRA_HOST)" = host.docker.internal
+# The throwaway's own host name (its administrator's address, the sender's): the test finds and
+# removes its own mails in this workstation's Mailpit, whatever else lands there
+INFRA_HOST=verif-0009-$(openssl rand -hex 4).test
+sed -i "s/^INFRA_HOST=.*/INFRA_HOST=$INFRA_HOST/" "$work/kc.env"
 KC_CLI_PASSWORD=$(value C4_MASTER_ADMIN_PASSWORD)
 ADMIN=$(value C4_MASTER_ADMIN_USERNAME)
-INFRA_HOST=$(value INFRA_HOST)
 export KC_CLI_PASSWORD
 
 admin() {
@@ -106,9 +110,8 @@ delivered() {
   done
 }
 check "AC-1: its mail is in Mailpit" delivered
-# the test's mail removed: the newest to that address
-id=$(curl -fsS "$MAILPIT_API/search?query=to:admin@$INFRA_HOST" | jq -r '.messages[0].ID')
-[ -z "$id" ] || curl -fsS -X DELETE -H 'Content-Type: application/json' -d "{\"IDs\":[\"$id\"]}" "$MAILPIT_API/messages" > /dev/null
+# the test's mails removed: those to the throwaway's own address
+curl -fsS -X DELETE "$MAILPIT_API/search?query=to:admin@$INFRA_HOST" > /dev/null
 
 # AC-9 (dev)
 check "AC-9: Forgot password on" master_is .resetPasswordAllowed true
@@ -157,4 +160,25 @@ no_value() {
   grep -qF '"${MAILPIT_SMTP_PASSWORD}"' keycloak-import/master-realm.json
 }
 check "REQ-6: keycloak-import/master-realm.json holds the passwords' names, not their values" no_value
+
+# demo/write-env.sh (the demo host's .env) refuses what the import can't take, naming it
+write_env() { # <NAME=value>…: the demo environment's settings with dummy values, overridden
+  env INFRA_HOST=infra.c4-soft.com KC_IMAGE=dummy KC_ADMIN_PASSWORD=dummy KC_DB_PASSWORD=dummy \
+    KC_REGISTRATION_CLIENT_SECRET=dummy RABBITMQ_ADMIN_PASSWORD=dummy MAILPIT_SMTP_PASSWORD=dummy \
+    MAILPIT_UI_PASSWORD_HASH=dummy GRAFANA_ADMIN_PASSWORD=dummy "$@" bash demo/write-env.sh "$work/demo.env"
+}
+refused_naming() { # <name> <NAME=value>…
+  local name=$1 output
+  shift
+  if output=$(write_env "$@" 2>&1); then
+    echo "accepted"
+    return 1
+  fi
+  grep -qF -- "$name" <<< "$output" || { printf '%s\n' "$output"; return 1; }
+}
+check "write-env.sh accepts plain values" write_env 'KC_ADMIN_PASSWORD=a$b+/=c'
+check "write-env.sh refuses a double quote in KC_ADMIN_PASSWORD" refused_naming KC_ADMIN_PASSWORD 'KC_ADMIN_PASSWORD=a"b'
+check "write-env.sh refuses a backslash in MAILPIT_SMTP_PASSWORD" refused_naming MAILPIT_SMTP_PASSWORD 'MAILPIT_SMTP_PASSWORD=a\b'
+check "write-env.sh refuses a tab in KC_ADMIN_USERNAME" refused_naming KC_ADMIN_USERNAME "KC_ADMIN_USERNAME=a$(printf '\t')b"
+check "write-env.sh refuses an INFRA_HOST that isn't a host name" refused_naming INFRA_HOST 'INFRA_HOST=a"b.test'
 finish

@@ -38,15 +38,21 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 
 # Keycloak writes these into the master realm's JSON as they are (keycloak-import/master-realm.json):
-# a double quote or a backslash breaks the import, and Keycloak doesn't start (intent 0009)
+# a double quote, a backslash or a control character breaks the import, and Keycloak doesn't start
+# (intent 0009); INFRA_HOST is a host name there (the administrator's address, the sender's)
+KC_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}
 for name in KC_ADMIN_USERNAME KC_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
-  case "${!name:-}" in
-    *'"'* | *'\'*)
-      echo "$name holds a double quote or a backslash, which the master realm's import can't take: choose another value (openssl rand -hex 32)" >&2
+  case "${!name}" in
+    *'"'* | *'\'* | *[[:cntrl:]]*)
+      echo "$name holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value (openssl rand -hex 32)" >&2
       exit 1
       ;;
   esac
 done
+if ! [[ $INFRA_HOST =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "INFRA_HOST must be a host name (letters, digits, '.' and '-'), not '$INFRA_HOST'" >&2
+  exit 1
+fi
 
 # compose interpolates $ in .env values: escape it (the Mailpit bcrypt hash has some)
 esc() { printf '%s' "${!1}" | sed 's/\$/$$/g'; }
@@ -63,7 +69,7 @@ umask 077
   echo "TZ=Pacific/Tahiti"
   echo "KC_IMAGE=$KC_IMAGE"
   echo "KC_LOG_LEVEL=INFO"
-  echo "KC_BOOTSTRAP_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}"
+  echo "KC_BOOTSTRAP_ADMIN_USERNAME=$(esc KC_ADMIN_USERNAME)"
   echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(esc KC_ADMIN_PASSWORD)"
   echo "KC_DB_PASSWORD=$(esc KC_DB_PASSWORD)"
   # the account registrations log in as (registration-account.sh, which deploy.sh runs)

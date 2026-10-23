@@ -42,7 +42,6 @@ host_path() {
 umask 077
 work=$(mktemp -d)
 trap 'docker rm -f $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1; rm -rf "$work"' EXIT
-exec 3>&1
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD
@@ -98,7 +97,6 @@ master_is() {
 printf '%s\n' KC_BOOTSTRAP_ADMIN_USERNAME=admin "KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_CLI_PASSWORD" > "$work/created.env"
 start created "$work/created.env"
 
-# The import of (a), (b), (d) to (g): the user profile of (i)'s realm is read from it below
 import_file() { # <dir> <user profile JSON, or empty for the default one>
   mkdir -p "$1"
   jq -n --arg up "$2" '{

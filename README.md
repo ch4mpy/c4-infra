@@ -282,8 +282,10 @@ bash ../<app>/deploy-dev.sh       # each application imports its realm again
 
 (on the demo host: [docs/demo-setup.md](docs/demo-setup.md), "Re-creating Keycloak's database").
 After a change of Mailpit's SMTP password (`MAILPIT_SMTP_PASSWORD`), the master realm keeps the
-former one: type the new one in its *Email* settings (the applications render it into their own
-realms at their next deployment). Since that password, `INFRA_HOST` and the administrator's are in
+former one: type the new one in its *Email* settings. So does every application realm already in
+Keycloak (`register-app.sh` leaves a realm that exists as it is): type it in each one's *Email*
+settings too; only a realm imported again (`--reset-realms`, which loses its users) takes the
+password its application renders. Since that password, `INFRA_HOST` and the administrator's are in
 Keycloak's environment, changing one of them recreates Keycloak's container at the next start.
 
 ### Routes file

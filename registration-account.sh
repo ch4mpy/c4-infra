@@ -59,9 +59,9 @@ account_login() {
     < /dev/null 2>&1)
 }
 
-# Logs in as an administrator; one that Keycloak refuses for a pending action ("Account is not fully
-# set up": with the master realm's Verify email, an address not verified yet, intent 0009) is added
-# to $not_set_up, for the message of login_administrator
+# Logs in as an administrator; one that Keycloak refuses for a pending required action ("Account is
+# not fully set up": an address to verify with the master realm's Verify email, intent 0009, a
+# temporary password to update…) is added to $not_set_up, for the message of login_administrator
 not_set_up=()
 admin_login() { # <user> <password>
   local output
@@ -146,7 +146,7 @@ login_administrator() { # <what it is needed for>
   fi
   local name
   for name in "${not_set_up[@]}"; do
-    echo "Keycloak refuses $name for a pending action (\"Account is not fully set up\"): with the master realm's Verify email, its e-mail address isn't verified yet. Log in to the console as $name and follow the mail Keycloak sends to Mailpit (/mailpit/), or remove that required action from $name in the console; the admin CLI logs in as $name afterwards." >&2
+    echo "Keycloak refuses $name for a pending required action (\"Account is not fully set up\"): an e-mail address to verify (the master realm's Verify email), a temporary password to update… Log in to the console as $name and complete it (a verification mail lands in Mailpit, /mailpit/), or remove that required action from $name in the console; the admin CLI logs in as $name afterwards." >&2
   done
   cat >&2 << EOF
 No administrator of Keycloak's master realm could log in to $1: the bootstrap administrator of .env no longer works (replaced, or its password changed)${KC_SETUP_ADMIN_USERNAME:+, nor does $KC_SETUP_ADMIN_USERNAME (KC_SETUP_ADMIN_USERNAME)}.
