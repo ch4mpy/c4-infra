@@ -57,3 +57,5 @@
 | AC-8 | automated test | `tests/0010-brute-force.sh`: 403 |
 
 ## Deviations
+
+- 2026-10-23 — step 0: 0009 isn't merged into `main` yet (its delivery is the human's): the branch `0009-master-realm-sends-no-mail` is merged into this one instead, as planned for that case; this PR shows 0009's commits until 0009 is merged. Implemented in a worktree, as 0009 (its plan's deviation): `tests/0006-account.sh` and the dev-stack checks run with the full suite in `D:\workspaces\c4-infra`.
