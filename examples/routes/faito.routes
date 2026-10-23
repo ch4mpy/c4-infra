@@ -1,6 +1,5 @@
-# Faito's routes (README.md, "Routes file"): its gateway, and one Angular front end per locale.
-# Until Faito registers with its own copy (Faito 0021), register-app.sh installs this file in place
-# of Faito's former reverse-proxy/faito.conf.
+# Faito's routes (c4-infra's README.md, "Routes file"): its gateway, and one Angular front end per
+# locale.
 /           redirect  to=/fr/
 /gateway/*  gateway
 /fr/*       fr
