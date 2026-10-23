@@ -4,9 +4,9 @@
 - Kind: bug
 - Source: conversation (sdlc-verify round 2 review of 0002, 0003 and 0007, 2026-10-23; need clarified by the product owner the same day)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-23
-- Decided: —
+- Decided: 2026-10-23
 - Supersedes: —
 
 ## Problem
