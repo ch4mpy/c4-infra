@@ -297,8 +297,8 @@ Keycloak's container at the next start.
 
 ### Brute-force protection
 
-Every application's realm locks an account for a while after repeated failed logins (intent
-0010), in dev as on the demo host: after 10 failures, the account is refused for a minute, even
+Every application's realm imported since intent 0010 locks an account for a while after repeated
+failed logins, in dev as on the demo host: after 10 failures, the account is refused for a minute, even
 with its right password; each further failure adds a minute, up to 15; the failures are forgotten
 12 hours after the last one; nothing locks an account for good (Keycloak's temporary lockout,
 linear strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart
@@ -307,15 +307,17 @@ lock the account for a minute, whatever their count.
 - An application's realm gets these settings each time `register-app.sh` imports it, whatever its
   export says (`brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak
   keeps its own settings until it is imported again: one registered before intent 0010 gets them
-  with its next `--reset-realms`.
+  with its next `--reset-realms`, which loses its users, or, keeping them, from an administrator in
+  the console (*Realm settings* → *Security defenses* → *Brute force detection*, the values above).
 - The master realm has none: its console is public on the demo host, and anyone could keep its
   administrators locked out. Nothing limits guessing there: on the demo host, every administrator
   of the master realm gets a long random password (`openssl rand -base64 32`), the one of the
   `demo` environment as any added later (in dev, `.env`'s is `secret`: the stack publishes its
   ports on the loopback only).
-- An administrator unlocks an application's account in the console, on the user's page. On the
-  demo host, a visitor may lock a shared demo account (its password is public) for up to 15
-  minutes: accepted.
+- An administrator unlocks an application's account in the console, on the user's page. Whoever
+  knows an account's user name can keep it locked for as long as they keep failing its logins (each
+  lock at most 15 minutes): on the demo host, the shared demo accounts (their passwords are public)
+  included. Accepted (PA-2).
 
 ### Routes file
 
