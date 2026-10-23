@@ -1,0 +1,91 @@
+# Plan: The shared stack lacks what Turu and Hurura'a need to move onto it
+
+- Spec: [v3](spec.md)
+- Status: approved
+- Branch: 0013-stack-lacks-what-turu-and-hururaa-need
+- Approved: 2026-10-23, Jérôme Wacongne (engineer, and tech lead for the high risk)
+- Builds on: 0012's branch, merged in at step 0 (then `main`, once 0012 is merged)
+
+## Starting point
+
+- `keycloak/Dockerfile:2-14`: build options before `kc.sh build` (`KC_FEATURES` goes there); `HealthCheck.java` compiled with the image's `jdk.compiler` module (to recheck on 26.8.1).
+- Images: Keycloak is `${KC_IMAGE}`, built from `keycloak/` in dev, and on the demo host the workflow's `c4-infra-keycloak:<git tree of keycloak/>` (pushed if missing; `write-env.sh` writes `KC_IMAGE`); the workflow pulls, `demo/deploy.sh` never does and reads no `.env`; the stand-in loads the local image. Caddy is `caddy:2.11.4-alpine` (`compose.yml:41`), pinned by `tests/0003-compose.sh:97` and used to validate the Caddyfile by `tests/0003-caddy-config.sh`, `0003-demo-edge.sh`, `0007-listeners.sh`; the Caddyfile has no global options block (`0003-demo-edge.sh` wraps it in its own).
+- `demo/deploy.sh:31`'s `up` replaces a changed Keycloak silently; `demo/backup.sh` dumps through the running `keycloak-db` and deletes `c4-infra-keycloak-db-*.dump` after 7 days.
+- `routes.sh`: one site per file; matcher numbers, redirects and "no route" per file; upstreams from `registry_upstream`, which refuses `mcp` on the demo host (`registry.sh:287-290`). `registry.sh`: dotted hosts; one "host name" namespace (`_registry_claim`); `entry`'s output is pinned (`tests/0004-registry.sh:93-116`, the `create-dev-infra` skill).
+- `register-app.sh` reads no realm file before importing it and uses no jq; the `.conf` transition is `:186-197`.
+- The dev leaf covers `*.dev.localhost` (`certs/make-certs.sh:57-61`). The stand-in serves no HTTPS (ACME blocked): HTTPS behaviour is tested with `0003-demo-edge.sh`'s throwaway Caddy, reachability on the stand-in.
+- caddy-ratelimit has one old tag (`v0.1.0`): pinned by commit `5625512f24f6` (2026-06-12); builder image `caddy:2.11.4-builder-alpine`.
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `keycloak/Dockerfile` | modified: `KC_VERSION=26.8.1`; `ENV KC_FEATURES=token-exchange-delegation,parameterized-scopes,cimd` before `kc.sh build` | REQ-1, REQ-2 |
+| `registry.sh` | modified: `REGISTRY_KEYCLOAK_THEMES` checked against 26.8.1's built-in themes; `registry_mcp_host <host>` (`<first label>-mcp.<rest>`); `registry_check` claims each entry's two MCP origins as host names (named "`<app>`'s MCP origin") and refuses an application named `<other>-mcp`; `registry_upstream` demo `mcp` → `http://<app>.mcp:9080`; `entry`'s output unchanged | REQ-7, REQ-12 |
+| `routes.sh` | modified: `routes_generate` prints the application's site (every route but `mcp`) and, when it has `mcp` routes, the MCP origin's site, each with its own matchers, redirects and `404`; the MCP origin imports `site` only (no `spa-headers`) | REQ-7 |
+| `register-app.sh` | modified: the `.conf` transition and its usage text removed; jq required (a clear message when missing); before any change, each realm file whose client profiles hold a `client-id-metadata-document` executor with `cimd-allow-http-scheme` on, or `*` among `cimd-allow-permitted-domains`, refused naming file and profile | REQ-11, REQ-17 |
+| `reverse-proxy/Dockerfile` | new: `xcaddy build --with github.com/mholt/caddy-ratelimit@5625512f24f6` on `caddy:2.11.4-builder-alpine`, the binary copied onto `caddy:2.11.4-alpine` | REQ-16 |
+| `compose.yml`, `compose.dev.yml`, `env.sh`, `demo/write-env.sh`, `.github/workflows/deploy-demo.yml` | modified: reverse-proxy `image: ${PROXY_IMAGE}`; dev `build: ./reverse-proxy`, `PROXY_IMAGE=c4-infra/reverse-proxy`; the workflow builds and pushes `c4-infra-reverse-proxy:<git tree of reverse-proxy/>` as it does Keycloak's; `write-env.sh` requires and writes `PROXY_IMAGE` | REQ-16 |
+| `caddy/Caddyfile` | modified: inside `handle /auth/*`, a `route` with `rate_limit` (zone on `/auth/realms/*/clients-registrations/*`, key `{remote_host}`, 10 events a minute) before `reverse_proxy keycloak:8080` | REQ-16 |
+| `demo/deploy.sh`, `demo/backup.sh`, `up.sh` | modified: when `c4-infra.keycloak` runs another image than `KC_IMAGE`'s, `deploy.sh` starts `keycloak-db`, dumps it (`backup.sh --before-upgrade`: a name outside the nightly retention, kept until removed by hand), stops Keycloak, then `up`; a first deployment or the same image dumps nothing; `up.sh` (dev) builds, then stops Keycloak when its image changed (no dump) | REQ-3, REQ-4 |
+| `examples/routes/turu.routes` | modified: no `/assets/*`; its header: the `mcp` routes are served on Turu's MCP origin | REQ-9 |
+| `tests/0003-routes.sh`, `tests/0004-registry.sh`, `tests/0003-caddy-config.sh`, `tests/0003-dev-routes.sh`, `tests/0003-demo-edge.sh`, `tests/0003-compose.sh`, `tests/0007-listeners.sh`, `tests/0003-demo-deploy.stand-in.sh`, `tests/lib/stand-in-host.sh` | modified: the MCP origin's site (Turu, dev and demo), the demo `mcp` upstream, collision refusals, Turu in the demo validation and accepted on the stand-in; the built proxy image in place of `caddy:2.11.4-alpine` (not for the echo stand-ins); the stand-in loads `c4-infra/reverse-proxy` and sets `PROXY_IMAGE`; the MCP origin's `X-Forwarded-*` and headers through the throwaway demo Caddy | AC-5, AC-6, AC-10 |
+| `tests/0013-keycloak.sh` | new (dev): Keycloak's log names 26.8.1, the two preview features and `cimd` as the only experimental one; a realm's RFC 8414 metadata on the issuer host's root with `S256`, `authorization_response_iss_parameter_supported`, `client_id_metadata_document_supported`; `resource=` → the login page; the leaf valid for `faito-mcp.dev.localhost` | AC-1, AC-11, AC-12 |
+| `tests/0013-delegation.sh`, `tests/fixtures/0013/verif-delegation-realm.json` | new: a realm derived once from Turu's export (realm settings with FGAP v2, an agent, an actor, an API and an MCP client renamed `verif-*`, the `delegation:*` scopes, the `delegate` permission, one user, no organization), new ids (`new-realm-ids.sh`); Turu's checks 1–4 against it on the dev stack; an exchange by a client without the permission refused | AC-3, AC-4 |
+| `tests/0013-rate-limit.sh` | new (dev): 11 requests to a realm's registration endpoint from the host → the 11th `429`, the same address's request to `/auth/realms/master` answered; from a container on `c4-infra`, not `429` | AC-14 |
+| `tests/0013-register.sh` | new: stubbed docker: CIMD with `http` or `*` refused before any docker call; https and `*.example.org` pass the check; `--proxy <file>.conf` refused, nothing registered | AC-8, AC-15 |
+| `tests/0013-upgrade.stand-in.sh` | new: the stand-in deployed from `origin/main`'s files with its Keycloak image (`c4-infra/keycloak:before`), a realm, a user and a session made; then deployed from the branch: a dump taken before Keycloak's restart, Keycloak stopped before the new import, realm, user and session kept (the refresh token refreshes), master's 0009/0010 settings; a second deployment dumps nothing; the log names 26.8.1 and the features | AC-1, AC-2, AC-7 |
+| `tests/0013-mcp.stand-in.sh` | new: Faito with a `faito.mcp` container (Caddy echoing on 9080) and `mcp` routes, through `sudo c4-app`: registered and started, Caddy reaches `faito.mcp:9080`; a token issued through `http://keycloak:8080/auth` for the public issuer exchanged there | AC-6, AC-13 |
+| `tests/fixtures/0013/**` | new: `registry.txt` (the real entries plus `31 verif-delegation verif-delegation,verif-cimd-http,verif-cimd-any,verif-cimd-ok - - verif-delegation.dev.localhost verif-delegation.c4-soft.com`), the realms, Faito with its MCP container | AC-3–AC-15 |
+| `README.md`, `docs/migration.md`, `docs/demo-setup.md`, `CLAUDE.md` | modified: Design (an application's origin and its MCP origin; Keycloak 26.8.1, its features and why), prerequisites (jq), Routes file (roles table, MCP origin), What an application's deployment does (`<app>.mcp:9080`), realm checks (CIMD), Backups (the pre-upgrade dump); the guide's points of REQ-8; a DNS record per MCP origin; the images the workflow builds; `reverse-proxy/` in the layout | REQ-8, REQ-10, AC-9 |
+| `docs/intent/0013-…/plan.md`, `intent.md`, `docs/intent/README.md` | this plan, status planned, index row | — |
+
+## Order of work
+
+0. **Setup**, once 0012 is verified: the scratch worktree removed, `git switch 0013-…`, `git merge 0012-themes-read-keycloak-environment` (and `origin/main`). — skill: none — check: `git status --short` empty, `bash tests/run.sh` → `verification passed`.
+1. **Facts**: `tests/0013-keycloak-facts.sh` (throwaway 26.8.1 with the features): its built-in themes, `HealthCheck.java` compiles, the export format of a CIMD executor's configuration; the built proxy lists `http.handlers.rate_limit`. — skill: none — check: the test passes; a failing fact is a deviation before its step.
+2. **Keycloak 26.8.1** and its features, the built-in themes, `up.sh` stopping Keycloak on an image change; `tests/0013-keycloak.sh`, the delegation fixture and `tests/0013-delegation.sh`. — skill: none — check: `bash up.sh`, both tests, `bash tests/0009-master-realm.sh && bash tests/0010-brute-force.sh && bash tests/0012-themes.sh`; Faito still logged in (manual).
+3. **The proxy image and the rate limit**, the tests that validate the Caddyfile. — skill: none — check: `bash up.sh`, `bash tests/0013-rate-limit.sh && bash tests/0003-caddy-config.sh && bash tests/0003-demo-edge.sh && bash tests/0003-compose.sh && bash tests/0007-listeners.sh`.
+4. **The MCP origin**: `registry.sh`, `routes.sh`, Turu's example, their tests. — skill: none — check: `bash tests/0003-routes.sh && bash tests/0004-registry.sh && bash tests/0003-caddy-config.sh && bash tests/0003-dev-routes.sh`.
+5. **`register-app.sh`**: no `.conf`, jq, the CIMD refusal. — skill: none — check: `bash tests/0013-register.sh && bash tests/0002-register-scope.sh`.
+6. **The demo host**: `deploy.sh`, `backup.sh`, the workflow, `write-env.sh`, the stand-in helpers, the stand-in tests. — skill: none — check: `bash tests/0013-upgrade.stand-in.sh && bash tests/0013-mcp.stand-in.sh && bash tests/0003-demo-deploy.stand-in.sh`.
+7. **Docs**. — skill: none — check: review against AC-9 and REQ-8's list.
+8. **Verification**: `bash tests/run.sh --all`; mutation checks (AC-16): `routes.sh` and `registry.sh` from 0012's head → `tests/0003-routes.sh`'s MCP origin checks `KO`; `register-app.sh` from 0012's head → `tests/0013-register.sh`'s CIMD checks `KO`; then `/sdlc-verify 0013`. — skill: sdlc-verify — check: `verification passed`.
+9. **After the merge** (the human's): the workflow pushes both images, the deployment dumps, stops and upgrades Keycloak. — skill: sdlc-ship — check, on `infra.c4-soft.com`: Keycloak's log line (26.8.1, the features), a realm's RFC 8414 metadata with `client_id_metadata_document_supported`, the 11th registration request `429`, the master realm and its settings unchanged, the dump in `~c4-infra/backups`.
+
+## Risks
+
+- `HealthCheck.java` no longer compiles on 26.8.1 → step 1; fallback: compiled in a JDK build stage.
+- An upgrade running the new import (0012) and migration while the old Keycloak runs → Keycloak stopped first, in `deploy.sh` and `up.sh`; proven by `tests/0013-upgrade.stand-in.sh`.
+- The pre-upgrade dump deleted by the nightly retention → a name of its own, kept until removed by hand (README).
+- `rate_limit`'s order → inside a `route`, as written, with no global option (`0003-demo-edge.sh` wraps the Caddyfile); `caddy validate` and `tests/0013-rate-limit.sh`.
+- Every dev client has Docker Desktop's address → AC-14's other address is a container on `c4-infra`. The applications' containers reach `keycloak:8080` without the proxy → the limit concerns the public endpoint (spec), the README says so.
+- The delegation fixture's FGAP v2 references broken by the trimming → Turu's checks run against it; new ids so it never clashes with Turu's realm.
+- No HTTPS on the stand-in → HTTPS and headers through `0003-demo-edge.sh`'s throwaway Caddy; the stand-in proves acceptance and reachability.
+- An upgrade can't be undone on the demo host → the dump (REQ-4) and the README's restore procedure.
+- 0011 changes the same scripts afterwards → its plan merges this branch.
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| AC-1 | automated tests | `tests/0013-keycloak.sh` (dev), `tests/0013-upgrade.stand-in.sh` (demo): 26.8.1, the two preview features, `cimd` alone experimental |
+| AC-2 | automated test (stand-in) + manual check | `tests/0013-upgrade.stand-in.sh`: realm, user, session (refresh) and master's settings kept from 26.7; dev: Faito still logged in after `up.sh` (step 2) |
+| AC-3 | automated test | `tests/0013-delegation.sh`: `act.client_id` names the actor; without the scope, refused |
+| AC-4 | automated test | `tests/0013-delegation.sh`: an exchange by a client without a `delegate` permission refused |
+| AC-5 | automated test | `tests/0003-routes.sh`: Turu's `mcp` routes on `turu-mcp.*` only, to `https://host.docker.internal:11280` and `http://turu.mcp:9080`; no `/assets/*` |
+| AC-6 | automated tests | `tests/0013-mcp.stand-in.sh` (accepted, `faito.mcp:9080` reached), `tests/0003-demo-edge.sh` (the MCP origin's `X-Forwarded-Host`/`-Proto`, no `spa-headers`) |
+| AC-7 | automated test (stand-in) | `tests/0013-upgrade.stand-in.sh`: a dump before Keycloak's restart; none when the image stays |
+| AC-8 | automated test | `tests/0013-register.sh`: `--proxy <file>.conf` refused, nothing registered |
+| AC-9 | review | README and `docs/migration.md` against REQ-8 and REQ-10 |
+| AC-10 | automated test | `tests/0004-registry.sh`: an entry on another's MCP origin, or named `<app>-mcp`, refused naming both lines |
+| AC-11 | automated test | `tests/0013-keycloak.sh`: `openssl x509 -checkhost faito-mcp.dev.localhost` on the leaf |
+| AC-12 | automated test | `tests/0013-keycloak.sh`: the RFC 8414 metadata fields; `resource=` → the login page |
+| AC-13 | automated test (stand-in) | `tests/0013-mcp.stand-in.sh`: the exchange through `http://keycloak:8080/auth` |
+| AC-14 | automated test (dev) + after deployment | `tests/0013-rate-limit.sh`; step 9 on `infra.c4-soft.com` |
+| AC-15 | automated test | `tests/0013-register.sh`: `http` and `*` refused, https and `*.example.org` pass |
+| AC-16 | mutation check | step 8: `tests/0003-routes.sh` and `tests/0013-register.sh` `KO` on 0012's head |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
