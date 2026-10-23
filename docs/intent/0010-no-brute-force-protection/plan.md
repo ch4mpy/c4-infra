@@ -1,6 +1,6 @@
 # Plan: No realm of the shared Keycloak protects its accounts against password guessing
 
-- Spec: [v1](spec.md)
+- Spec: [v2](spec.md)
 - Status: approved
 - Branch: 0010-no-brute-force-protection
 - Approved: 2026-10-23, Jérôme Wacongne (engineer, and tech lead for the high risk; also the product owner), after a fresh-context review of the plan against the code (13 findings folded in)
@@ -59,3 +59,5 @@
 ## Deviations
 
 - 2026-10-23 — step 0: 0009 isn't merged into `main` yet (its delivery is the human's): the branch `0009-master-realm-sends-no-mail` is merged into this one instead, as planned for that case; this PR shows 0009's commits until 0009 is merged. Implemented in a worktree, as 0009 (its plan's deviation): `tests/0006-account.sh` and the dev-stack checks run with the full suite in `D:\workspaces\c4-infra`.
+- 2026-10-23 — spec v2 (PA-3, raised by the security review of the implementation, decided by the product owner: no lockout on the master realm). `keycloak-import/master-realm.json` is no longer modified (its row in *Files* drops); `tests/0010-brute-force.stand-in.sh` is dropped (it only checked the master realm's settings on the stand-in: `register-app.sh` is the same script on both hosts, AC-2 on the dev stack covers it), and with it step 3; step 5 (this workstation's re-creation, for the master realm's settings) has nothing left to apply. `tests/0010-brute-force.sh` checks the dev stack's master realm (AC-1: no detection) instead of a throwaway Keycloak; AC-4 is gone (spec v2). The README section says the master realm has none, and names Keycloak's quick-login rule (the bug review). Steps 1 and 2 land in one commit (the same test file).
+- 2026-10-23 — the reviews' findings answered without a change: a shared `kc_wait_ready` helper (the throwaways are 0009's, and `tests/lib/keycloak.sh` is shared with the other session's work on 0001–0008); a `stand_in_env_rewrite` helper in `tests/lib/stand-in-host.sh` (it would change `tests/0006-bootstrap-admin-replaced.stand-in.sh`, 0006's, out of this change's scope).
