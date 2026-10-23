@@ -4,9 +4,9 @@
 - Kind: bug
 - Source: conversation (security review of 0009, PRs #1 and #2, 2026-10-23: a pre-existing finding)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-23
-- Decided: —
+- Decided: 2026-10-23
 - Supersedes: —
 
 ## Problem
