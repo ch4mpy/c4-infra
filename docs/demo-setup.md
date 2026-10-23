@@ -97,9 +97,14 @@ read -rsp 'Mailpit UI password: ' password && echo \
 
 The first three are fixed by the first deployment: the services don't read them again. Changing
 the secret afterwards breaks the stack unless the value is changed in the service as well
-(Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`). Replacing
-Keycloak's temporary administrator by a permanent one, as its console suggests, is safe: the
-registrations log in as their own account ([README](../README.md), "The registration account").
+(Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`); for
+`MAILPIT_SMTP_PASSWORD`, step 12. `KC_ADMIN_PASSWORD` and `MAILPIT_SMTP_PASSWORD` hold neither a
+double quote nor a backslash: Keycloak writes them into its master realm's JSON as they are, and
+`demo/write-env.sh` refuses them (`openssl rand -base64 32` and `-hex 32` are fine). Replacing
+Keycloak's administrator by another one is safe: the registrations log in as their own account
+([README](../README.md), "The registration account"); with the master realm's *Verify email*, an
+administrator who has an address verifies it (the mail is in `/mailpit/`) before the admin CLI
+logs in as them.
 
 ## 6. GitHub environment `demo`
 
@@ -148,10 +153,12 @@ gh run watch -R ch4mpy/c4-infra
   which `rsync -a` keeps), sends `~/c4-infra`, as `c4-infra`, exactly the files of
   [`demo/deploy-files.txt`](../demo/deploy-files.txt) (the compose base and its demo override, the
   shared Caddy configuration, the registry, `routes.sh`, `register-app.sh`,
-  `registration-account.sh`, the host's scripts and `demo/c4-app`) and then `.env`, pulls the
-  images, and runs [`demo/deploy.sh`](../demo/deploy.sh) on the host: it installs `c4-app` in
-  `/usr/local/sbin` when it changed, waits up to 300 s for every service to be healthy, reloads
-  Caddy, creates the registration account (with the bootstrap administrator), and installs the
+  `registration-account.sh`, `keycloak-import/master-realm.json`, the host's scripts and
+  `demo/c4-app`) and then `.env`, pulls the images, and runs
+  [`demo/deploy.sh`](../demo/deploy.sh) on the host: it installs `c4-app` in `/usr/local/sbin`
+  when it changed, waits up to 300 s for every service to be healthy (on an empty database,
+  Keycloak creates its master realm pre-configured: [README](../README.md), "The master realm"),
+  reloads Caddy, creates the registration account (as the administrator of `.env`), and installs the
   nightly backup of Keycloak's database (03:15, host time, `~/backups/`). Every action of the
   workflow is pinned by commit (its tag as a comment).
 - The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
@@ -159,7 +166,9 @@ gh run watch -R ch4mpy/c4-infra
 
 ## 8. Check
 
-- `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD`.
+- `https://infra.c4-soft.com/auth/admin/`: log in as `admin` with `KC_ADMIN_PASSWORD` (no
+  *Forgot password?* on that page); realm master, *Realm settings* → *Email*: Mailpit
+  (`mailpit:1025`), and *Test connection* delivers to `admin@infra.c4-soft.com`, in `/mailpit/`.
 - `https://infra.c4-soft.com/mailpit/` asks for its credentials (user `demo`, the password of step
   5): Mailpit asks for them itself, through Caddy as from an application's container (only
   `/mailpit/livez` and `/mailpit/readyz` answer without);
@@ -222,3 +231,33 @@ gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
 
 The former secret no longer logs in. Once the bootstrap administrator no longer logs in, set
 `KC_SETUP_ADMIN_*` for that deployment (step 6).
+
+## 11. Re-creating Keycloak's database
+
+Keycloak creates its master realm pre-configured ([README](../README.md), "The master realm") on an
+empty database only. A host deployed before intent 0009 (the first one, deployed on 2026-10-23)
+gets that configuration once its database is re-created, which loses everything Keycloak holds:
+the master realm's other administrators, the registration account and the applications' realms.
+As `ubuntu`:
+
+```bash
+ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db'"
+gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
+```
+
+The deployment starts Keycloak on an empty database: it creates the master realm, with the
+administrator of the `demo` environment (`KC_ADMIN_USERNAME`, `KC_ADMIN_PASSWORD`), and
+`demo/deploy.sh` creates the registration account again. Each application imports its realm again
+at its next deployment.
+
+## 12. Changing Mailpit's SMTP password
+
+A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and Keycloak's
+containers are recreated with it (Keycloak restarts). The master realm keeps the former password:
+in the console, realm master, *Realm settings* → *Email*, type the new one, save, then *Test
+connection*. Each application renders it into its own realms at its next deployment.
+
+```bash
+gh secret set MAILPIT_SMTP_PASSWORD --env demo -R ch4mpy/c4-infra   # paste the value, then Enter
+gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
+```

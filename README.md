@@ -241,11 +241,50 @@ or theirs).
   `demo` environment's ([docs/demo-setup.md](docs/demo-setup.md), "Rotating the registration
   secret").
 
-Keycloak's administrators are free to change: following its console's invitation to replace the
-temporary bootstrap administrator by a permanent one and delete it, or changing its password,
-doesn't affect the registrations. Once it no longer logs in, an administrator is needed only to
-create the account again or to rotate its secret: in dev, `bash registration-account.sh ensure`
-from a terminal asks for one; on the demo host, `KC_SETUP_ADMIN_*` are set for one deployment.
+Keycloak's administrators are free to change: replacing the administrator of `.env` by another one
+and deleting it, or changing its password, doesn't affect the registrations. Once it no longer
+logs in, an administrator is needed only to create the account again or to rotate its secret: in
+dev, `bash registration-account.sh ensure` from a terminal asks for one; on the demo host,
+`KC_SETUP_ADMIN_*` are set for one deployment. With the master realm's *Verify email* (below), an
+administrator who has an e-mail address verifies it before the admin CLI logs in as them: Keycloak
+refuses that login ("Account is not fully set up") until then, and `registration-account.sh` says so.
+
+### The master realm
+
+Keycloak creates its master realm pre-configured, from
+[`keycloak-import/master-realm.json`](keycloak-import/master-realm.json) (`--import-realm`, intent
+0009), on an empty database only: a master realm that exists is never imported again, whatever
+the file says.
+
+- Its SMTP server is Mailpit, with Mailpit's SMTP credentials of `.env`: in dev
+  `host.docker.internal:1025` with STARTTLS (Mailpit requires it, and the local leaf holds that
+  name), on the demo host `mailpit:1025` without TLS; sender `noreply@<INFRA_HOST>`. The console's
+  *Test connection* delivers to Mailpit.
+- *Verify email* is on; *Forgot password* is on in dev only (on the demo host, its mails would land
+  in Mailpit, where whoever reads them could reset an administrator's password).
+- Its administrator is `.env`'s `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD`, with
+  the verified address `admin@<INFRA_HOST>`. Keycloak's container gets them as
+  `C4_MASTER_ADMIN_USERNAME` / `C4_MASTER_ADMIN_PASSWORD`: under their `KC_BOOTSTRAP_*` names,
+  Keycloak would create its temporary administrator as well and abort its start. Neither password
+  may hold a double quote or a backslash, which the import's JSON can't take.
+- The rest is what Keycloak sets when it creates that realm itself (its display name, 60-second
+  access tokens, a user profile where neither the address nor the names are required).
+
+A stack started before intent 0009 keeps its master realm as it is. Re-creating Keycloak's
+database gives it the configuration, at the cost of everything Keycloak holds: the master realm's
+other administrators and the applications' realms. In dev:
+
+```bash
+docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db
+bash up.sh                        # Keycloak creates the master realm, up.sh the registration account
+bash ../<app>/deploy-dev.sh       # each application imports its realm again
+```
+
+(on the demo host: [docs/demo-setup.md](docs/demo-setup.md), "Re-creating Keycloak's database").
+After a change of Mailpit's SMTP password (`MAILPIT_SMTP_PASSWORD`), the master realm keeps the
+former one: type the new one in its *Email* settings (the applications render it into their own
+realms at their next deployment). Since that password, `INFRA_HOST` and the administrator's are in
+Keycloak's environment, changing one of them recreates Keycloak's container at the next start.
 
 ### Routes file
 
