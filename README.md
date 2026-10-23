@@ -269,6 +269,7 @@ the file says.
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
   import's JSON can't take (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev), and
   `INFRA_HOST` is a host name (`demo/write-env.sh` checks it).
+- No brute-force detection, unlike the applications' realms (below).
 - The rest is what Keycloak sets when it creates that realm itself (its display name, 60-second
   access tokens, a user profile where neither the address nor the names are required).
 
@@ -291,6 +292,25 @@ password its application renders. A new administrator's password in `.env` likew
 the console too (realm master, *Users* → the administrator → *Credentials*). Since that password,
 `INFRA_HOST` and the administrator's are in Keycloak's environment, changing one of them recreates
 Keycloak's container at the next start.
+
+### Brute-force protection
+
+Every application's realm locks an account for a while after repeated failed logins (intent
+0010), in dev as on the demo host: after 10 failures, the account is refused for a minute, even
+with its right password; each further failure adds a minute, up to 15; the failures are forgotten
+12 hours after the last one; nothing locks an account for good (Keycloak's temporary lockout,
+linear strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart
+lock the account for a minute, whatever their count.
+
+- An application's realm gets these settings each time `register-app.sh` imports it, whatever its
+  export says (`brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak
+  keeps its own settings until it is imported again: one registered before intent 0010 gets them
+  with its next `--reset-realms`.
+- The master realm has none: its console is public on the demo host, and anyone could keep its
+  administrators locked out; their passwords are long and random, out of the reach of guessing.
+- An administrator unlocks an application's account in the console, on the user's page. On the
+  demo host, a visitor may lock a shared demo account (its password is public) for up to 15
+  minutes: accepted.
 
 ### Routes file
 

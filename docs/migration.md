@@ -154,7 +154,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `org.keycloak.keys.KeyProvider` components (the dev keys are in the repository), issuer host
    `infra.c4-soft.com`, the BFF's redirect URIs on `<project>.c4-soft.com`, back-channel logout on
    `http://<project>.gateway:7080/gateway/logout/connect/back-channel/<registration>`, SMTP
-   `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`.
+   `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings needn't be
+   rendered: `register-app.sh` replaces them at import with c4-infra's (README, "Brute-force
+   protection"), in dev as on the demo host.
 5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
    of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
    by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
