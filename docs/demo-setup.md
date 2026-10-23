@@ -98,8 +98,9 @@ read -rsp 'Mailpit UI password: ' password && echo \
 The first three are fixed by the first deployment: the services don't read them again. Changing
 the secret afterwards breaks the stack unless the value is changed in the service as well
 (Keycloak's console, `ALTER USER` in PostgreSQL, `rabbitmqctl change_password`); for
-`MAILPIT_SMTP_PASSWORD`, step 12. `KC_ADMIN_PASSWORD` and `MAILPIT_SMTP_PASSWORD` hold neither a
-double quote nor a backslash: Keycloak writes them into its master realm's JSON as they are, and
+`MAILPIT_SMTP_PASSWORD`, step 12. `KC_ADMIN_PASSWORD`, `MAILPIT_SMTP_PASSWORD` and the variable
+`KC_ADMIN_USERNAME` (step 6) hold neither a double quote, a backslash nor a control character, and
+`INFRA_HOST` is a host name: Keycloak writes them into its master realm's JSON as they are, and
 `demo/write-env.sh` refuses them (`openssl rand -base64 32` and `-hex 32` are fine). Replacing
 Keycloak's administrator by another one is safe: the registrations log in as their own account
 ([README](../README.md), "The registration account"); with the master realm's *Verify email*, an

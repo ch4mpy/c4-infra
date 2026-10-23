@@ -44,7 +44,7 @@ KC_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}
 for name in KC_ADMIN_USERNAME KC_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
   case "${!name}" in
     *'"'* | *'\'* | *[[:cntrl:]]*)
-      echo "$name holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value (openssl rand -hex 32)" >&2
+      echo "$name holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value (a password: openssl rand -hex 32)" >&2
       exit 1
       ;;
   esac
