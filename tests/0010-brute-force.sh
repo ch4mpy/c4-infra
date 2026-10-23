@@ -28,19 +28,20 @@ export MSYS_NO_PATHCONV=1
 
 umask 077
 work=$(mktemp -d)
-# the fixture's realm and network (its own: an earlier run's too), and its compose.apps.yml entry
+# the fixture's realm and network (its own: an earlier run's too), and its compose.apps.yml entry;
+# the registration account, which created the realm, deletes it: no administrator needed
 remove_fixture() {
-  kc_admin delete "realms/$REALM" > /dev/null 2>&1
+  kc_registration delete "realms/$REALM" > /dev/null 2>&1
   bash networks.sh remove "$REALM" > /dev/null
 }
 trap 'remove_fixture; rm -rf "$work"' EXIT
 remove_fixture
 
-# AC-1, AC-8: the master realm
+# AC-1, AC-8: the master realm (bruteForceProtected is in the registration account's reduced view)
 check "AC-1: the master realm's import sets no brute-force detection (Keycloak's default: off)" \
   jq -e 'has("bruteForceProtected") | not' keycloak-import/master-realm.json
 check "AC-1: the dev stack's master realm has none" \
-  test "$(kc_admin get realms/master --fields bruteForceProtected 2> /dev/null | jq -c .bruteForceProtected)" = false
+  test "$(kc_registration get realms/master 2> /dev/null | jq -c .bruteForceProtected)" = false
 # the probe changes nothing even if Keycloak accepted it
 refused_403() {
   local output
