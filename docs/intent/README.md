@@ -56,3 +56,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0006 | [Registrations depend on Keycloak's temporary bootstrap administrator](0006-registration-uses-bootstrap-admin/intent.md) | bug | planned | 2026-10-21 | 2026-10-21 |
 | 0007 | [On the demo host, an application's containers reach every shared service and every other application](0007-demo-containers-reach-every-service/intent.md) | bug | planned | 2026-10-21 | 2026-10-21 |
 | 0008 | [c4-infra's certificate scripts spread the local CA's private key and its password](0008-certificate-scripts-spread-the-ca-key/intent.md) | bug | planned | 2026-10-22 | 2026-10-22 |
+| 0011 | [c4-app's isolation leaves residual paths between an application's account and the host or other applications](0011-c4-app-isolation-residual-paths/intent.md) | bug | proposed | 2026-10-23 | — |
