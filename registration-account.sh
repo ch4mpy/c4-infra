@@ -32,8 +32,9 @@ SERVER=http://localhost:8080/auth
 ACCOUNT_CONFIG=/dev/shm/c4-registration-$$.kcadm
 ADMIN_CONFIG=/dev/shm/c4-registration-admin-$$.kcadm
 
-# The value of KEY in .env, read as data as compose reads it (registry.sh's dotenv_value)
-env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
+# The value of KEY in .env into <var>, read as data as compose reads it; a value the reader refuses
+# stops the script (registry.sh's dotenv_read), rather than trying another administrator or none
+env_read() { dotenv_read "$1" "$INFRA_DIR/.env" "$2"; } # <var> <key>
 
 usage() {
   echo "Usage: bash $0 ensure | rotate" >&2
@@ -126,9 +127,10 @@ probe_registry() {
 # An administrator of the master realm: the bootstrap one of .env while it works, else
 # KC_SETUP_ADMIN_* from the environment, else the one a terminal gives
 login_administrator() { # <what it is needed for>
-  local user password
-  user=$(env_value KC_BOOTSTRAP_ADMIN_USERNAME)
-  if admin_login "$user" "$(env_value KC_BOOTSTRAP_ADMIN_PASSWORD)"; then
+  local user password bootstrap_password
+  env_read user KC_BOOTSTRAP_ADMIN_USERNAME
+  env_read bootstrap_password KC_BOOTSTRAP_ADMIN_PASSWORD
+  if admin_login "$user" "$bootstrap_password"; then
     echo "Logged in as $user, the bootstrap administrator of .env, to $1"
     return 0
   fi
@@ -193,8 +195,8 @@ grant_realm() { # <realm>: every role of the master client <realm>-realm
 }
 
 ensure() {
-  client_id=$(env_value KC_REGISTRATION_CLIENT_ID)
-  secret=$(env_value KC_REGISTRATION_CLIENT_SECRET)
+  env_read client_id KC_REGISTRATION_CLIENT_ID
+  env_read secret KC_REGISTRATION_CLIENT_SECRET
   if [ -z "$client_id" ] || [ -z "$secret" ]; then
     echo "KC_REGISTRATION_CLIENT_ID and KC_REGISTRATION_CLIENT_SECRET must be in $INFRA_DIR/.env (env.sh writes them in dev, demo/write-env.sh on the demo host)" >&2
     exit 1
@@ -251,7 +253,7 @@ ensure() {
 # ensure sets it in Keycloak
 rotate() {
   local infra_env new line found=false tmp
-  infra_env=$(env_value INFRA_ENV)
+  env_read infra_env INFRA_ENV
   if [ "$infra_env" != dev ]; then
     echo "rotate is for dev (INFRA_ENV=dev): on the demo host, the secret is the demo environment's KC_REGISTRATION_CLIENT_SECRET (docs/demo-setup.md, \"Rotating the registration secret\")" >&2
     exit 1

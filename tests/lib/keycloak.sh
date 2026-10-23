@@ -19,7 +19,7 @@
 KC_CONTAINER=c4-infra.keycloak
 KC_INFRA_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 
-# The value of KEY in .env, read as data (register-app.sh's env_value)
+# The value of KEY in .env, read as data (a simpler reader than the scripts', registry.sh's dotenv_value)
 _kc_env_value() {
   local line
   line=$(grep -m1 "^$1=" "$KC_INFRA_DIR/.env" || true)

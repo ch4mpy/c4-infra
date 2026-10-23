@@ -31,6 +31,9 @@
 #   registry_upstream <role> <dev|demo>   prints the upstream of <role> for the entry registry_entry set
 #   dotenv_value <file> <key>  prints KEY's value in a .env file, as compose reads it (below): the one
 #                              .env reader of c4-infra's scripts (demo/c4-app included)
+#   dotenv_read <var> <file> <key>
+#                              dotenv_value into the variable <var>; a value the reader refuses stops
+#                              the script (exit 1), naming the key: for a script that needs the value
 #
 # REGISTRY_FILE (default: registry.txt next to this script) is a test seam only: on the demo host,
 # registrations run through a root-owned command that clears the environment (intent 0002).
@@ -96,6 +99,19 @@ dotenv_value() { # <file> <key>
     return 1
   fi
   printf '%s' "${value//\$\$/\$}"
+}
+
+# dotenv_value into the variable <var>, run in the caller's shell: a value the reader refuses stops
+# the script there, saying so, rather than leaving <var> empty for the script to go on with. A
+# caller of dotenv_value itself must check its status: it is lost in a [ … ] argument, a prefix
+# assignment or a function's argument, and set -e doesn't stop a function called in a condition.
+dotenv_read() { # <var> <file> <key>
+  local _dotenv_read_value
+  if ! _dotenv_read_value=$(dotenv_value "$2" "$3"); then
+    echo "$(basename "$0"): $3 of $2 is refused (above): stopped, rather than going on without it" >&2
+    exit 1
+  fi
+  printf -v "$1" '%s' "$_dotenv_read_value"
 }
 
 # "<line number> <line>" for each entry of the registry: neither a comment nor a blank line, the

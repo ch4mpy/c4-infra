@@ -37,8 +37,9 @@ SHARED=(reverse-proxy keycloak mailpit rabbitmq grafana-lgtm)
 # shellcheck source=registry.sh
 source "$INFRA_DIR/registry.sh"
 
-# The value of KEY in .env, read as data as compose reads it (registry.sh's dotenv_value)
-env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
+# The value of KEY in .env into <var>, read as data as compose reads it; a value the reader refuses
+# stops the script (registry.sh's dotenv_read), which reads .env before it changes anything
+env_read() { dotenv_read "$1" "$INFRA_DIR/.env" "$2"; } # <var> <key>
 
 own() { # <path>
   [ "$(id -u)" -eq 0 ] || return 0
@@ -61,7 +62,7 @@ app_networks() {
 }
 
 compose_file() {
-  local networks network service demo=false next
+  local networks network service demo=false next infra_env
   # a fake docker (the tests' stubs) or a stopped daemon answers nothing: never empty the file then
   if [ -z "$(docker info --format '{{.ServerVersion}}' 2> /dev/null | tr -d '\r')" ]; then
     if [ ! -f "$APPS_FILE" ]; then
@@ -70,13 +71,15 @@ compose_file() {
     fi
     return 0
   fi
+  # before the file is touched: a refused INFRA_ENV must not drop the INFRA_HOST alias
+  env_read infra_env INFRA_ENV
+  [ "$infra_env" != demo ] || demo=true
   # one rewrite at a time, whichever account runs it (c4-app's own lock is per application)
   if command -v flock > /dev/null; then
     exec 8< "$INFRA_DIR"
     flock 8
   fi
   networks=$(app_networks)
-  [ "$(env_value INFRA_ENV)" != demo ] || demo=true
   # a name of its own, next to the file (the rename stays on one file system)
   next=$(mktemp "$APPS_FILE.XXXXXX")
   chmod 0644 "$next"
@@ -114,15 +117,17 @@ compose_file() {
 }
 
 ensure() { # <app>
-  local app=$1 network=c4-infra.$1 service container aliases host
+  local app=$1 network=c4-infra.$1 service container aliases host infra_env
   valid_name "$app" || return 1
   # named from the registry only (intent 0004 reserves the shared services' names)
   registry_entry "$app" > /dev/null || return 1
+  # before any change: a refused value stops here, with no network created nor attached
+  env_read host INFRA_HOST
+  env_read infra_env INFRA_ENV
   if ! docker network inspect "$network" > /dev/null 2>&1; then
     docker network create --label "c4-infra.app=$app" "$network" > /dev/null
     echo "Network $network created"
   fi
-  host=$(env_value INFRA_HOST)
   for service in "${SHARED[@]}"; do
     container=c4-infra.$service
     [ "$(docker inspect -f '{{.State.Running}}' "$container" 2> /dev/null | tr -d '\r')" = true ] || continue
@@ -131,7 +136,7 @@ ensure() { # <app>
       continue
     fi
     aliases=(--alias "$service")
-    if [ "$service" = reverse-proxy ] && [ "$(env_value INFRA_ENV)" = demo ] && [ -n "$host" ]; then
+    if [ "$service" = reverse-proxy ] && [ "$infra_env" = demo ] && [ -n "$host" ]; then
       aliases+=(--alias "$host")
     fi
     docker network connect "${aliases[@]}" "$network" "$container"

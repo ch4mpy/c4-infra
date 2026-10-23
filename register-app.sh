@@ -43,9 +43,10 @@ INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
 source "$INFRA_DIR/routes.sh"
 
-# The value of KEY in .env, read as data rather than sourced, as compose reads it: the demo's .env
-# is written for compose ("$$" for a "$"; registry.sh's dotenv_value)
-env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
+# The value of KEY in .env into <var>, read as data rather than sourced, as compose reads it: the
+# demo's .env is written for compose ("$$" for a "$"). A value the reader refuses stops the
+# registration (registry.sh's dotenv_read), which reads .env before it changes anything.
+env_read() { dotenv_read "$1" "$INFRA_DIR/.env" "$2"; } # <var> <key>
 
 # Run as root (demo/c4-app), what a registration writes under the stack's directory gets that
 # directory's owner: the shared stack's account, which the next deployment runs as
@@ -97,7 +98,7 @@ done
 # The environment, read at each run: it picks the site's host name and upstreams. The running
 # proxy's own rules (caddy/env/<INFRA_ENV>.caddy) are those of the INFRA_ENV it was started with:
 # this script only validates and reloads it, never restarts nor recreates it.
-INFRA_ENV=$(env_value INFRA_ENV)
+env_read INFRA_ENV INFRA_ENV
 case "$INFRA_ENV" in
   dev | demo) ;;
   *)
@@ -204,6 +205,14 @@ if [ -n "$proxy" ]; then
   fi
 fi
 
+# The registration account's credentials, read before anything changes too (used below)
+kc_client=""
+kc_secret=""
+if [ ${#realms[@]} -gt 0 ]; then
+  env_read kc_client KC_REGISTRATION_CLIENT_ID
+  env_read kc_secret KC_REGISTRATION_CLIENT_SECRET
+fi
+
 # The application's own network, c4-infra.<app> (intent 0007), once every check has passed: created
 # when missing, the shared services it uses attached to it (never keycloak-db), compose.apps.yml
 # written so that they stay attached when the stack is recreated. Its containers join it as an
@@ -217,7 +226,6 @@ bash "$INFRA_DIR/networks.sh" ensure "$app"
 # .env, reaches the CLI in its environment (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session
 # lives in the container's /dev/shm (memory only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  kc_client=$(env_value KC_REGISTRATION_CLIENT_ID)
   # `kcadm -i ...` only where the input is redirected: a deployment may run this script from a
   # heredoc on ssh's stdin, which `docker exec -i` would otherwise swallow
   kcadm() {
@@ -230,7 +238,7 @@ if [ ${#realms[@]} -gt 0 ]; then
   }
   output=""
   kc_session=/dev/shm/c4-registration-$$.kcadm
-  if [ -z "$kc_client" ] || ! output=$(KC_CLI_CLIENT_SECRET=$(env_value KC_REGISTRATION_CLIENT_SECRET) \
+  if [ -z "$kc_client" ] || ! output=$(KC_CLI_CLIENT_SECRET=$kc_secret \
     docker exec -e KC_CLI_CLIENT_SECRET "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh config credentials \
     --config "$kc_session" --server http://localhost:8080/auth --realm master --client "$kc_client" 2>&1); then
     [ -z "$output" ] || printf '%s\n' "$output" | tail -n 3 >&2
