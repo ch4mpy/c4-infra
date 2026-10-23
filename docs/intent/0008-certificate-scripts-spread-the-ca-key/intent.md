@@ -4,9 +4,10 @@
 - Kind: bug
 - Source: conversation (coherence review of the plans, 2026-10-22; follow-up of Faito 0022 and skills 0016)
 - Spec needed: no
-- Status: planned
+- Status: delivered
 - Opened: 2026-10-22
 - Decided: 2026-10-22
+- Delivered: 2026-10-23 (deployed with 0697208; PR #6)
 - Supersedes: —
 
 ## Problem

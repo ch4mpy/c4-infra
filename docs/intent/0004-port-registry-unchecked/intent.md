@@ -4,9 +4,10 @@
 - Kind: change
 - Source: conversation (quality review of the shared stack, 2026-10-21)
 - Spec needed: yes
-- Status: planned
+- Status: delivered
 - Opened: 2026-10-21
 - Decided: 2026-10-21
+- Delivered: 2026-10-23 (deployed with 0697208; PR #6)
 - Supersedes: —
 
 ## Problem
