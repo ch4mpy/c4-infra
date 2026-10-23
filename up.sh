@@ -66,10 +66,13 @@ fi
 
 docker compose up -d --build --wait
 # compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy
-# after a pull): reload Caddy (graceful; an invalid configuration leaves the previous one serving),
-# or restart it when it can't reload
-MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null 2>&1 \
-  || docker restart c4-infra.reverse-proxy > /dev/null
+# after a pull): reload Caddy (graceful). A configuration it refuses leaves the previous one
+# serving: say so and stop, never restart it (it would start on the refused one, every site down)
+if ! output=$(MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
+  printf '%s\n' "$output" | tail -n 5 >&2
+  echo "The reverse proxy refuses its configuration (above): it keeps serving its previous configuration. Fix caddy/ (or the site of caddy/apps/ it names), then run $0 again." >&2
+  exit 1
+fi
 
 # The services read the certificate at startup, and compose recreates nothing when only a mounted
 # file changed
