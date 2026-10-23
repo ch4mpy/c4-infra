@@ -180,6 +180,101 @@ if [ ${#not_assigned[@]} -gt 0 ]; then
   exit 1
 fi
 
+# What a theme may hold, checked before anything changes too (intent 0012). Keycloak resolves ${…}
+# in a theme.properties from its own environment and Java's system properties, and the theme's pages
+# show the values (the master realm's administrator's password among them); it serves a theme's
+# files, a link's target included (/proc/self/environ: its whole environment). A theme holding
+# either registers nothing.
+
+# A logical line of a properties file with Java's escapes decoded: \uXXXX, \t \n \r \f, and \<c> → <c>
+properties_decode() { # <logical line>
+  local in=$1 out="" c
+  while [ -n "$in" ]; do
+    c=${in:0:1}
+    if [ "$c" = '\' ] && [ ${#in} -gt 1 ]; then
+      c=${in:1:1}
+      case $c in
+        u)
+          if [[ ${in:2:4} =~ ^[0-9A-Fa-f]{4}$ ]]; then
+            printf -v c "\\u${in:2:4}"
+            out+=$c
+            in=${in:6}
+            continue
+          fi ;;
+        t) c=$'\t' ;;
+        n) c=$'\n' ;;
+        r) c=$'\r' ;;
+        f) c=$'\f' ;;
+      esac
+      out+=$c
+      in=${in:2}
+    else
+      out+=$c
+      in=${in:1}
+    fi
+  done
+  printf '%s' "$out"
+}
+
+# Each logical line of a properties file that holds ${ once read as Java's Properties reads it, as
+# "<shown name>:<line>: …": lines end at LF, CRLF or CR; a line whose trailing backslashes are odd in
+# number continues on the next one, whose leading blanks are dropped; a line starting with # or !
+# (after blanks) is a comment, never continued
+properties_placeholders() { # <file> <shown name>
+  local line logical="" start=0 number=0 continuing=false backslashes
+  while IFS= read -r line || [ -n "$line" ]; do
+    number=$((number + 1))
+    line=${line#"${line%%[![:blank:]$'\f']*}"}
+    if ! $continuing; then
+      [ -n "$line" ] || continue
+      case $line in '#'* | '!'*) continue ;; esac
+      start=$number
+      logical=""
+    fi
+    backslashes=${line##*[!\\]}
+    [ "$backslashes" != "$line" ] || backslashes=$line
+    if [ $(( ${#backslashes} % 2 )) -eq 1 ]; then
+      logical+=${line%\\}
+      continuing=true
+      continue
+    fi
+    logical+=$line
+    continuing=false
+    if [[ $(properties_decode "$logical") == *'${'* ]]; then
+      echo "$2:$start: '\${' is resolved by Keycloak from its environment and Java's system properties, and the theme's pages show the values: refused"
+    fi
+  done < <(sed -e 's/\r$//' -e 's/\r/\n/g' "$1")
+  if $continuing && [[ $(properties_decode "$logical") == *'${'* ]]; then
+    echo "$2:$start: '\${' is resolved by Keycloak from its environment and Java's system properties, and the theme's pages show the values: refused"
+  fi
+}
+
+theme_problems=()
+if [ -n "$themes" ]; then
+  for dir in "$themes"/*/; do
+    [ -d "$dir" ] || continue
+    dir=${dir%/}
+    name=$(basename "$dir")
+    if [ -L "$dir" ]; then
+      theme_problems+=("--themes $themes: $name: the theme's directory is a symbolic link: refused")
+      continue
+    fi
+    while IFS= read -r -d '' path; do
+      theme_problems+=("--themes $themes: $name/${path#"$dir/"}: a symbolic link or a special file, whose target Keycloak would serve: refused")
+    done < <(find "$dir" -mindepth 1 ! -type f ! -type d -print0)
+    while IFS= read -r -d '' path; do
+      while IFS= read -r problem; do
+        theme_problems+=("--themes $themes: $problem")
+      done < <(properties_placeholders "$path" "$name/${path#"$dir/"}")
+    done < <(find "$dir" -type f -iname theme.properties -print0)
+  done
+fi
+if [ ${#theme_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${theme_problems[@]}" >&2
+  echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"Themes\"); nothing was registered." >&2
+  exit 1
+fi
+
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
 if [ -n "$proxy" ]; then
