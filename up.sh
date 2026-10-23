@@ -35,6 +35,23 @@ if ! bash ./registry.sh check; then
 fi
 
 bash ./env.sh
+
+# The master realm's import (keycloak-import/, intent 0009) takes these values of .env into its JSON
+# as they are: a double quote, a backslash or a control character makes Keycloak fail its first
+# start on an empty database (demo/write-env.sh refuses them on the demo host)
+(
+  source ./registry.sh
+  for key in KC_BOOTSTRAP_ADMIN_USERNAME KC_BOOTSTRAP_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
+    stack_env_read value "$key"
+    case $value in
+      *'"'* | *'\'* | *[[:cntrl:]]*)
+        echo "$key of .env holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value, then run $0 again. On a stack whose master realm exists already (started before intent 0009, or since), Keycloak keeps the former value: type the new one in its console too (README.md, \"The master realm\")." >&2
+        exit 1
+        ;;
+    esac
+  done
+) || exit 1
+
 certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
 bash ./certs/make-certs.sh
 certificate_after=$(cat certs/tls.crt | cksum)
@@ -63,6 +80,10 @@ if [ ${#conflicts[@]} -gt 0 ]; then
 fi
 
 [ -f caddy/html/index.html ] || bash ./register-app.sh --index-only
+
+# The master realm's import (intent 0009), which Keycloak reads as its own user, not root: readable
+# by all, whatever mode the checkout has (a umask 077 makes it 600 on Linux); no secret in it
+chmod -R a+rX keycloak-import
 
 docker compose up -d --build --wait
 # compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy

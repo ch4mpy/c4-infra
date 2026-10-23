@@ -59,11 +59,20 @@ account_login() {
     < /dev/null 2>&1)
 }
 
+# Logs in as an administrator; one that Keycloak refuses for a pending required action ("Account is
+# not fully set up": an address to verify with the master realm's Verify email, intent 0009, a
+# temporary password to update…) is added to $not_set_up, for the message of login_administrator
+not_set_up=()
 admin_login() { # <user> <password>
+  local output
   [ -n "$1" ] && [ -n "$2" ] || return 1
-  KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
+  output=$(KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
     config credentials --config "$ADMIN_CONFIG" --server "$SERVER" --realm master --user "$1" \
-    < /dev/null > /dev/null 2>&1
+    < /dev/null 2>&1) && return 0
+  case "$output" in
+    *"Account is not fully set up"*) not_set_up+=("$1") ;;
+  esac
+  return 1
 }
 
 # What the account may do with a realm, as registrations see it (register-app.sh asks it here too;
@@ -110,6 +119,17 @@ probe_registry() {
   done
 }
 
+# Why Keycloak refused the administrators of $not_set_up, once per name
+not_set_up_said=" "
+say_not_set_up() {
+  local name
+  for name in "${not_set_up[@]}"; do
+    [[ $not_set_up_said == *" $name "* ]] && continue
+    not_set_up_said+="$name "
+    echo "Keycloak refuses $name for a pending required action (\"Account is not fully set up\"): an e-mail address to verify (the master realm's Verify email), a temporary password to update… Log in to the console as $name and complete it (a verification mail lands in Mailpit, /mailpit/), or remove that required action from $name in the console; the admin CLI logs in as $name afterwards." >&2
+  done
+}
+
 # An administrator of the master realm: the bootstrap one of .env while it works, else
 # KC_SETUP_ADMIN_* from the environment, else the one a terminal gives
 login_administrator() { # <what it is needed for>
@@ -124,6 +144,8 @@ login_administrator() { # <what it is needed for>
     echo "Logged in as $KC_SETUP_ADMIN_USERNAME (KC_SETUP_ADMIN_USERNAME) to $1"
     return 0
   fi
+  # before any prompt, so that a terminal's user doesn't type the refused administrator again
+  say_not_set_up
   if [ -t 0 ]; then
     echo "The bootstrap administrator of .env doesn't log in (replaced, or its password changed): an administrator of Keycloak's master realm is needed to $1." >&2
     read -r -p "Administrator: " user
@@ -133,6 +155,7 @@ login_administrator() { # <what it is needed for>
       echo "Logged in as $user to $1"
       return 0
     fi
+    say_not_set_up
     echo "$user doesn't log in." >&2
   fi
   cat >&2 << EOF

@@ -1,0 +1,51 @@
+{
+  "realm": "master",
+  "enabled": true,
+  "displayName": "Keycloak",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>Keycloak</span></div>",
+  "accessTokenLifespan": 60,
+  "verifyEmail": true,
+  "resetPasswordAllowed": "${C4_MASTER_RESET_PASSWORD_ALLOWED}",
+  "smtpServer": {
+    "host": "${C4_MASTER_SMTP_HOST}",
+    "port": "1025",
+    "from": "noreply@${INFRA_HOST}",
+    "fromDisplayName": "Keycloak",
+    "auth": "true",
+    "user": "${MAILPIT_SMTP_USER}",
+    "password": "${MAILPIT_SMTP_PASSWORD}",
+    "starttls": "${C4_MASTER_SMTP_STARTTLS}",
+    "ssl": "false"
+  },
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "${C4_MASTER_ADMIN_USERNAME}",
+      "enabled": true,
+      "email": "admin@${INFRA_HOST}",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${C4_MASTER_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
+    }
+  ]
+}

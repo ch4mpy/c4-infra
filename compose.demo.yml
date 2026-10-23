@@ -16,6 +16,12 @@ services:
     environment:
       # the applications may call the admin API or the token endpoint on http://keycloak:8080/auth
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: 'true'
+      # the master realm, when Keycloak creates it (keycloak-import/master-realm.json, intent 0009):
+      # Mailpit without TLS inside the Docker networks, and no "Forgot password" (its mails land in
+      # Mailpit, where whoever reads them could reset an administrator's password)
+      C4_MASTER_SMTP_HOST: mailpit
+      C4_MASTER_SMTP_STARTTLS: 'false'
+      C4_MASTER_RESET_PASSWORD_ALLOWED: 'false'
     mem_limit: 1200m
 
   mailpit:
