@@ -1,0 +1,6 @@
+# A regular expression of its own for /docs (it matches /docs, not /docs/) serves /docs; a wider one
+# (it matches /api and /api/ too) redirects /api to /api/ before proxying
+~^/docs$  fr
+/docs/*   gateway
+/api/*    gateway
+~^/       en

@@ -205,6 +205,18 @@ check "verif-shadow dev: /* still reaches the fr front end" spa '/*' http://host
 check "verif-shadow dev: /gateway/* doesn't redirect (it doesn't match /gateway)" block_lacks '/gateway/*' redir
 check "verif-shadow dev: /gateway redirects to /gateway/ (301)" block_holds /gateway 'redir * /gateway/ permanent'
 
+# ...but a regular expression of its own for /<p>, which matches /<p> and not /<p>/, keeps serving
+# /<p>, as before review round 1 (review round 3, 2026-10-23: ~^/docs$ with /docs/* answered /docs
+# with a 301); a wider one, which matches /<p>/ too, still redirects it
+generate "$FIXTURES/registry.txt" "$FIXTURES/verif-regex-own.routes" verif dev
+check "verif-regex-own dev: exits 0" exited 0
+check "verif-regex-own dev: ~^/docs\$ doesn't redirect /docs" block_lacks @route1 'redir /docs '
+check "verif-regex-own dev: ~^/docs\$ serves /docs from the fr front end" spa @route1 http://host.docker.internal:47200
+check "verif-regex-own dev: no redirect of /docs, one of /api" handles_are @route1 '/docs/*' '/api/*' @route4 /api '(any)'
+check "verif-regex-own dev: the wider ~^/ redirects /api to /api/ (301) before proxying" \
+  block_holds @route4 'redir /api /api/ permanent'
+check "verif-regex-own dev: /api redirects to /api/ (301)" block_holds /api 'redir * /api/ permanent'
+
 # the application's own registry entry, and an environment named
 generate "" examples/routes/faito.routes verif dev
 check "an application missing from the registry: exits 2" exited 2

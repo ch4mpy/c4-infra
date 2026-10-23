@@ -279,7 +279,9 @@ next to it):
   request: a narrower route goes before a wider one (Turu's 64 MB upload, a regular expression,
   before `/gateway/*`). A `/<p>/*` route also redirects `/<p>` to `/<p>/` (301), even when a wider
   route that also matches `/<p>` comes first (a regular expression, `/*`): that route redirects it
-  before proxying. A route of its own for `/<p>` takes it instead. Any other path answers `404`.
+  before proxying. A route of its own for `/<p>` takes it instead: `/<p>` itself, or a regular
+  expression that matches `/<p>` and not `/<p>/` (`~^/docs$`, not `~^/`). Any other path answers
+  `404`.
 - **Roles and their upstreams**, with `p = 10 + n` (port registry above). The front end without
   i18n is `ui`.
 
