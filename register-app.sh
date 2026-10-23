@@ -42,6 +42,8 @@ export MSYS_NO_PATHCONV=1
 INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
 source "$INFRA_DIR/routes.sh"
+# the registration account's login and realm probe (account_login, account, probe), and KEYCLOAK
+source "$INFRA_DIR/registration-account.sh"
 
 # Run as root (demo/c4-app), what a registration writes under the stack's directory gets that
 # directory's owner: the shared stack's account, which the next deployment runs as
@@ -50,7 +52,6 @@ own() { # <path>…
   chown -R --reference="$INFRA_DIR" "$@"
 }
 
-KEYCLOAK=c4-infra.keycloak
 RABBITMQ=c4-infra.rabbitmq
 
 # What a registration leaves behind, removed on exit whatever happens: the admin CLI's session in
@@ -200,12 +201,12 @@ if [ -n "$proxy" ]; then
   fi
 fi
 
-# The registration account's credentials, read before anything changes too (used below)
-kc_client=""
-kc_secret=""
+# The registration account's credentials, read before anything changes too (account_login, below)
+client_id=""
+secret=""
 if [ ${#realms[@]} -gt 0 ]; then
-  stack_env_read kc_client KC_REGISTRATION_CLIENT_ID
-  stack_env_read kc_secret KC_REGISTRATION_CLIENT_SECRET
+  stack_env_read client_id KC_REGISTRATION_CLIENT_ID
+  stack_env_read secret KC_REGISTRATION_CLIENT_SECRET
 fi
 
 # The application's own network, c4-infra.<app> (intent 0007), once every check has passed: created
@@ -215,56 +216,46 @@ fi
 bash "$INFRA_DIR/networks.sh" ensure "$app"
 
 # Keycloak: the admin CLI inside the container, over the plain HTTP port of the Docker network, as
-# the registration account (registration-account.sh): a service account of the master realm that may
-# create realms and manage the registry's, nothing else. Keycloak's administrators, the bootstrap one
-# included, may be replaced or deleted: registrations don't use them. The account's secret, read from
-# .env, reaches the CLI in its environment (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session
-# lives in the container's /dev/shm (memory only, mode 600), removed on exit.
+# the registration account (registration-account.sh's account_login, account and probe): a service
+# account of the master realm that may create realms and manage the registry's, nothing else.
+# Keycloak's administrators, the bootstrap one included, may be replaced or deleted: registrations
+# don't use them. The account's secret, read from .env, reaches the CLI in its environment
+# (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session lives in the container's /dev/shm (memory
+# only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  # `kcadm -i ...` only where the input is redirected: a deployment may run this script from a
-  # heredoc on ssh's stdin, which `docker exec -i` would otherwise swallow
-  kcadm() {
-    local exec_options=()
-    if [ "$1" = -i ]; then
-      exec_options=(-i)
-      shift
-    fi
-    docker exec "${exec_options[@]}" "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh "$@" --config "$kc_session"
-  }
-  output=""
-  kc_session=/dev/shm/c4-registration-$$.kcadm
-  if [ -z "$kc_client" ] || ! output=$(KC_CLI_CLIENT_SECRET=$kc_secret \
-    docker exec -e KC_CLI_CLIENT_SECRET "$KEYCLOAK" /opt/keycloak/bin/kcadm.sh config credentials \
-    --config "$kc_session" --server http://localhost:8080/auth --realm master --client "$kc_client" 2>&1); then
-    [ -z "$output" ] || printf '%s\n' "$output" | tail -n 3 >&2
-    echo "The registration account ${kc_client:-(no KC_REGISTRATION_CLIENT_ID in .env)} doesn't log in to Keycloak: run up.sh in dev, the deployment on the demo host (registration-account.sh ensure creates it, and sets its secret to .env's); nothing was registered." >&2
+  kc_session=$ACCOUNT_CONFIG
+  if [ -z "$client_id" ] || ! account_login; then
+    [ -z "${login_output:-}" ] || printf '%s\n' "$login_output" | tail -n 3 >&2
+    echo "The registration account ${client_id:-(no KC_REGISTRATION_CLIENT_ID in .env)} doesn't log in to Keycloak: run up.sh in dev, the deployment on the demo host (registration-account.sh ensure creates it, and sets its secret to .env's); nothing was registered." >&2
     exit 1
   fi
-  # What the account may do with each realm, before anything changes. Asked with `get
-  # realms/<realm>/roles`: `get realms/<realm>` answers a reduced view of any realm to whoever may
-  # create realms. A realm there but out of the account's reach stops the registration.
+  # What the account may do with each realm, before anything changes (probe: `get
+  # realms/<realm>/roles`). A realm there but out of the account's reach stops the registration.
   declare -A realm_found=()
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
-    if output=$(kcadm get "realms/$realm/roles" --fields name 2>&1); then
-      realm_found[$realm]=true
-    elif [[ $output == *"Resource not found"* ]]; then
-      realm_found[$realm]=false
-    elif [[ $output == *"HTTP 403"* ]]; then
-      echo "Realm $realm is in Keycloak, but the registration account $kc_client may not manage it (created outside the registrations, and never granted to it): nothing was registered. registration-account.sh ensure grants it the realms of the registry that exist (up.sh in dev, the deployment on the demo host)." >&2
-      exit 1
-    else
-      printf '%s\n' "$output" | tail -n 3 >&2
-      echo "Realm $realm: unexpected answer of Keycloak (above); nothing was registered." >&2
-      exit 1
-    fi
+    status=0
+    probe "$realm" || status=$?
+    case "$status" in
+      0) realm_found[$realm]=true ;;
+      1) realm_found[$realm]=false ;;
+      2)
+        echo "Realm $realm is in Keycloak, but the registration account $client_id may not manage it (created outside the registrations, and never granted to it): nothing was registered. registration-account.sh ensure grants it the realms of the registry that exist (up.sh in dev, the deployment on the demo host)." >&2
+        exit 1
+        ;;
+      *)
+        # Keycloak's last lines are above (probe)
+        echo "Realm $realm: unexpected answer of Keycloak (above); nothing was registered." >&2
+        exit 1
+        ;;
+    esac
   done
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
     if ${realm_found[$realm]}; then
       if $reset_realms; then
         echo "Deleting realm $realm"
-        kcadm delete "realms/$realm"
+        account delete "realms/$realm"
       else
         echo "Realm $realm: already in Keycloak, left as it is"
         continue
@@ -273,7 +264,7 @@ if [ ${#realms[@]} -gt 0 ]; then
     echo "Importing realm $realm"
     # on stdin: nothing to copy into the container, whatever the file's owner and mode; under the
     # file's name, the realm of the entry checked above, whatever its "realm" field says
-    kcadm -i create realms -f - -s "realm=$realm" < "$file"
+    account -i create realms -f - -s "realm=$realm" < "$file"
   done
 fi
 

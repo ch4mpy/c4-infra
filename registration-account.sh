@@ -16,6 +16,10 @@
 #   bash registration-account.sh rotate   dev: a new secret into .env, then ensure (on the demo
 #                                         host, the secret of the demo environment: docs/demo-setup.md)
 #
+# Sourced by register-app.sh, which logs in and probes its realms with the same functions
+# (account_login, account, probe, with KEYCLOAK): nothing runs then, and the caller removes the
+# session (ACCOUNT_CONFIG) itself.
+#
 # No secret goes on a command line: the admin CLI reads them from its environment (passed to
 # docker exec by name), the client's JSON goes on stdin. The CLI's sessions live in the Keycloak
 # container's /dev/shm (memory only, mode 600), removed on exit.
@@ -23,7 +27,7 @@ set -euo pipefail
 # Git Bash would rewrite the container paths below (/opt/keycloak/..., /dev/shm/...) into Windows paths
 export MSYS_NO_PATHCONV=1
 
-INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
+INFRA_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$INFRA_DIR/registry.sh"
 
 KEYCLOAK=c4-infra.keycloak
@@ -31,21 +35,6 @@ KCADM=/opt/keycloak/bin/kcadm.sh
 SERVER=http://localhost:8080/auth
 ACCOUNT_CONFIG=/dev/shm/c4-registration-$$.kcadm
 ADMIN_CONFIG=/dev/shm/c4-registration-admin-$$.kcadm
-
-usage() {
-  echo "Usage: bash $0 ensure | rotate" >&2
-  exit 2
-}
-[ $# -eq 1 ] || usage
-case "$1" in
-  ensure | rotate) command=$1 ;;
-  *) usage ;;
-esac
-
-cleanup() {
-  docker exec "$KEYCLOAK" rm -f "$ACCOUNT_CONFIG" "$ADMIN_CONFIG" < /dev/null > /dev/null 2>&1 || true
-}
-trap cleanup EXIT
 
 # the admin CLI with a session file (account or admin); with -i, stdin is passed (the caller
 # redirects it), else closed: a deployment runs this from a heredoc on ssh's stdin
@@ -62,8 +51,8 @@ kcadm_as() { # <config> [-i] <args…>
 account() { kcadm_as "$ACCOUNT_CONFIG" "$@"; }
 admin() { kcadm_as "$ADMIN_CONFIG" "$@"; }
 
-# Logs in as the account, the secret in KC_CLI_CLIENT_SECRET (passed by name); kcadm's output in
-# $login_output
+# Logs in as the account $client_id, its $secret in KC_CLI_CLIENT_SECRET (passed by name); kcadm's
+# output in $login_output
 account_login() {
   login_output=$(KC_CLI_CLIENT_SECRET=$secret docker exec -e KC_CLI_CLIENT_SECRET "$KEYCLOAK" "$KCADM" \
     config credentials --config "$ACCOUNT_CONFIG" --server "$SERVER" --realm master --client "$client_id" \
@@ -77,7 +66,8 @@ admin_login() { # <user> <password>
     < /dev/null > /dev/null 2>&1
 }
 
-# What the account may do with a realm, as registrations ask it (get realms/<realm>/roles: `get
+# What the account may do with a realm, as registrations see it (register-app.sh asks it here too;
+# get realms/<realm>/roles: `get
 # realms/<realm>` answers a reduced view of any realm to whoever holds create-realm): 0 it manages
 # it, 1 the realm is missing, 2 it exists and the account may not manage it, 3 another answer
 # (printed on stderr)
@@ -269,4 +259,19 @@ rotate() {
   ensure
 }
 
-"$command"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  usage() {
+    echo "Usage: bash $0 ensure | rotate" >&2
+    exit 2
+  }
+  [ $# -eq 1 ] || usage
+  case "$1" in
+    ensure | rotate) ;;
+    *) usage ;;
+  esac
+  cleanup() {
+    docker exec "$KEYCLOAK" rm -f "$ACCOUNT_CONFIG" "$ADMIN_CONFIG" < /dev/null > /dev/null 2>&1 || true
+  }
+  trap cleanup EXIT
+  "$1"
+fi
