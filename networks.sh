@@ -32,14 +32,11 @@ APPS_FILE=$INFRA_DIR/compose.apps.yml
 # keycloak-db (compose.yml)
 SHARED=(reverse-proxy keycloak mailpit rabbitmq grafana-lgtm)
 
-# The value of KEY in .env, read as data (register-app.sh's env_value)
-env_value() {
-  local line
-  line=$(grep -m1 "^$1=" "$INFRA_DIR/.env" 2> /dev/null || true)
-  line=${line#*=}
-  line=${line%$'\r'}
-  printf '%s' "${line//\$\$/\$}"
-}
+# shellcheck source=registry.sh
+source "$INFRA_DIR/registry.sh"
+
+# The value of KEY in .env, read as data as compose reads it (registry.sh's dotenv_value)
+env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
 
 own() { # <path>
   [ "$(id -u)" -eq 0 ] || return 0
@@ -110,8 +107,6 @@ ensure() { # <app>
   local app=$1 network=c4-infra.$1 service container aliases host
   valid_name "$app" || return 1
   # named from the registry only (intent 0004 reserves the shared services' names)
-  # shellcheck source=registry.sh
-  source "$INFRA_DIR/registry.sh"
   registry_entry "$app" > /dev/null || return 1
   if ! docker network inspect "$network" > /dev/null 2>&1; then
     docker network create --label "c4-infra.app=$app" "$network" > /dev/null

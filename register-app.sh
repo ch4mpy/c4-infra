@@ -43,15 +43,9 @@ INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
 source "$INFRA_DIR/routes.sh"
 
-# The value of KEY in .env, read as data rather than sourced: the demo's .env is written for
-# compose, which un-escapes "$$" and takes everything after the first "=" as is.
-env_value() {
-  local line
-  line=$(grep -m1 "^$1=" "$INFRA_DIR/.env" || true)
-  line=${line#*=}
-  line=${line%$'\r'}
-  printf '%s' "${line//\$\$/\$}"
-}
+# The value of KEY in .env, read as data rather than sourced, as compose reads it: the demo's .env
+# is written for compose ("$$" for a "$"; registry.sh's dotenv_value)
+env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
 
 # Run as root (demo/c4-app), what a registration writes under the stack's directory gets that
 # directory's owner: the shared stack's account, which the next deployment runs as

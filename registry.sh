@@ -29,6 +29,8 @@
 #                              how to register, when <app> isn't in the registry
 #   registry_next              prints the next free number; returns 1 when 1 to 38 are all taken
 #   registry_upstream <role> <dev|demo>   prints the upstream of <role> for the entry registry_entry set
+#   dotenv_value <file> <key>  prints KEY's value in a .env file, as compose reads it (below): the one
+#                              .env reader of c4-infra's scripts (demo/c4-app included)
 #
 # REGISTRY_FILE (default: registry.txt next to this script) is a test seam only: on the demo host,
 # registrations run through a root-owned command that clears the environment (intent 0002).
@@ -50,11 +52,50 @@ REGISTRY_KEYCLOAK_THEMES=(base keycloak keycloak.v2 keycloak.v3)
 # them to that application. The administrator is RABBITMQ_ADMIN_USER of the .env next to this
 # script (read as data), admin by default.
 _registry_rabbitmq_admin() {
-  local line=""
-  [ ! -f "$REGISTRY_DIR/.env" ] || line=$(grep -m1 '^RABBITMQ_ADMIN_USER=' "$REGISTRY_DIR/.env" || true)
-  line=${line#*=}
-  line=${line%$'\r'}
-  printf '%s' "${line:-admin}"
+  local user
+  user=$(dotenv_value "$REGISTRY_DIR/.env" RABBITMQ_ADMIN_USER) || return 1
+  printf '%s' "${user:-admin}"
+}
+
+# The value of KEY in a .env file, read as data the way compose reads it (measured with compose
+# 2.40): its last definition (KEY=, export KEY=, spaces around "=" allowed), leading spaces and a
+# Windows line end removed; single quotes keep what is between them (\' is a quote); in double
+# quotes and unquoted, "$$" is a "$"; an unquoted value ends at " #" and loses its final spaces.
+# What compose would read otherwise is refused, saying why, rather than read differently (returns
+# 1): a "$" it interpolates ($NAME, ${NAME}), an escape sequence in double quotes, a quote that
+# doesn't close. Prints nothing (returns 0) when the file or the key is missing.
+dotenv_value() { # <file> <key>
+  local file=$1 key=$2 line value
+  local single="^'((\\\\.|[^\\\\'])*)'" double='^"((\\.|[^\\"])*)"'
+  [ -f "$file" ] || return 0
+  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*=" "$file" | tail -n 1) || true
+  [ -n "$line" ] || return 0
+  value=${line#*=}
+  value=${value%$'\r'}
+  value=${value#"${value%%[![:space:]]*}"}
+  if [[ $value =~ $single ]]; then
+    value=${BASH_REMATCH[1]}
+    printf '%s' "${value//\\\'/\'}"
+    return 0
+  elif [[ $value =~ $double ]]; then
+    value=${BASH_REMATCH[1]}
+    value=${value//\\\"/\"}
+    if [[ $value == *\\* ]]; then
+      echo "$file: $key: a backslash in double quotes, which compose reads as an escape sequence: refused (single quotes keep it as it is)" >&2
+      return 1
+    fi
+  elif [[ $value == [\"\']* ]]; then
+    echo "$file: $key: a quote that doesn't close: refused" >&2
+    return 1
+  else
+    value=${value%% \#*}
+    value=${value%"${value##*[![:space:]]}"}
+  fi
+  if [[ ${value//\$\$/} == *\$* ]]; then
+    echo "$file: $key: compose interpolates its \$ (\$NAME, \${NAME}): refused (write \$\$ for a \$, or single quotes)" >&2
+    return 1
+  fi
+  printf '%s' "${value//\$\$/\$}"
 }
 
 # "<line number> <line>" for each entry of the registry: neither a comment nor a blank line, the
@@ -93,7 +134,7 @@ registry_check() {
   local n app realms rabbitmq_user themes dev_host demo_host value kind reserved rabbitmq_admin
   local -a values list_values
   local -A owner=()
-  rabbitmq_admin=$(_registry_rabbitmq_admin)
+  rabbitmq_admin=$(_registry_rabbitmq_admin) || _registry_problem "RABBITMQ_ADMIN_USER of $REGISTRY_DIR/.env can't be read (above)"
   local name='^[a-z][a-z0-9-]*$'
   local list='^[a-z0-9][a-z0-9_-]*(,[a-z0-9][a-z0-9_-]*)*$'
   local single='^[a-z0-9][a-z0-9_-]*$'

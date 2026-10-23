@@ -129,4 +129,43 @@ check "with it, register-app.sh refuses verif-theme" refused
 check "saying the registry is invalid" says "The registry is invalid"
 check "before any docker call" no_docker_call
 
+# Review round 1 (2026-10-22): the .env reader the scripts share (registry.sh's dotenv_value) reads
+# a value as compose does: "$$" is "$" (outside single quotes), " #" starts a comment in an unquoted
+# value, quotes are removed, the last definition wins; what compose would interpolate is refused
+# rather than read otherwise
+dotenv() { # <key>: dotenv_value of $work/dotenv.env, its output in $work/out, its status in $status
+  (source ./registry.sh && dotenv_value "$work/dotenv.env" "$1") > "$work/out" 2>&1
+  status=$?
+}
+reads() { # <key> <value>
+  dotenv "$1"
+  [ "$status" -eq 0 ] && [ "$(cat "$work/out")" = "$2" ] || { echo "exit $status: [$(cat "$work/out")]"; return 1; }
+}
+cat > "$work/dotenv.env" <<'EOF'
+DOLLARS=ab$$cd
+COMMENT=ab$$cd # a comment
+HASH=ab#cd
+DOUBLE="a b # $$c"
+SINGLE='x$$y # z'
+SPACED = lead
+export EXPORTED=v
+TWICE=first
+TWICE=last
+CR=crlf
+INTERPOLATED=pre${DOLLARS}post
+EOF
+sed -i 's/^CR=crlf$/CR=crlf\r/' "$work/dotenv.env"
+check "dotenv_value: ab\$\$cd is ab\$cd" reads DOLLARS 'ab$cd'
+check "dotenv_value: an unquoted value ends at ' #'" reads COMMENT 'ab$cd'
+check "dotenv_value: a '#' without a space before it is the value's" reads HASH 'ab#cd'
+check "dotenv_value: double quotes removed, \$\$ is \$ inside" reads DOUBLE 'a b # $c'
+check "dotenv_value: single quotes keep \$\$" reads SINGLE 'x$$y # z'
+check "dotenv_value: spaces around '=' and at the end" reads SPACED lead
+check "dotenv_value: export KEY=" reads EXPORTED v
+check "dotenv_value: the last definition wins" reads TWICE last
+check "dotenv_value: a Windows line end" reads CR crlf
+check "dotenv_value: a missing key is empty" reads MISSING ''
+dotenv INTERPOLATED
+check "dotenv_value: an interpolation is refused" refused
+check "dotenv_value: saying compose would interpolate it" says "compose interpolates"
 finish

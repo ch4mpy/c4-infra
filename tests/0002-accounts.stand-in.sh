@@ -315,4 +315,16 @@ as install-own.log faito "printf '#!/bin/sh\nid\n' > ~/c4-app && sudo -n /usr/bi
 check "AC-7: nor with a file of its own" refused install-own.log
 check "AC-7: c4-app is still the deployed one" stand_in_exec cmp /usr/local/sbin/c4-app "$STACK/demo/c4-app"
 check "AC-7: the stack's Keycloak still runs" running c4-infra.keycloak
+
+# Review round 1 (2026-10-22): the RabbitMQ password c4-app registers is the value compose gives
+# the containers from ~/faito/.env: written ab$$cd… with a comment after it, it is ab$cd…
+raw="ab\$\$cd-$(openssl rand -hex 8)"
+printf 'RABBITMQ_PASSWORD=%s # the demo broker\n' "$raw" > "$work/faito-dollar.env"
+printf '%s\n' "${raw//\$\$/\$}" > "$work/faito-dollar.password"
+check "Faito's .env, its password written ab\$\$cd… with a comment after it, is sent" \
+  stand_in_ssh -i faito "cat > ~/faito/.env" < "$work/faito-dollar.env"
+as dollar.log faito "sudo c4-app register --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD"
+check "sudo c4-app register --rabbitmq-user faito-api exits 0" exited_0 dollar.log
+check "RabbitMQ authenticates faito-api with ab\$cd… (compose's value, on stdin)" \
+  stand_in_exec -i docker exec -i c4-infra.rabbitmq rabbitmqctl -q authenticate_user faito-api < "$work/faito-dollar.password"
 finish

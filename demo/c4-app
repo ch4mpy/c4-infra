@@ -202,8 +202,7 @@ JQ
 # The model refused, before any container starts, when it leaves the application's isolation
 check_model() {
   local host refusals
-  host=$(grep -m1 '^INFRA_HOST=' "$STACK/.env" 2> /dev/null | cut -d= -f2- || true)
-  host=${host%$'\r'}
+  host=$(dotenv_value "$STACK/.env" INFRA_HOST) || fail "INFRA_HOST of $STACK/.env can't be read (above)"
   if ! refusals=$(jq -r --arg app "$app" --arg root "$staging" --arg host "$host" "$CHECKS" "$model"); then
     fail "the model of $source_dir/compose.yml can't be checked (above): refused"
   fi
@@ -231,17 +230,9 @@ staged_path() { # <path>
   esac
 }
 
-# The value of KEY in the staging .env, read as data (compose's quotes removed)
-env_value() { # <key>
-  local line=""
-  [ -f "$staging/.env" ] && line=$(grep -m1 "^$1=" "$staging/.env" || true)
-  line=${line#*=}
-  line=${line%$'\r'}
-  if [[ $line =~ ^\"(.*)\"$ || $line =~ ^\'(.*)\'$ ]]; then
-    line=${BASH_REMATCH[1]}
-  fi
-  printf '%s' "$line"
-}
+# The value of KEY in the staging .env, read as data as compose reads it: the value the
+# application's containers get (registry.sh's dotenv_value: "$$" is a "$", " #" starts a comment)
+env_value() { dotenv_value "$staging/.env" "$1"; }
 
 cmd_pull() {
   local registry="" user="" config status=0
@@ -293,7 +284,7 @@ cmd_register() {
         [ $# -ge 2 ] || usage
         var=$2
         [[ $var =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "--rabbitmq-password-env takes a variable name, not '$var'"
-        value=$(env_value "$var")
+        value=$(env_value "$var") || fail "$var of ~/$app/.env is refused (above)"
         [ -n "$value" ] || fail "$var is not set in ~/$app/.env"
         export C4_APP_RABBITMQ_PASSWORD=$value
         args+=(--rabbitmq-password-env C4_APP_RABBITMQ_PASSWORD)

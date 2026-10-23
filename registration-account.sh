@@ -32,14 +32,8 @@ SERVER=http://localhost:8080/auth
 ACCOUNT_CONFIG=/dev/shm/c4-registration-$$.kcadm
 ADMIN_CONFIG=/dev/shm/c4-registration-admin-$$.kcadm
 
-# The value of KEY in .env, read as data rather than sourced (register-app.sh's env_value)
-env_value() {
-  local line
-  line=$(grep -m1 "^$1=" "$INFRA_DIR/.env" || true)
-  line=${line#*=}
-  line=${line%$'\r'}
-  printf '%s' "${line//\$\$/\$}"
-}
+# The value of KEY in .env, read as data as compose reads it (registry.sh's dotenv_value)
+env_value() { dotenv_value "$INFRA_DIR/.env" "$1"; }
 
 usage() {
   echo "Usage: bash $0 ensure | rotate" >&2
