@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (first deployment of the demo host, 2026-10-23)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-23
 - Decided: 2026-10-23
 - Supersedes: —

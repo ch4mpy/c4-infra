@@ -60,3 +60,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | proposed | 2026-10-23 | — |
 | 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | accepted | 2026-10-23 | 2026-10-23 |
 | 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | specified | 2026-10-23 | 2026-10-23 |
+| 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | planned | 2026-10-23 | 2026-10-23 |
