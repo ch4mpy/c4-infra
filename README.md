@@ -242,7 +242,9 @@ or theirs).
   secret").
 
 Keycloak's administrators are free to change: replacing the administrator of `.env` by another one
-and deleting it, or changing its password, doesn't affect the registrations. Once it no longer
+and deleting it, or changing its password, doesn't affect the registrations (on the demo host, each
+one with a long random password: the master realm limits no guessing, "Brute-force protection"
+below). Once it no longer
 logs in, an administrator is needed only to create the account again or to rotate its secret: in
 dev, `bash registration-account.sh ensure` from a terminal asks for one; on the demo host,
 `KC_SETUP_ADMIN_*` are set for one deployment. With the master realm's *Verify email* (below), an
@@ -307,7 +309,10 @@ lock the account for a minute, whatever their count.
   keeps its own settings until it is imported again: one registered before intent 0010 gets them
   with its next `--reset-realms`.
 - The master realm has none: its console is public on the demo host, and anyone could keep its
-  administrators locked out; their passwords are long and random, out of the reach of guessing.
+  administrators locked out. Nothing limits guessing there: on the demo host, every administrator
+  of the master realm gets a long random password (`openssl rand -base64 32`), the one of the
+  `demo` environment as any added later (in dev, `.env`'s is `secret`: the stack publishes its
+  ports on the loopback only).
 - An administrator unlocks an application's account in the console, on the user's page. On the
   demo host, a visitor may lock a shared demo account (its password is public) for up to 15
   minutes: accepted.
