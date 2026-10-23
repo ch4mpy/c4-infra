@@ -338,6 +338,15 @@ if [ -n "$proxy" ]; then
   target="$INFRA_DIR/caddy/apps/$app.caddy"
   check=(caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile)
   reload=(caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile)
+  # The previous site back, or none if there was none (the next run installs the new one again
+  # rather than finding it "unchanged"), then Caddy's last lines and <message>, and a failed exit
+  restore_site() { # <message>
+    if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
+    rm -f "$backup"
+    printf '%s\n' "$output" | tail -n 3 >&2
+    echo "$1" >&2
+    exit 1
+  }
   if [ -f "$target" ] && printf '%s\n' "$site" | cmp -s - "$target"; then
     echo "Reverse proxy: $app site unchanged"
   else
@@ -349,21 +358,10 @@ if [ -n "$proxy" ]; then
     fi
     printf '%s\n' "$site" > "$target"
     own "$target"
-    if ! output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1); then
-      if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
-      rm -f "$backup"
-      printf '%s\n' "$output" | tail -n 3 >&2
-      echo "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration" >&2
-      exit 1
-    fi
-    if ! output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1); then
-      # removed, or restored: the next run installs it again rather than finding it "unchanged"
-      if $had_previous; then cp "$backup" "$target"; else rm -f "$target"; fi
-      rm -f "$backup"
-      printf '%s\n' "$output" | tail -n 3 >&2
-      echo "The reverse proxy could not reload: the site of $proxy is not installed" >&2
-      exit 1
-    fi
+    output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1) \
+      || restore_site "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration"
+    output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1) \
+      || restore_site "The reverse proxy could not reload: the site of $proxy is not installed"
     rm -f "$backup"
     write_index
     echo "Reverse proxy: $app site installed (INFRA_ENV=$INFRA_ENV)"
