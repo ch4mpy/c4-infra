@@ -267,7 +267,8 @@ the file says.
   `C4_MASTER_ADMIN_USERNAME` / `C4_MASTER_ADMIN_PASSWORD`: under their `KC_BOOTSTRAP_*` names,
   Keycloak would create its temporary administrator as well and abort its start. Neither they nor
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
-  import's JSON can't take, and `INFRA_HOST` is a host name (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev).
+  import's JSON can't take (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev), and
+  `INFRA_HOST` is a host name (`demo/write-env.sh` checks it).
 - The rest is what Keycloak sets when it creates that realm itself (its display name, 60-second
   access tokens, a user profile where neither the address nor the names are required).
 
@@ -286,8 +287,10 @@ After a change of Mailpit's SMTP password (`MAILPIT_SMTP_PASSWORD`), the master 
 former one: type the new one in its *Email* settings. So does every application realm already in
 Keycloak (`register-app.sh` leaves a realm that exists as it is): type it in each one's *Email*
 settings too; only a realm imported again (`--reset-realms`, which loses its users) takes the
-password its application renders. Since that password, `INFRA_HOST` and the administrator's are in
-Keycloak's environment, changing one of them recreates Keycloak's container at the next start.
+password its application renders. A new administrator's password in `.env` likewise: type it in
+the console too (realm master, *Users* → the administrator → *Credentials*). Since that password,
+`INFRA_HOST` and the administrator's are in Keycloak's environment, changing one of them recreates
+Keycloak's container at the next start.
 
 ### Routes file
 
