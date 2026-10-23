@@ -37,10 +37,6 @@ SHARED=(reverse-proxy keycloak mailpit rabbitmq grafana-lgtm)
 # shellcheck source=registry.sh
 source "$INFRA_DIR/registry.sh"
 
-# The value of KEY in .env into <var>, read as data as compose reads it; a value the reader refuses
-# stops the script (registry.sh's dotenv_read), which reads .env before it changes anything
-env_read() { dotenv_read "$1" "$INFRA_DIR/.env" "$2"; } # <var> <key>
-
 own() { # <path>
   [ "$(id -u)" -eq 0 ] || return 0
   chown --reference="$INFRA_DIR" "$1"
@@ -72,7 +68,7 @@ compose_file() {
     return 0
   fi
   # before the file is touched: a refused INFRA_ENV must not drop the INFRA_HOST alias
-  env_read infra_env INFRA_ENV
+  stack_env_read infra_env INFRA_ENV
   [ "$infra_env" != demo ] || demo=true
   # one rewrite at a time, whichever account runs it (c4-app's own lock is per application)
   if command -v flock > /dev/null; then
@@ -122,8 +118,8 @@ ensure() { # <app>
   # named from the registry only (intent 0004 reserves the shared services' names)
   registry_entry "$app" > /dev/null || return 1
   # before any change: a refused value stops here, with no network created nor attached
-  env_read host INFRA_HOST
-  env_read infra_env INFRA_ENV
+  stack_env_read host INFRA_HOST
+  stack_env_read infra_env INFRA_ENV
   if ! docker network inspect "$network" > /dev/null 2>&1; then
     docker network create --label "c4-infra.app=$app" "$network" > /dev/null
     echo "Network $network created"

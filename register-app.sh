@@ -43,11 +43,6 @@ INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
 source "$INFRA_DIR/routes.sh"
 
-# The value of KEY in .env into <var>, read as data rather than sourced, as compose reads it: the
-# demo's .env is written for compose ("$$" for a "$"). A value the reader refuses stops the
-# registration (registry.sh's dotenv_read), which reads .env before it changes anything.
-env_read() { dotenv_read "$1" "$INFRA_DIR/.env" "$2"; } # <var> <key>
-
 # Run as root (demo/c4-app), what a registration writes under the stack's directory gets that
 # directory's owner: the shared stack's account, which the next deployment runs as
 own() { # <path>…
@@ -98,7 +93,7 @@ done
 # The environment, read at each run: it picks the site's host name and upstreams. The running
 # proxy's own rules (caddy/env/<INFRA_ENV>.caddy) are those of the INFRA_ENV it was started with:
 # this script only validates and reloads it, never restarts nor recreates it.
-env_read INFRA_ENV INFRA_ENV
+stack_env_read INFRA_ENV INFRA_ENV
 case "$INFRA_ENV" in
   dev | demo) ;;
   *)
@@ -209,8 +204,8 @@ fi
 kc_client=""
 kc_secret=""
 if [ ${#realms[@]} -gt 0 ]; then
-  env_read kc_client KC_REGISTRATION_CLIENT_ID
-  env_read kc_secret KC_REGISTRATION_CLIENT_SECRET
+  stack_env_read kc_client KC_REGISTRATION_CLIENT_ID
+  stack_env_read kc_secret KC_REGISTRATION_CLIENT_SECRET
 fi
 
 # The application's own network, c4-infra.<app> (intent 0007), once every check has passed: created
