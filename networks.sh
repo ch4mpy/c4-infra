@@ -57,8 +57,8 @@ app_networks() {
       done | sort
 }
 
-compose_file() {
-  local networks network service demo=false next infra_env
+compose_file() { # [<INFRA_ENV>, when the caller has read it already]
+  local networks network service demo=false next infra_env=${1-}
   # a fake docker (the tests' stubs) or a stopped daemon answers nothing: never empty the file then
   if [ -z "$(docker info --format '{{.ServerVersion}}' 2> /dev/null | tr -d '\r')" ]; then
     if [ ! -f "$APPS_FILE" ]; then
@@ -68,7 +68,7 @@ compose_file() {
     return 0
   fi
   # before the file is touched: a refused INFRA_ENV must not drop the INFRA_HOST alias
-  stack_env_read infra_env INFRA_ENV
+  [ $# -gt 0 ] || stack_env_read infra_env INFRA_ENV
   [ "$infra_env" != demo ] || demo=true
   # one rewrite at a time, whichever account runs it (c4-app's own lock is per application)
   if command -v flock > /dev/null; then
@@ -138,7 +138,7 @@ ensure() { # <app>
     docker network connect "${aliases[@]}" "$network" "$container"
     echo "Network $network: $service attached"
   done
-  compose_file
+  compose_file "$infra_env"
 }
 
 remove() { # <app>
