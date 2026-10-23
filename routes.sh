@@ -137,17 +137,13 @@ routes_generate() { # <routes file> <dev|demo>
     for option in "${tokens[@]:2}"; do
       key=${option%%=*}
       value=${option#*=}
-      if [ "$key" = "$option" ] || [ -n "${seen_options[$key]:-}" ]; then
-        if [ -n "${seen_options[$key]:-}" ]; then
-          _routes_problem "$key= given twice"
-        else
-          _routes_problem "unknown option '$option' (to=, max-body= or prefix=)"
-        fi
+      if [ -n "${seen_options[$key]:-}" ]; then
+        _routes_problem "$key= given twice"
         continue 2
       fi
       seen_options[$key]=1
-      case "$key" in
-        to)
+      case "$option" in
+        to=*)
           if [ "$target" != redirect ]; then
             _routes_problem "to= is for a redirect only, not for the role $target"
             continue 2
@@ -155,7 +151,7 @@ routes_generate() { # <routes file> <dev|demo>
           [[ $value =~ $_ROUTES_TO ]] || { _routes_problem "to= takes a path on the same host, not '$value'"; continue 2; }
           to=$value
           ;;
-        max-body)
+        max-body=*)
           if [ "$target" = redirect ]; then
             _routes_problem "max-body= is for a role, not for a redirect"
             continue 2
@@ -163,7 +159,7 @@ routes_generate() { # <routes file> <dev|demo>
           [[ $value =~ $_ROUTES_SIZE ]] || { _routes_problem "max-body= takes <n>KB or <n>MB, not '$value'"; continue 2; }
           body=$value
           ;;
-        prefix)
+        prefix=*)
           if [ "$target" = redirect ]; then
             _routes_problem "prefix= is for a role, not for a redirect"
             continue 2
