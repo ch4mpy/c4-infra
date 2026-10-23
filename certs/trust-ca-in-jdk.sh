@@ -73,30 +73,24 @@ change() { # <keytool command…>: on the trust store, or says why it can't
   fi
 }
 
+# What the alias holds only decides the message: whatever it is (but the CA's certificate) is
+# deleted, then ca.crt imported
 case "$type" in
-  '')
-    change -importcert -noprompt -alias "$ALIAS" -file "$CA"
-    echo "$ALIAS: the local CA's certificate imported into $where"
-    ;;
+  '') message="the local CA's certificate imported into $where" ;;
   trustedCertEntry)
     current=$(first_sha256 <<< "$listing")
     if [ "$current" = "$fingerprint" ]; then
       echo "$ALIAS: already trusted in $where (the local CA's certificate), nothing changed"
       exit 0
     fi
-    change -delete -alias "$ALIAS"
-    change -importcert -noprompt -alias "$ALIAS" -file "$CA"
-    echo "$ALIAS: another certificate (SHA-256 $current) replaced by the local CA's in $where"
+    message="another certificate (SHA-256 $current) replaced by the local CA's in $where"
     ;;
   PrivateKeyEntry)
-    change -delete -alias "$ALIAS"
-    change -importcert -noprompt -alias "$ALIAS" -file "$CA"
-    echo "$ALIAS: a private key (the former advice imported the CA's whole keystore) deleted from $where," \
-      "the local CA's certificate imported instead"
+    message="a private key (the former advice imported the CA's whole keystore) deleted from $where,"
+    message+=" the local CA's certificate imported instead"
     ;;
-  *)
-    change -delete -alias "$ALIAS"
-    change -importcert -noprompt -alias "$ALIAS" -file "$CA"
-    echo "$ALIAS: a $type replaced by the local CA's certificate in $where"
-    ;;
+  *) message="a $type replaced by the local CA's certificate in $where" ;;
 esac
+[ -z "$type" ] || change -delete -alias "$ALIAS"
+change -importcert -noprompt -alias "$ALIAS" -file "$CA"
+echo "$ALIAS: $message"
