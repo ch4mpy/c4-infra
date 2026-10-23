@@ -68,3 +68,5 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-23 — step 3: the twin `verif-ok`'s line `verifTwin=x$\\` (an even number of backslashes: the line ends there) was committed at step 1 with a single backslash (the shell that wrote the fixture collapsed `\\`), which continues the line into `${env.KC_DB_PASSWORD}`: the new check refused it, rightly (Java reads it that way). — The fixture now holds the two backslashes its own comment describes; the test script is unchanged. — `tests/fixtures/0012/themes/verif-ok/login/theme.properties`; proof unchanged (AC-5's must-not-fire twin).
