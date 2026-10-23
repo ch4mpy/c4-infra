@@ -1,11 +1,11 @@
 # Spec: An application's Keycloak theme may read the shared Keycloak's environment
 
 - Intent: [0012](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: secrets, the isolation between applications; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `CLAUDE.md` (no password on a command line), 0003 (dev and the demo host alike), 0007 (one network per application), 0009 (the master realm's creation), 0011 (its accepted risk)
-- Approved: —
+- Approved: 2026-10-23, Jérôme Wacongne (product owner, and tech lead for the high risk)
 
 ## Summary
 
@@ -114,4 +114,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-23 — first version
-- v1 — 2026-10-23 — PA-1 and PA-2 decided (A, B)
+- v1 — 2026-10-23 — PA-1 and PA-2 decided (A, B); approved
