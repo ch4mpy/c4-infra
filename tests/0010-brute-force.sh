@@ -28,22 +28,23 @@ export MSYS_NO_PATHCONV=1
 
 umask 077
 work=$(mktemp -d)
-new_network=false
-docker network inspect "c4-infra.$REALM" > /dev/null 2>&1 || new_network=true
-cleanup() {
+# the fixture's realm and network (its own: an earlier run's too), and its compose.apps.yml entry
+remove_fixture() {
   kc_admin delete "realms/$REALM" > /dev/null 2>&1
-  ! $new_network || bash networks.sh remove "$REALM" > /dev/null
-  rm -rf "$work"
+  bash networks.sh remove "$REALM" > /dev/null
 }
-trap cleanup EXIT
-kc_admin delete "realms/$REALM" > /dev/null 2>&1
+trap 'remove_fixture; rm -rf "$work"' EXIT
+remove_fixture
 
 # AC-1, AC-8: the master realm
-check "AC-1: the master realm has no brute-force detection" \
+check "AC-1: the master realm's import sets no brute-force detection (Keycloak's default: off)" \
+  jq -e 'has("bruteForceProtected") | not' keycloak-import/master-realm.json
+check "AC-1: the dev stack's master realm has none" \
   test "$(kc_admin get realms/master --fields bruteForceProtected 2> /dev/null | jq -c .bruteForceProtected)" = false
+# the probe changes nothing even if Keycloak accepted it
 refused_403() {
   local output
-  if output=$(kc_registration update realms/master -s bruteForceProtected=true 2>&1); then
+  if output=$(kc_registration update realms/master -s bruteForceProtected=false 2>&1); then
     echo "succeeded"
     return 1
   fi
