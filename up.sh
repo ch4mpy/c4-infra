@@ -35,6 +35,23 @@ if ! bash ./registry.sh check; then
 fi
 
 bash ./env.sh
+
+# The master realm's import (keycloak-import/, intent 0009) takes these values of .env into its JSON
+# as they are: a double quote, a backslash or a control character makes Keycloak fail its first
+# start on an empty database (demo/write-env.sh refuses them on the demo host)
+(
+  source ./registry.sh
+  for key in KC_BOOTSTRAP_ADMIN_USERNAME KC_BOOTSTRAP_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
+    stack_env_read value "$key"
+    case $value in
+      *'"'* | *'\'* | *[[:cntrl:]]*)
+        echo "$key of .env holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value, then run $0 again." >&2
+        exit 1
+        ;;
+    esac
+  done
+) || exit 1
+
 certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
 bash ./certs/make-certs.sh
 certificate_after=$(cat certs/tls.crt | cksum)

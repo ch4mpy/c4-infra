@@ -3,7 +3,7 @@
 # of the stack's image (start-dev on a file database, no published port) given what the dev model
 # gives the stack's Keycloak for that import: its variables (never KC_DB_*), keycloak-import/, the
 # local CA and host.docker.internal. Its mails go to this workstation's Mailpit. Then demo/write-env.sh's
-# refusal of the values the import can't take (no Docker).
+# and up.sh's refusal of the values the import can't take (no Docker: fakes).
 #
 #   bash tests/0009-master-realm.sh
 #
@@ -11,6 +11,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/stubs.sh
 
 IMAGE=c4-infra/keycloak
 NAME=c4-infra.0009-master
@@ -25,7 +26,9 @@ host_path() {
 
 umask 077
 work=$(mktemp -d)
-trap 'docker rm -f "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
+# .env as it was, whatever happens to the check of up.sh below
+cp .env "$work/env.saved"
+trap 'docker rm -f "$NAME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
 
 # The dev model's Keycloak: the variables the import reads (never KC_DB_*), and the CA it trusts
 check "the dev model is read (compose.yml + compose.dev.yml, .env)" \
@@ -181,4 +184,17 @@ check "write-env.sh refuses a double quote in KC_ADMIN_PASSWORD" refused_naming 
 check "write-env.sh refuses a backslash in MAILPIT_SMTP_PASSWORD" refused_naming MAILPIT_SMTP_PASSWORD 'MAILPIT_SMTP_PASSWORD=a\b'
 check "write-env.sh refuses a tab in KC_ADMIN_USERNAME" refused_naming KC_ADMIN_USERNAME "KC_ADMIN_USERNAME=a$(printf '\t')b"
 check "write-env.sh refuses an INFRA_HOST that isn't a host name" refused_naming INFRA_HOST 'INFRA_HOST=a"b.test'
+
+# up.sh refuses the same in dev's .env, before anything starts: fake docker, getent and
+# powershell.exe (tests/lib/stubs.sh); .env restored right after (and by the trap)
+stub_path "$work/stubs" docker getent powershell.exe
+sed -i 's/^KC_BOOTSTRAP_ADMIN_PASSWORD=.*/KC_BOOTSTRAP_ADMIN_PASSWORD=a"b/' .env
+: > "$work/docker.log"
+STUB_LOG="$work/docker.log" STUB_ADDRESS=127.0.0.1 PATH="$work/stubs:$PATH" bash ./up.sh > "$work/up.out" 2> "$work/up.err"
+up_status=$?
+cp "$work/env.saved" .env
+check "up.sh refuses a double quote in .env's KC_BOOTSTRAP_ADMIN_PASSWORD (exit $up_status)" test "$up_status" -eq 1
+check "up.sh names it" grep -qF "KC_BOOTSTRAP_ADMIN_PASSWORD of .env holds a double quote" "$work/up.err"
+check "before any docker call" test ! -s "$work/docker.log"
+check ".env is as it was" cmp -s "$work/env.saved" .env
 finish
