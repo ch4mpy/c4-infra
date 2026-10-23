@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (migration plans of Tickee 0001, Turu and Hurura'a, 2026-10-23)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-23
 - Decided: 2026-10-23
 - Supersedes: —
