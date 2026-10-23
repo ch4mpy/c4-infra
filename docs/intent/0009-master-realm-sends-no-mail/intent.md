@@ -4,9 +4,10 @@
 - Kind: bug
 - Source: conversation (first deployment of the demo host, 2026-10-23)
 - Spec needed: yes
-- Status: planned
+- Status: delivered
 - Opened: 2026-10-23
 - Decided: 2026-10-23
+- Delivered: 2026-10-23 (PR #1)
 - Supersedes: —
 
 ## Problem
