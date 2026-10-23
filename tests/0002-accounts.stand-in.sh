@@ -326,9 +326,9 @@ check "Faito's .env, its password written ab\$\$cd… with a comment after it, i
 as dollar.log faito "sudo c4-app register --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD"
 check "sudo c4-app register --rabbitmq-user faito-api exits 0" exited_0 dollar.log
 # the password reaches rabbitmqctl's stdin from a file of the stand-in (mode 600), within the stand-in:
-# on no command line, and with an end of input (two nested `docker exec -i` from Windows lose it, and
-# rabbitmqctl then waits); not -q, with which authenticate_user waits on stdin whatever it holds
-# (measured on rabbitmq:4.3.5); timeout bounds the call whatever happens
+# on no command line, and with an end of input that doesn't depend on Windows' docker exec. Not -q:
+# with it, authenticate_user waits on stdin whatever it holds (measured on rabbitmq:4.3.5, from a
+# file: -q waits until killed, without it the answer is immediate). timeout bounds the call anyway.
 check "the expected password is written to a file of the stand-in (mode 600, on stdin)" \
   stand_in_exec -i sh -c 'umask 077 && cat > /root/faito-dollar.password' < "$work/faito-dollar.password"
 check "RabbitMQ authenticates faito-api with ab\$cd… (compose's value, on stdin)" \
