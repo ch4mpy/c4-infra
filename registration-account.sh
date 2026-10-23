@@ -207,19 +207,16 @@ ensure() {
   fi
   mapfile -t registry_realm_list < <(registry_realms)
 
-  local repair=false realm
-  ungranted=()
+  local realm
   if account_login; then
     probe_registry
+    if [ ${#ungranted[@]} -eq 0 ]; then
+      echo "Registration account $client_id: up to date"
+      return 0
+    fi
+    login_administrator "grant the registration account $client_id the realm(s) ${ungranted[*]}"
+    grant_create_realm
   else
-    repair=true
-  fi
-  if ! $repair && [ ${#ungranted[@]} -eq 0 ]; then
-    echo "Registration account $client_id: up to date"
-    return 0
-  fi
-
-  if $repair; then
     login_administrator "create the registration account $client_id, or set its secret to .env's"
     write_client
     grant_create_realm
@@ -229,9 +226,6 @@ ensure() {
       exit 1
     fi
     probe_registry
-  else
-    login_administrator "grant the registration account $client_id the realm(s) ${ungranted[*]}"
-    grant_create_realm
   fi
   for realm in "${ungranted[@]}"; do
     grant_realm "$realm"
