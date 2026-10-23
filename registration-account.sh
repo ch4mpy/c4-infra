@@ -59,11 +59,20 @@ account_login() {
     < /dev/null 2>&1)
 }
 
+# Logs in as an administrator; one that Keycloak refuses for a pending action ("Account is not fully
+# set up": with the master realm's Verify email, an address not verified yet, intent 0009) is added
+# to $not_set_up, for the message of login_administrator
+not_set_up=()
 admin_login() { # <user> <password>
+  local output
   [ -n "$1" ] && [ -n "$2" ] || return 1
-  KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
+  output=$(KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
     config credentials --config "$ADMIN_CONFIG" --server "$SERVER" --realm master --user "$1" \
-    < /dev/null > /dev/null 2>&1
+    < /dev/null 2>&1) && return 0
+  case "$output" in
+    *"Account is not fully set up"*) not_set_up+=("$1") ;;
+  esac
+  return 1
 }
 
 # What the account may do with a realm, as registrations see it (register-app.sh asks it here too;
@@ -135,6 +144,10 @@ login_administrator() { # <what it is needed for>
     fi
     echo "$user doesn't log in." >&2
   fi
+  local name
+  for name in "${not_set_up[@]}"; do
+    echo "Keycloak refuses $name for a pending action (\"Account is not fully set up\"): with the master realm's Verify email, its e-mail address isn't verified yet. Log in to the console as $name and follow the mail Keycloak sends to Mailpit (/mailpit/), or remove that required action from $name in the console; the admin CLI logs in as $name afterwards." >&2
+  done
   cat >&2 << EOF
 No administrator of Keycloak's master realm could log in to $1: the bootstrap administrator of .env no longer works (replaced, or its password changed)${KC_SETUP_ADMIN_USERNAME:+, nor does $KC_SETUP_ADMIN_USERNAME (KC_SETUP_ADMIN_USERNAME)}.
   - In dev: run \`bash $INFRA_DIR/registration-account.sh ensure\` from a terminal: it asks for an administrator.
