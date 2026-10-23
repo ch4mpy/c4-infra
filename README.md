@@ -428,7 +428,7 @@ the files of [`demo/deploy-files.txt`](demo/deploy-files.txt) (the compose base 
 override, the shared Caddyfile and `caddy/env/demo.caddy`, the registry, `routes.sh`,
 `register-app.sh`, `registration-account.sh`, `demo/deploy.sh`, `demo/backup.sh` and
 `demo/c4-app`), its `.env` (mode 600, written by [`demo/write-env.sh`](demo/write-env.sh) on the
-workflow's runner: `INFRA_ENV=demo`, `COMPOSE_FILE=compose.yml:compose.demo.yml`, the secrets), and
+workflow's runner: `INFRA_ENV=demo`, `COMPOSE_FILE=compose.yml:compose.demo.yml:compose.apps.yml`, the secrets), and
 what the applications register (`caddy/apps/`, `keycloak/themes/`, owned by `c4-infra` too). The
 workflow pins the host's key first ([`demo/trust-host-key.sh`](demo/trust-host-key.sh): no
 deployment without `VPS_KNOWN_HOSTS`), and pins every action it uses by commit; it then runs

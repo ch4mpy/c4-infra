@@ -1,4 +1,4 @@
-# The workstation's override of compose.yml (COMPOSE_FILE=compose.yml:compose.dev.yml in .env,
+# The workstation's override of compose.yml (COMPOSE_FILE=compose.yml:compose.dev.yml:compose.apps.yml in .env,
 # written by env.sh). Every port is published on the loopback only (127.0.0.1), with no setting to
 # open it: nothing of the stack answers from the local network. The workstation reaches it through
 # host.docker.internal, which up.sh checks resolves to 127.0.0.1. The containers reach the

@@ -5,7 +5,7 @@
 # brings it up to date, reloads Caddy, makes sure of the registration account, prunes the old images
 # and installs the nightly backup. Idempotent.
 set -euo pipefail
-# the stack's directory: compose reads COMPOSE_FILE (compose.yml:compose.demo.yml) from its .env
+# the stack's directory: compose reads COMPOSE_FILE (compose.yml:compose.demo.yml:compose.apps.yml) from its .env
 cd "$(dirname "$0")/.."
 
 # The one command the applications' accounts run as root (sudo c4-app, demo/c4-app), installed
