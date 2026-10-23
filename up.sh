@@ -45,7 +45,7 @@ bash ./env.sh
     stack_env_read value "$key"
     case $value in
       *'"'* | *'\'* | *[[:cntrl:]]*)
-        echo "$key of .env holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value, then run $0 again." >&2
+        echo "$key of .env holds a double quote, a backslash or a control character, which the master realm's import can't take: choose another value, then run $0 again. On a stack whose master realm exists already (started before intent 0009, or since), Keycloak keeps the former value: type the new one in its console too (README.md, \"The master realm\")." >&2
         exit 1
         ;;
     esac

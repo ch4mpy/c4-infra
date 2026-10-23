@@ -267,7 +267,7 @@ the file says.
   `C4_MASTER_ADMIN_USERNAME` / `C4_MASTER_ADMIN_PASSWORD`: under their `KC_BOOTSTRAP_*` names,
   Keycloak would create its temporary administrator as well and abort its start. Neither they nor
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
-  import's JSON can't take, and `INFRA_HOST` is a host name (`demo/write-env.sh` refuses them).
+  import's JSON can't take, and `INFRA_HOST` is a host name (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev).
 - The rest is what Keycloak sets when it creates that realm itself (its display name, 60-second
   access tokens, a user profile where neither the address nor the names are required).
 
