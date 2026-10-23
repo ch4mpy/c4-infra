@@ -33,12 +33,21 @@
 #   stand_in_down                    stops and removes the stand-in (its Docker volume stays: the
 #                                    pulled images)
 #
-# The Docker volume c4-infra-stand-in-docker holds the stand-in's /var/lib/docker between runs.
+# The Docker volume $STAND_IN_VOLUME (c4-infra-stand-in-docker) holds the stand-in's /var/lib/docker
+# between runs. STAND_IN_NAME and STAND_IN_VOLUME, from the environment, name another stand-in, beside
+# the one another checkout's tests run: stand_in_up removes the container of its name, and two dockerds
+# can't share a volume (e.g. STAND_IN_NAME=c4-infra-stand-in-0009
+# STAND_IN_VOLUME=c4-infra-stand-in-0009-docker).
 
 STAND_IN_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-STAND_IN_NAME=c4-infra-stand-in
+STAND_IN_NAME=${STAND_IN_NAME:-c4-infra-stand-in}
 STAND_IN_IMAGE=c4-infra/stand-in-host
-STAND_IN_VOLUME=c4-infra-stand-in-docker
+STAND_IN_VOLUME=${STAND_IN_VOLUME:-c4-infra-stand-in-docker}
+# only the stand-ins' own names: docker rm -f and docker volume rm act on them
+if ! [[ $STAND_IN_NAME =~ ^c4-infra-stand-in[a-z0-9-]*$ && $STAND_IN_VOLUME =~ ^c4-infra-stand-in[a-z0-9-]*$ ]]; then
+  echo "STAND_IN_NAME and STAND_IN_VOLUME start with c4-infra-stand-in (lowercase letters, digits, '-')" >&2
+  exit 1
+fi
 STAND_IN_CADDY_IMAGE=caddy:2.11.4-alpine
 # inside the stand-in: the accounts' keys and the pinned host key (stand_in_accounts)
 STAND_IN_KEYS=/root/stand-in-keys
