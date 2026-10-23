@@ -242,7 +242,9 @@ or theirs).
   secret").
 
 Keycloak's administrators are free to change: replacing the administrator of `.env` by another one
-and deleting it, or changing its password, doesn't affect the registrations. Once it no longer
+and deleting it, or changing its password, doesn't affect the registrations (on the demo host, each
+one with a long random password: the master realm limits no guessing, "Brute-force protection"
+below). Once it no longer
 logs in, an administrator is needed only to create the account again or to rotate its secret: in
 dev, `bash registration-account.sh ensure` from a terminal asks for one; on the demo host,
 `KC_SETUP_ADMIN_*` are set for one deployment. With the master realm's *Verify email* (below), an
@@ -269,6 +271,7 @@ the file says.
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
   import's JSON can't take (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev), and
   `INFRA_HOST` is a host name (`demo/write-env.sh` checks it).
+- No brute-force detection, unlike the applications' realms (below).
 - The rest is what Keycloak sets when it creates that realm itself (its display name, 60-second
   access tokens, a user profile where neither the address nor the names are required).
 
@@ -291,6 +294,30 @@ password its application renders. A new administrator's password in `.env` likew
 the console too (realm master, *Users* → the administrator → *Credentials*). Since that password,
 `INFRA_HOST` and the administrator's are in Keycloak's environment, changing one of them recreates
 Keycloak's container at the next start.
+
+### Brute-force protection
+
+Every application's realm imported since intent 0010 locks an account for a while after repeated
+failed logins, in dev as on the demo host: after 10 failures, the account is refused for a minute, even
+with its right password; each further failure adds a minute, up to 15; the failures are forgotten
+12 hours after the last one; nothing locks an account for good (Keycloak's temporary lockout,
+linear strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart
+lock the account for a minute, whatever their count.
+
+- An application's realm gets these settings each time `register-app.sh` imports it, whatever its
+  export says (`brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak
+  keeps its own settings until it is imported again: one registered before intent 0010 gets them
+  with its next `--reset-realms`, which loses its users, or, keeping them, from an administrator in
+  the console (*Realm settings* → *Security defenses* → *Brute force detection*, the values above).
+- The master realm has none: its console is public on the demo host, and anyone could keep its
+  administrators locked out. Nothing limits guessing there: on the demo host, every administrator
+  of the master realm gets a long random password (`openssl rand -base64 32`), the one of the
+  `demo` environment as any added later (in dev, `.env`'s is `secret`: the stack publishes its
+  ports on the loopback only).
+- An administrator unlocks an application's account in the console, on the user's page. Whoever
+  knows an account's user name can keep it locked for as long as they keep failing its logins (each
+  lock at most 15 minutes): on the demo host, the shared demo accounts (their passwords are public)
+  included. Accepted (PA-2).
 
 ### Routes file
 

@@ -103,7 +103,10 @@ the secret afterwards breaks the stack unless the value is changed in the servic
 `INFRA_HOST` is a host name: Keycloak writes them into its master realm's JSON as they are, and
 `demo/write-env.sh` refuses them (`openssl rand -base64 32` and `-hex 32` are fine). Replacing
 Keycloak's administrator by another one is safe: the registrations log in as their own account
-([README](../README.md), "The registration account"); with the master realm's *Verify email*, an
+([README](../README.md), "The registration account"). Give each administrator of the master
+realm, `KC_SETUP_ADMIN_*`'s included, a generated password (`openssl rand -base64 32`): its
+console is public and nothing limits guessing there (no brute-force detection on the master realm,
+[README](../README.md), "Brute-force protection"). With the master realm's *Verify email*, an
 administrator who has an address verifies it (the mail is in `/mailpit/`) before the admin CLI
 logs in as them.
 
