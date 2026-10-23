@@ -1,0 +1,3 @@
+# A wide route after a narrower one: /gateway, which /* also matches, still redirects to /gateway/
+/gateway/*  gateway
+/*          fr

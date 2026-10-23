@@ -262,7 +262,7 @@ installs.
   target:  gateway | mcp | fr | en | ui | redirect
   options: to=<path>          redirect only, required: a path on the same host (not //...)
            max-body=<n>KB|MB  request body limit (413 beyond)
-           prefix=<path>      prepended to the request's path before proxying
+           prefix=<path>      prepended to the request's path before proxying (not / alone)
 ```
 
 Faito's, [`examples/routes/faito.routes`](examples/routes/faito.routes) (Hurura'a's and Turu's are
@@ -277,8 +277,9 @@ next to it):
 
 - **First match.** Routes are tried in the file's order, and the first one that matches serves the
   request: a narrower route goes before a wider one (Turu's 64 MB upload, a regular expression,
-  before `/gateway/*`). A `/<p>/*` route also redirects `/<p>` to `/<p>/` (301). Any other path
-  answers `404`.
+  before `/gateway/*`). A `/<p>/*` route also redirects `/<p>` to `/<p>/` (301), even when a wider
+  route that also matches `/<p>` comes first (a regular expression, `/*`): that route redirects it
+  before proxying. A route of its own for `/<p>` takes it instead. Any other path answers `404`.
 - **Roles and their upstreams**, with `p = 10 + n` (port registry above). The front end without
   i18n is `ui`.
 

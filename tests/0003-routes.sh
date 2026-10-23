@@ -192,6 +192,18 @@ refused to-on-role 3 'to= is for a redirect only'
 refused redirect-without-to 3 'redirect needs to=<path>'
 refused regex-brace 3 "path '~^/gateway/{path}\$' is not"
 refused quote 3 "path '/fr\"/*' is not"
+# prefix=/ would rewrite /x to //x (review round 1, 2026-10-22)
+refused prefix-root 3 "prefix= takes a path without a final '/', not '/'"
+
+# A /<p>/* route's redirect of /<p> wins over a wider route that also matches /<p> (review round 1,
+# 2026-10-22): /* comes before the redirects, so it redirects /gateway itself, before proxying
+generate "$FIXTURES/registry.txt" "$FIXTURES/verif-shadow.routes" verif dev
+check "verif-shadow dev: exits 0" exited 0
+check "verif-shadow dev: /* redirects /gateway to /gateway/ (301) before proxying" \
+  block_holds '/*' 'redir /gateway /gateway/ permanent'
+check "verif-shadow dev: /* still reaches the fr front end" spa '/*' http://host.docker.internal:47200
+check "verif-shadow dev: /gateway/* doesn't redirect (it doesn't match /gateway)" block_lacks '/gateway/*' redir
+check "verif-shadow dev: /gateway redirects to /gateway/ (301)" block_holds /gateway 'redir * /gateway/ permanent'
 
 # the application's own registry entry, and an environment named
 generate "" examples/routes/faito.routes verif dev
