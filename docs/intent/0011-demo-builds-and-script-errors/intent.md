@@ -21,11 +21,13 @@ Every application deployed on the demo host is assembled by a GitHub or GitLab w
   4. `registry.sh:71` (`dotenv_value`): a read error is folded into `|| true`, so an unreadable `.env` reads as missing keys (`INFRA_HOST` empty: the reverse proxy loses the shared host's alias).
   5. `registry.sh:91`: an unquoted value ends at ` #` only, while compose ends it at any whitespace before `#`: the scripts and the containers read two different values.
   6. `demo/c4-app:189`: `$host` in `reserved` is dead code, since dotted service names are refused anyway.
+  7. `up.sh:38`: `certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)` under `set -euo pipefail` exits 1 with no message when `certs/tls.crt` is missing, as on a fresh clone (found by the simplify pass, 2026-10-23; it predates 0001-0008).
+  8. `routes.sh:140`: an option with an empty key (`/x/* gateway =x`) stops with `seen_options: bad array subscript` instead of the `<file>:<line>: …` refusal README promises (found by the simplify pass, 2026-10-23).
 
 ## Proposed outcome
 
 - The demo host runs only images pulled from a registry: `sudo c4-app` refuses a compose file that builds, saying the application's CI builds its images, and the build checks go. Success criterion: on the stand-in host, a compose file with `build:` is refused, and the applications' fixtures still deploy.
-- The six script defects above are fixed, each proven by a test that fails before the fix.
+- The eight script defects above are fixed, each proven by a test that fails before the fix.
 
 ## Affected users and systems
 
