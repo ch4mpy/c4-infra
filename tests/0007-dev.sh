@@ -2,7 +2,7 @@
 # 0007: on the workstation, each application's network, the dev stack's networks and RabbitMQ's
 # loopback (REQ-5, REQ-8, REQ-10), against the running stack (bash up.sh).
 #
-#   bash tests/0007-dev.sh [rabbitmq|networks|tickee|guard]...   (every part by default)
+#   bash tests/0007-dev.sh [rabbitmq|networks|tickee|guard|rewrite]...   (every part by default)
 #
 #   rabbitmq  AC-11: Faito's deployment (bash ../faito/deploy-dev.sh, FAITO_DIR to change it) imports
 #             its RabbitMQ user faito-api with rabbitmqctl in the container; RabbitMQ is healthy; its
@@ -18,6 +18,12 @@
 #             resolution`, which runs up.sh with a fake docker; with INFRA_ENV=demo (a scratch copy of
 #             networks.sh, its .env tests/fixtures/0003/demo.env), `networks.sh compose-file` puts the
 #             reverse proxy on each application's network under ${INFRA_HOST} too; dev's doesn't
+#   rewrite   review round 1 (2026-10-22): `networks.sh compose-file` in a scratch copy, with a fake
+#             docker answering the labelled network c4-infra.faito: with the daemon answering but no
+#             c4-infra network yet (a fresh host), it lists c4-infra.faito; a leftover
+#             compose.apps.yml.new (a directory) doesn't stop it; and in a Linux container (bash:5.2,
+#             which has flock), it waits while another process holds the lock on the stack's
+#             directory, then writes the file
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -199,15 +205,67 @@ part_guard() {
     fails in_list host.docker.internal "$found"
 }
 
-[ $# -gt 0 ] || set -- rabbitmq networks tickee guard
+# a path of this machine, as the docker CLI wants it (a Windows path under Git Bash)
+host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf "%s" "$1"; fi; }
+
+part_rewrite() {
+  local scratch=$work/rewrite status
+  mkdir -p "$scratch/stubs"
+  cp networks.sh registry.sh registry.txt "$scratch/"
+  printf 'INFRA_ENV=dev\n' > "$scratch/.env"
+  # the daemon answers (STUB_C4_INFRA=1: the c4-infra network too); the applications' networks:
+  # c4-infra.faito
+  cat > "$scratch/stubs/docker" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  'info --format {{.ServerVersion}}') echo 29.0.0 ;;
+  'network inspect c4-infra --format {{.Name}}') [ "${STUB_C4_INFRA:-0}" = 1 ] && echo c4-infra || exit 1 ;;
+  'network ls --filter label=c4-infra.app'*) echo 'c4-infra.faito faito' ;;
+  *) exit 1 ;;
+esac
+EOF
+  chmod +x "$scratch/stubs/docker"
+  lists_faito() { grep -qxF '    name: c4-infra.faito' "$scratch/compose.apps.yml" || { cat "$scratch/compose.apps.yml"; return 1; }; }
+
+  rm -f "$scratch/compose.apps.yml"
+  PATH="$scratch/stubs:$PATH" bash "$scratch/networks.sh" compose-file > "$work/rewrite.log" 2>&1
+  check "a fresh host (no c4-infra network yet): compose-file exits 0" test $? -eq 0
+  check "it lists c4-infra.faito" lists_faito
+
+  rm -f "$scratch/compose.apps.yml"
+  mkdir "$scratch/compose.apps.yml.new"
+  STUB_C4_INFRA=1 PATH="$scratch/stubs:$PATH" bash "$scratch/networks.sh" compose-file > "$work/rewrite.log" 2>&1
+  status=$?
+  check "a leftover compose.apps.yml.new (a directory): compose-file exits 0 (exit $status)" test "$status" -eq 0
+  check "it lists c4-infra.faito" lists_faito
+  rmdir "$scratch/compose.apps.yml.new"
+
+  # flock on the stack's directory, held 5 s by another process: a rewrite waits for it
+  rm -f "$scratch/compose.apps.yml"
+  MSYS_NO_PATHCONV=1 docker run --rm --user 1000 -e STUB_C4_INFRA=1 -v "$(host_path "$scratch"):/w" bash:5.2 bash -c '
+    export PATH=/w/stubs:$PATH
+    flock /w sleep 5 &
+    sleep 1
+    timeout 2 bash /w/networks.sh compose-file; echo "while held: exit $?"
+    [ -f /w/compose.apps.yml ] && echo "while held: written" || echo "while held: not written"
+    wait
+    bash /w/networks.sh compose-file; echo "released: exit $?"' > "$work/flock.log" 2>&1
+  check "while another process holds the lock, a rewrite waits (stopped by timeout 2 s: 124, busybox's 143)" \
+    grep -qxE 'while held: exit (124|143)' "$work/flock.log"
+  check "and writes nothing" grep -qx 'while held: not written' "$work/flock.log"
+  check "once released, it writes the file (exit 0)" grep -qx 'released: exit 0' "$work/flock.log"
+  check "listing c4-infra.faito" lists_faito
+}
+
+[ $# -gt 0 ] || set -- rabbitmq networks tickee guard rewrite
 for part in "$@"; do
   case "$part" in
-    rabbitmq | networks | tickee | guard)
+    rabbitmq | networks | tickee | guard | rewrite)
       echo "# $part"
       "part_$part"
       ;;
     *)
-      echo "Unknown part: $part (rabbitmq, networks, tickee or guard)" >&2
+      echo "Unknown part: $part (rabbitmq, networks, tickee, guard or rewrite)" >&2
       exit 2
       ;;
   esac

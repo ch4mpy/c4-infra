@@ -17,3 +17,4 @@ keycloak/themes/*
 
 ### WRITTEN BY networks.sh (the applications' networks, intent 0007) ###
 compose.apps.yml
+compose.apps.yml.*
