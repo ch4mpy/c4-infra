@@ -2,25 +2,25 @@
 
 - Intent: [0010](intent.md)
 - Status: approved
-- Version: 1
-- Risk: high (rule: authentication — the lockout of every account of every realm; tech lead's agreement required)
+- Version: 2
+- Risk: high (rule: authentication — the lockout of every account of the applications' realms; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `CLAUDE.md` (no password on a command line), 0006 (the registration account's rights)
-- Approved: 2026-10-23, Jérôme Wacongne (PO, and tech lead for the high risk)
+- Approved: v1 2026-10-23; v2 2026-10-23, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
-Keycloak's brute-force detection is turned on, in temporary lockout mode with a linear wait, in the master realm when Keycloak creates it (its pre-configuration, 0009) and in each application's realm when its registration imports it. The settings are c4-infra's, the same in every realm, in dev and on the demo host; nothing locks an account for good.
+Keycloak's brute-force detection is turned on, in temporary lockout mode with a linear wait, in each application's realm when its registration imports it. The settings are c4-infra's, the same in every application's realm, in dev and on the demo host; nothing locks an account for good. The master realm keeps Keycloak's default, no detection (PA-3): its administrators can't be locked out of the console the demo host publishes.
 
 ## Requirements
 
 - REQ-1 The brute-force settings c4-infra writes into a realm are: detection on (`bruteForceProtected`); temporary lockout only (`permanentLockout` off, `maxTemporaryLockouts` 0); first lockout after 10 failures (`failureFactor`); linear wait (`bruteForceStrategy` `LINEAR`), 1 minute more per further failure (`waitIncrementSeconds` 60), at most 15 minutes (`maxFailureWaitSeconds` 900); failures forgotten 12 hours after the last one (`maxDeltaTimeSeconds` 43200); Keycloak's defaults for quick logins (`quickLoginCheckMilliSeconds` 1000, `minimumQuickLoginWaitSeconds` 60). (intent: outcome and criterion)
 - REQ-2 A registration that imports an application's realm (absent, or deleted first by `--reset-realms`) writes REQ-1's settings into it, whatever its export says. (intent: outcome, applications' realms)
 - REQ-3 A registration that finds the realm already in Keycloak leaves it as it is: such a realm (Faito's in dev, registered before this change) gets REQ-1's settings when it is re-created (`--reset-realms`) (PA-1 decided). (intent: outcome, every realm)
-- REQ-4 The master realm has REQ-1's settings from its creation: they are part of its pre-configuration (0009, REQ-1 and REQ-2), applied by Keycloak when it creates the realm, never to a master realm that exists; no administrator logs in for them. The existing stacks get them with 0009's documented re-creation of Keycloak's database. (intent: outcome, master realm; constraint 0006; 0009's PA-1 decision)
+- REQ-4 The master realm has no brute-force detection (Keycloak's default; its pre-configuration, 0009, sets none): nobody can lock its administrators out of the console (PA-3 decided). Its administrators' passwords are long and random (`openssl rand`, `docs/demo-setup.md`), out of the reach of guessing. (v2; departs knowingly from the intent's "the master realm and every application's")
 - REQ-5 (removed in the draft: no administrator's login, REQ-4)
 - REQ-6 No setting c4-infra writes locks an account permanently. (intent: constraint)
 - REQ-7 The registration account gets no right to change the master realm. (intent: constraint, 0006 REQ-2)
-- REQ-8 The README states the settings, and that an application's realm export can't change them. (intent: outcome, the settings are c4-infra's)
+- REQ-8 The README states the settings, that an application's realm export can't change them, Keycloak's quick-login rule (two failures less than a second apart lock for a minute), and that the master realm has none. (intent: outcome, the settings are c4-infra's)
 
 ## Out of scope
 
@@ -39,15 +39,13 @@ Keycloak's brute-force detection is turned on, in temporary lockout mode with a 
 ### Behaviour per persona
 
 - Demo visitor, and any user: after 10 wrong passwords, the account is refused for 1 minute, even with the right password, Keycloak's usual "Invalid username or password" shown; each further failure adds 1 minute, up to 15; then the right password logs in.
-- Demo operator and developer: the same for the master realm's administrators; an administrator can unlock an account in the console (the user's *temporarily locked* switch). An administrator locked out waits at most 15 minutes.
+- Demo operator and developer: an administrator can unlock an application's account in the console (on the user's page). The master realm's administrators are never locked (REQ-4).
 - Application: whatever its realm export says about brute force, its realm gets c4-infra's settings when its registration imports it.
-- The stack's own logins as an administrator happen only when the registration account must be repaired (0006): each one that fails, with a stale bootstrap password, counts as one failure for that user.
 
 ### API and contracts
 
 - The realm settings of REQ-1 (Keycloak's admin API, `realms/<realm>`).
 - `register-app.sh`: same options; one more line per imported realm (settings written).
-- The master realm's pre-configuration (0009) holds REQ-1's settings.
 
 ### User interface
 
@@ -61,8 +59,8 @@ The realms' brute-force settings, in Keycloak's database.
 
 | Rule | How it is satisfied |
 | --- | --- |
-| No password on a command line (`CLAUDE.md`) | no password involved: the master realm's settings come with its creation, the applications' realms' with the registration's existing login |
-| 0006 REQ-2: the registration account, nothing else in the master realm | REQ-7: the master realm's settings come with its creation (REQ-4) |
+| No password on a command line (`CLAUDE.md`) | no password involved: the applications' realms' settings go with the registration's existing login |
+| 0006 REQ-2: the registration account, nothing else in the master realm | REQ-7: nothing is written into the master realm (REQ-4) |
 | README design | REQ-8 |
 
 ## Points of attention
@@ -83,12 +81,19 @@ The realms' brute-force settings, in Keycloak's database.
 - Decides: product owner
 - Decision: A, accepted (Jérôme Wacongne, product owner, 2026-10-23)
 
+### PA-3 Anyone can keep the master realm's administrators locked out of the console (v2)
+
+- Issue (raised by the security review of the implementation): on the demo host, `/auth/admin/` and the master realm's password grant are public; the administrator's name is guessable (`admin`, `admin@<INFRA_HOST>`); two failures less than a second apart lock for a minute, and one failed login every few minutes keeps the account locked. The console and the registration account's repair (0006) are then out of reach, and another administrator is just as lockable. The password itself, random, is out of the reach of guessing.
+- Options: A keep the lockout on the master realm, with a non-default administrator name, no login by e-mail, a host-side recovery, and the console's restriction as a new intent / B no lockout on the master realm, the applications' realms keep it / C restrict the console and the master realm from the internet in this change (what the demo host exposes: a new spec cycle)
+- Recommendation: A.
+- Decides: product owner, with the tech lead's agreement (high risk)
+- Decision: B, no lockout on the master realm (Jérôme Wacongne, product owner and tech lead, 2026-10-23); departs knowingly from the intent's "the master realm and every application's"
+
 ## Acceptance criteria
 
-- AC-1 Given a dev stack without its volumes, when `bash up.sh` runs, then the master realm has REQ-1's settings; given the stand-in demo host on an empty database, the same after the deployment. (REQ-1, REQ-4)
+- AC-1 Given the stack started (dev), then the master realm has no brute-force detection, whatever its creation (before or after 0009). (REQ-4)
 - AC-2 Given a realm export whose detection is off, or with other settings, when a registration imports it (absent, or with `--reset-realms`), then the realm has REQ-1's settings. (REQ-1, REQ-2)
 - AC-3 Given a user of a registered realm, when 10 logins with a wrong password fail, then Keycloak reports the user temporarily disabled and refuses the right password; after the wait it logs in; an 11th failure makes the wait 2 minutes. (REQ-1)
-- AC-4 Given a master realm that exists, with other brute-force settings, when the stack starts, then they are unchanged and no administrator logs in for them. (REQ-4)
 - AC-5 Given Faito's realm registered before this change, when Faito registers again, then its brute-force settings are unchanged; when it registers with `--reset-realms`, then the realm has REQ-1's settings. (REQ-3)
 - AC-7 Given an account with 30 failures, when 15 minutes have passed since the last one, then its right password logs in. (REQ-6)
 - AC-8 Given the registration account, when it tries to change the master realm's brute-force settings, then Keycloak refuses. (REQ-7)
@@ -97,10 +102,11 @@ The realms' brute-force settings, in Keycloak's database.
 
 - On the demo host, a visitor can lock a shared demo account for up to 15 minutes: accepted? → PA-2: accepted.
 - The realms registered before this change: do they get the protection? → PA-1: at their re-creation.
-- *Suggested solution*: the registration sets it on each realm it registers, the stack on the master realm when it starts → REQ-2; the master realm's in its pre-configuration instead (REQ-4, after 0009's PA-1 decision).
+- *Suggested solution*: the registration sets it on each realm it registers, the stack on the master realm when it starts → REQ-2; the master realm has none (REQ-4, PA-3).
 
 ## Change log
 
 - v1 — 2026-10-23 — first version
 - v1 — 2026-10-23 — draft: the master realm's settings in its pre-configuration (0009's PA-1 decision): REQ-4 rewritten, REQ-5 and the former PA-3 (no administrator) removed
 - v1 — 2026-10-23 — approved: PA-1 B (REQ-3 and AC-5 rewritten), PA-2 A; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
+- v2 — 2026-10-23 — PA-3 raised by the implementation's security review and decided B: no lockout on the master realm (REQ-4, the summary, AC-1 rewritten; AC-4 removed: nothing in the master realm to keep); REQ-8 also names the quick-login rule (the bug review). Approved by the decision itself (Jérôme Wacongne, PO and tech lead)
