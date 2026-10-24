@@ -190,14 +190,14 @@ properties_decode() { # <logical line>
   decoded+=$in
 }
 
-# Adds to theme_problems what is wrong with a theme.properties, "<shown name>[:<line>]: …": each
-# logical line holding ${ once read as Java reads it. Read once, byte by byte (the C locale, whatever
-# the caller's: c4-app runs C.UTF-8, where bash reads an invalid UTF-8 sequence its own way): Keycloak
-# decodes the file as UTF-8, or as ISO-8859-1 when it isn't, and in both every ASCII character (the $,
-# {, \, # and ! that matter here, the blanks, the line ends) is a byte of its own. Lines end at LF,
-# CRLF or CR; Java's blanks are the space, the tab and the form feed (a Unicode space before # makes no
-# comment); a line whose trailing backslashes are odd in number continues on the next one, its leading
-# blanks dropped; a line starting with # or ! (after blanks) is a comment, never continued.
+# Adds to theme_problems what is wrong with a theme.properties, "<shown name>[:<line>]: …": a byte
+# outside printable ASCII (the tab, CR, LF and form feed besides), and each logical line holding ${
+# once read as Java reads it. In ASCII, Keycloak's decodings (UTF-8, or ISO-8859-1 when the file isn't
+# UTF-8) and this check, which reads bytes (the C locale, whatever the caller's), see the same
+# characters; any other is written \uXXXX. Lines end at LF, CRLF or CR; Java's blanks are the space,
+# the tab and the form feed; a line whose trailing backslashes are odd in number continues on the next
+# one, its leading blanks dropped; a line starting with # or ! (after blanks) is a comment, never
+# continued.
 properties_check() { # <file> <shown name>
   local LC_ALL=C
   local status=2 content="" line logical="" start=0 number=0 continuing=false backslashes
@@ -213,6 +213,10 @@ properties_check() { # <file> <shown name>
   # the empty line after the last one ends a continuation there, as the end of the file does for Java
   while IFS= read -r line; do
     number=$((number + 1))
+    if [[ $line == *[![:print:]$'\t\f']* ]]; then
+      theme_problems+=("$2:$number: a byte outside printable ASCII, which Keycloak may decode otherwise than this check reads it (write such a character \\uXXXX): refused")
+      return
+    fi
     line=${line#"${line%%[!$' \t\f']*}"}
     if ! $continuing; then
       [ -n "$line" ] || continue

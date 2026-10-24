@@ -9,10 +9,13 @@
 #     form feed only);
 #   - invalid UTF-8 (Keycloak then reads the file as ISO-8859-1) before a $ and a { joined by a
 #     continuation, which bash read its own way under C.UTF-8 (the security review, round 1);
+#   - since spec v2 (the engineer's decision, 2026-10-24), any byte outside printable ASCII, the tab,
+#     CR, LF and the form feed, without ${ too: U+3000 inside a value, UTF-8's é, a DEL in a comment;
 #
-# and their must-not-fire twins: blanks (space, tab) before # still make a comment; U+3000 inside a
-# value without ${ passes. A theme.properties the registering user can't read is refused too
-# (register-app.sh), which NTFS doesn't let this test make.
+# and their must-not-fire twins: blanks (space, tab) before # still make a comment; the tab, the form
+# feed and CRLF pass; a character beyond ASCII written as an escape (backslash, u00e9) passes. A
+# theme.properties the registering user can't read is refused too (register-app.sh), which NTFS
+# doesn't let this test make.
 #
 #   bash tests/0012-themes-review.sh
 set -uo pipefail
@@ -99,7 +102,17 @@ passes_theme_check() { # <label> <name> <content>
 }
 passes_theme_check 'a space and a tab before # make a comment' verif-crlf \
   'parent=keycloak\n  \t# ${env.KC_DB_PASSWORD}\n'
-passes_theme_check 'U+3000 inside a value without ${' verif-case \
-  'parent=keycloak\nkcHtmlClass=login-pf\343\200\200x\n'
+passes_theme_check 'the tab, the form feed and CRLF' verif-case \
+  'parent=keycloak\r\nkcHtmlClass=login-pf\tx\fy\r\n'
+passes_theme_check 'a character beyond ASCII written as an escape' verif-unicode \
+  'parent=keycloak\nkcLogoText=Caf\134u00e9\n'
+
+# Spec v2: a byte outside printable ASCII, the tab, CR, LF and the form feed, wherever it is
+refused_theme 'v2: U+3000 inside a value without ${' verif-escape \
+  'parent=keycloak\nkcHtmlClass=login-pf\343\200\200x\n' 'verif-escape/login/theme.properties:2: a byte outside printable ASCII'
+refused_theme "v2: UTF-8's é in a value" verif-continued \
+  'parent=keycloak\nkcLogoText=Caf\303\251\n' 'verif-continued/login/theme.properties:2: a byte outside printable ASCII'
+refused_theme 'v2: a DEL in a comment' verif-env \
+  'parent=keycloak\n# a comment \177\n' 'verif-env/login/theme.properties:2: a byte outside printable ASCII'
 
 finish

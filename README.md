@@ -179,7 +179,8 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   link itself (Keycloak serves a theme's files, a link's target included: `/proc/self/environ` is
   its whole environment). A registration refuses either, naming the file and its line, as Java
   reads it: `\u0024{`, `\$\{` or a `$` and a `{` joined by a continuation line are a `${` too
-  (intent 0012);
+  (intent 0012). A `theme.properties` holds printable ASCII only, the tab, CR, LF and form feed
+  besides (a character beyond is written `\uXXXX`): Keycloak then decodes it as the check reads it;
 - its [routes file](#routes-file), `reverse-proxy/<app>.routes`, the same in both environments:
   `register-app.sh` generates its site from it, on its registry entry's host name, to its processes
   on the host in dev and to its containers on the demo host;
