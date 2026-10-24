@@ -178,7 +178,7 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   master realm's administrator's password, once) and no symbolic link nor special file, nor is it a
   link itself (Keycloak serves a theme's files, a link's target included: `/proc/self/environ` is
   its whole environment). A registration refuses either, naming the file and its line, as Java
-  reads it: `${`, `\$\{` or a `$` and a `{` joined by a continuation line are a `${` too
+  reads it: `\u0024{`, `\$\{` or a `$` and a `{` joined by a continuation line are a `${` too
   (intent 0012);
 - its [routes file](#routes-file), `reverse-proxy/<app>.routes`, the same in both environments:
   `register-app.sh` generates its site from it, on its registry entry's host name, to its processes
