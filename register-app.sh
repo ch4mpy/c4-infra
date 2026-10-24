@@ -159,7 +159,9 @@ in_entry() { # <value> <comma-separated list of the entry>
 # show the values (the master realm's administrator's password among them); it serves a theme's
 # files, a link's target included (/proc/self/environ: its whole environment). A theme holding
 # either registers nothing. A theme.properties is read as Java's Properties reads it, and what this
-# check can't read the same way is refused too (a NUL byte, which bash drops; a file it can't read).
+# check can't read the same way is refused too (a NUL byte, which bash drops; a file it can't read);
+# it holds printable ASCII only, tab, form feed and line ends aside (spec v2: Java reads it as UTF-8,
+# or ISO-8859-1 when it isn't, and a byte beyond ASCII is written \uXXXX).
 
 # $decoded: a logical line of a properties file, Java's escapes decoded (\uXXXX, \t \n \r \f, \<c> → <c>),
 # from one backslash to the next
