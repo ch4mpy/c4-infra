@@ -14,7 +14,9 @@
 #                   file: the file's own "realm" field can't name another.
 #   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
 #                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
-#                   restarts Keycloak (once)
+#                   restarts Keycloak (once). A theme holding a link or a special file, or a
+#                   theme.properties holding ${ (as Java reads it) or a byte outside printable ASCII,
+#                   is refused (intent 0012)
 #   --proxy         the application's routes file (README.md, "Routes file"), the same in both
 #                   environments: its site on the reverse proxy is generated from it and from the
 #                   application's registry entry, for the environment INFRA_ENV (.env) names (dev
@@ -159,7 +161,9 @@ in_entry() { # <value> <comma-separated list of the entry>
 # show the values (the master realm's administrator's password among them); it serves a theme's
 # files, a link's target included (/proc/self/environ: its whole environment). A theme holding
 # either registers nothing. A theme.properties is read as Java's Properties reads it, and what this
-# check can't read the same way is refused too (a NUL byte, which bash drops; a file it can't read).
+# check can't read the same way is refused too (a NUL byte, which bash drops; a file it can't read);
+# it holds printable ASCII only, tab, form feed and line ends aside (spec v2: Java reads it as UTF-8,
+# or ISO-8859-1 when it isn't, and a byte beyond ASCII is written \uXXXX).
 
 # $decoded: a logical line of a properties file, Java's escapes decoded (\uXXXX, \t \n \r \f, \<c> → <c>),
 # from one backslash to the next
@@ -197,7 +201,8 @@ properties_decode() { # <logical line>
 # characters; any other is written \uXXXX. Lines end at LF, CRLF or CR; Java's blanks are the space,
 # the tab and the form feed; a line whose trailing backslashes are odd in number continues on the next
 # one, its leading blanks dropped; a line starting with # or ! (after blanks) is a comment, never
-# continued.
+# continued, even after a continued line that holds nothing yet (Java's reader is still at the start
+# of a logical line there).
 properties_check() { # <file> <shown name>
   local LC_ALL=C
   local status=2 content="" line logical="" start=0 number=0 continuing=false backslashes
@@ -218,7 +223,7 @@ properties_check() { # <file> <shown name>
       return
     fi
     line=${line#"${line%%[!$' \t\f']*}"}
-    if ! $continuing; then
+    if ! $continuing || [ -z "$logical" ]; then
       [ -n "$line" ] || continue
       case $line in '#'* | '!'*) continue ;; esac
       start=$number
@@ -289,7 +294,8 @@ if [ -n "$themes" ]; then
       continue
     fi
     # one walk: each link or special file (the theme's directory itself, when it is one: find doesn't
-    # follow it), and each theme.properties, whatever its case
+    # follow it), and each theme.properties, whatever its case; a walk find can't finish (a directory
+    # it can't read, above) is refused, not taken as clean
     while IFS= read -r -d '' path; do
       if [ -L "$path" ] || [ ! -f "$path" ]; then
         theme_problems+=("--themes $themes: $name${path#"$dir"}: a symbolic link or a special file, whose target Keycloak would serve: refused")
@@ -297,6 +303,7 @@ if [ -n "$themes" ]; then
         properties_check "$path" "--themes $themes: $name${path#"$dir"}"
       fi
     done < <(find "$dir" \( ! -type f ! -type d -o -type f -iname theme.properties \) -print0)
+    wait "$!" || theme_problems+=("--themes $themes: $name: find couldn't walk all of it (above): refused")
   done
 fi
 if [ -n "$rabbitmq_user" ] && [ "$rabbitmq_user" != "$REG_RABBITMQ_USER" ]; then

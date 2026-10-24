@@ -72,10 +72,16 @@ for variable in C4_MASTER_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
     problems=1
   fi
 done
+# each value as .env holds it (write-env.sh writes $ as $$), searched from a file: no password on a
+# command line
+secret=$(umask 077 && mktemp)
+trap 'rm -f "$secret"' EXIT
 for key in KC_BOOTSTRAP_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
   value=$(grep "^$key=" "$1/.env" | tail -n 1 | cut -d= -f2- | sed "s/^'//; s/'\$//")
+  value=${value//\$\$/\$}
   [ -n "$value" ] || { echo "no $key in $1/.env"; problems=1; continue; }
-  if grep -qF -- "$value" <<< "$environment"; then
+  printf '%s\n' "$value" > "$secret"
+  if grep -qF -f "$secret" <<< "$environment"; then
     echo "c4-infra.keycloak's environment holds the value of .env's $key"
     problems=1
   fi

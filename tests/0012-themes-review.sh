@@ -115,4 +115,23 @@ refused_theme "v2: UTF-8's é in a value" verif-continued \
 refused_theme 'v2: a DEL in a comment' verif-env \
   'parent=keycloak\n# a comment \177\n' 'verif-env/login/theme.properties:2: a byte outside printable ASCII'
 
+# Review of PR #3 (D-4): after a continued line that holds nothing yet, Java still starts a logical
+# line, and a # or ! line is a comment (JDK 27's PropertyResourceBundle reads neither as a key);
+# another line is read from there
+passes_theme_check 'a continued empty line, then a # line: a comment' verif-case \
+  'parent=keycloak\n\134\n# see ${env.KC_DB_PASSWORD}\n'
+passes_theme_check 'blanks and a continued empty line, then a ! line: a comment' verif-crlf \
+  'parent=keycloak\n  \134\n! see ${env.KC_DB_PASSWORD}\n'
+refused_theme 'a continued empty line, then a ${' verif-env \
+  'parent=keycloak\n\134\nk=${env.KC_DB_PASSWORD}\n' 'verif-env/login/theme.properties:3: '
+
+# Review of PR #3 (D-1): a theme that find can't walk all of (a directory it can't read) is refused,
+# not taken as clean: here a find that prints what it finds, then fails as on such a directory
+mkdir -p "$work/find-fails"
+printf '#!/usr/bin/env bash\n"%s" "$@"\necho "find: a directory: Permission denied" >&2\nexit 1\n' "$(command -v find)" \
+  > "$work/find-fails/find"
+chmod +x "$work/find-fails/find"
+PATH="$work/find-fails:$PATH" refused_theme 'a walk find can'\''t finish' verif-continued \
+  'parent=keycloak\n' "verif-continued: find couldn't walk all of it"
+
 finish

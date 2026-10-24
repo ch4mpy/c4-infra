@@ -37,9 +37,10 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
-# Keycloak writes these into the master realm's JSON as they are (keycloak-import/master-realm.json):
-# a double quote, a backslash or a control character breaks the import, and Keycloak doesn't start
-# (intent 0009); INFRA_HOST is a host name there (the administrator's address, the sender's)
+# The master realm's import (keycloak-import, intent 0012) writes these into its JSON as they are
+# (keycloak-import/master-realm.json): a double quote, a backslash or a control character breaks it,
+# keycloak-import exits 1 and Keycloak doesn't start (intent 0009); INFRA_HOST is a host name there
+# (the administrator's address, the sender's)
 KC_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}
 for name in KC_ADMIN_USERNAME KC_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
   case "${!name}" in
