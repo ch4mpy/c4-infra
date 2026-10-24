@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# 0009: the master realm Keycloak creates in dev (AC-1, AC-3, AC-9, AC-10), in a throwaway Keycloak
-# of the stack's image (start-dev on a file database, no published port) given what the dev model
-# gives the stack's Keycloak for that import: its variables (never KC_DB_*), keycloak-import/, the
-# local CA and host.docker.internal. Its mails go to this workstation's Mailpit. Then demo/write-env.sh's
-# and up.sh's refusal of the values the import can't take (no Docker: fakes).
+# 0009: the master realm Keycloak creates in dev (AC-1, AC-3, AC-9, AC-10), in throwaway containers
+# of the stack's image on a file database (a throwaway volume, no published port): since 0012, as the
+# stack does it, the one-shot `import --override false` given what the dev model gives
+# keycloak-import (its variables, never KC_DB_*, and keycloak-import/), then a Keycloak given none of
+# them (the local CA and host.docker.internal only). Its mails go to this workstation's Mailpit.
+# Then demo/write-env.sh's and up.sh's refusal of the values the import can't take (no Docker: fakes).
 #
 #   bash tests/0009-master-realm.sh
 #
@@ -12,9 +13,11 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 source tests/lib/stubs.sh
+source tests/lib/keycloak.sh
 
 IMAGE=c4-infra/keycloak
 NAME=c4-infra.0009-master
+VOLUME=c4-infra-0009-master-data
 SERVER=http://localhost:8080/auth
 KCADM=/opt/keycloak/bin/kcadm.sh
 MAILPIT_API=http://127.0.0.1:8025/mailpit/api/v1
@@ -28,17 +31,21 @@ umask 077
 work=$(mktemp -d)
 # .env as it was, whatever happens to the check of up.sh below
 cp .env "$work/env.saved"
-trap 'docker rm -f "$NAME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
+trap 'docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1; docker volume rm -f "$VOLUME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
 
-# The dev model's Keycloak: the variables the import reads (never KC_DB_*), and the CA it trusts
+# The dev model: the variables the import reads (never KC_DB_*), keycloak-import's since 0012, and
+# the CA Keycloak trusts
 check "the dev model is read (compose.yml + compose.dev.yml, .env)" \
   docker compose -f compose.yml -f compose.dev.yml --env-file .env config --format json -o "$(host_path "$work/dev.json")"
-jq -r '.services.keycloak.environment | to_entries[]
-  | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*|KC_TRUSTSTORE_PATHS)$")) | "\(.key)=\(.value)"' \
+jq -r '.services["keycloak-import"].environment | to_entries[]
+  | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*)$")) | "\(.key)=\(.value)"' \
   < "$work/dev.json" > "$work/kc.env"
-check "its Keycloak gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort its start)" \
-  test "$(jq -r '.services.keycloak.environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
+TRUSTSTORE=$(jq -r '.services.keycloak.environment.KC_TRUSTSTORE_PATHS' < "$work/dev.json")
+check "keycloak-import gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort)" \
+  test "$(jq -r '.services["keycloak-import"].environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
   = "C4_MASTER_ADMIN_PASSWORD C4_MASTER_ADMIN_USERNAME C4_MASTER_RESET_PASSWORD_ALLOWED C4_MASTER_SMTP_HOST C4_MASTER_SMTP_STARTTLS"
+check "0012: the running Keycloak gets none of them, nor Mailpit's SMTP credentials" \
+  test "$(jq -r '.services.keycloak.environment | keys | map(select(test("^(C4_MASTER_|KC_BOOTSTRAP_ADMIN_|MAILPIT_SMTP_)"))) | join(" ")' < "$work/dev.json")" = ""
 value() { sed -n "s/^$1=//p" "$work/kc.env"; }
 check "and INFRA_HOST (host.docker.internal)" test "$(value INFRA_HOST)" = host.docker.internal
 # The throwaway's own host name (its administrator's address, the sender's): the test finds and
@@ -55,32 +62,36 @@ admin() {
 admin_in() {
   docker exec -i -e KC_CLI_PASSWORD "$NAME" "$KCADM" "$@" --no-config --server "$SERVER" --realm master --user "$ADMIN"
 }
-ready() {
-  local waited=0
-  until docker exec "$NAME" java -cp /opt/keycloak/healthcheck HealthCheck http://localhost:9000/auth/health/ready > /dev/null 2>&1; do
-    if [ -z "$(docker ps -q -f "name=^$NAME$")" ] || [ "$waited" -ge 240 ]; then
-      echo "not ready ($waited s); its log:"
-      docker logs --tail 5 "$NAME" 2>&1
-      return 1
-    fi
-    sleep 2
-    waited=$((waited + 2))
-  done
-}
+ready() { kc_throwaway_ready "$NAME"; }
 master_is() { # <jq filter> <expected>
   local value
   value=$(admin get realms/master 2> /dev/null | jq -c "$1") || { echo "get realms/master failed"; return 1; }
   [ "$value" = "$2" ] || { echo "$1 is $value, not $2"; return 1; }
 }
 
-docker rm -f "$NAME" > /dev/null 2>&1
-check "a throwaway Keycloak starts on an empty database, importing keycloak-import/" \
-  docker run -d --name "$NAME" --env-file "$(host_path "$work/kc.env")" --add-host host.docker.internal:host-gateway \
-  -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
-  -v "$(host_path "$PWD/certs/ca.crt"):/opt/keycloak/certs/ca.crt:ro" \
-  "$IMAGE" start-dev --db=dev-file --import-realm
+docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1
+docker volume rm -f "$VOLUME" > /dev/null 2>&1
+# The one-shot import, as compose.yml gives keycloak-import (on a file database: kc_import_args),
+# with its variables: <log>, its output there, shown when it fails
+import_args=$(kc_import_args)
+check "keycloak-import's command is read from the dev model (${import_args//$'\n'/ })" test -n "$import_args"
+mapfile -t IMPORT_ARGS <<< "$import_args"
+import_master() {
+  docker run --rm --name "$NAME-import" --env-file "$(host_path "$work/kc.env")" \
+    -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
+    "$IMAGE" "${IMPORT_ARGS[@]}" > "$work/$1" 2>&1 < /dev/null || { tail -n 5 "$work/$1"; return 1; }
+}
+# Keycloak on that database, with none of the import's variables
+serve() {
+  docker run -d --name "$NAME" -e "KC_TRUSTSTORE_PATHS=$TRUSTSTORE" \
+    --add-host host.docker.internal:host-gateway -v "$VOLUME:/opt/keycloak/data" \
+    -v "$(host_path "$PWD/certs/ca.crt"):/opt/keycloak/certs/ca.crt:ro" "$IMAGE" start-dev --db=dev-file > /dev/null
+}
+docker volume create "$VOLUME" > /dev/null
+check "the one-shot import runs on an empty database, from keycloak-import/" import_master import-1.log
+check "it imported the master realm" grep -qF "Realm 'master' imported" "$work/import-1.log"
+check "a throwaway Keycloak starts on that database, given none of the import's variables" serve
 check "it is ready" ready
-check "it imported the master realm" grep -qF "Realm 'master' imported" <(docker logs "$NAME" 2>&1)
 
 # AC-1
 check "AC-1: the administrator logs in with the admin CLI (verifyEmail on)" admin get realms/master --fields realm
@@ -147,9 +158,14 @@ check "AC-10: its admin CLI login is refused (Account is not fully set up)" refu
 
 # AC-3: a master realm that exists keeps its settings
 check "AC-3: the master realm's SMTP host changed by an administrator" admin update realms/master -s smtpServer.host=other.example
-docker restart "$NAME" > /dev/null
-check "AC-3: Keycloak restarted is ready" ready
-check "AC-3: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" <(docker logs "$NAME" 2>&1)
+# since 0012 the import runs at each start of the stack: run it again, Keycloak stopped first, its
+# file database closed (a killed Keycloak loses its last writes there)
+docker stop -t 60 "$NAME" > /dev/null 2>&1
+docker rm "$NAME" > /dev/null 2>&1
+check "AC-3: the one-shot import runs again" import_master import-2.log
+check "AC-3: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" "$work/import-2.log"
+check "AC-3: Keycloak started again" serve
+check "AC-3: it is ready" ready
 check "AC-3: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
 
 # REQ-6: the file holds names, not values

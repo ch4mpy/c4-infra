@@ -173,7 +173,14 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
   it keeps its caches: a deployment that changes a theme restarts Keycloak, once, for every
-  application of the host;
+  application of the host. A theme holds no `${` in a `theme.properties` (Keycloak resolves
+  `${env.NAME}` and Java's system properties there, and the theme's pages show the values: the
+  master realm's administrator's password, once) and no symbolic link nor special file, nor is it a
+  link itself (Keycloak serves a theme's files, a link's target included: `/proc/self/environ` is
+  its whole environment). A registration refuses either, naming the file and its line, as Java
+  reads it: `\u0024{`, `\$\{` or a `$` and a `{` joined by a continuation line are a `${` too
+  (intent 0012). A `theme.properties` holds printable ASCII only, the tab, CR, LF and form feed
+  besides (a character beyond is written `\uXXXX`): Keycloak then decodes it as the check reads it;
 - its [routes file](#routes-file), `reverse-proxy/<app>.routes`, the same in both environments:
   `register-app.sh` generates its site from it, on its registry entry's host name, to its processes
   on the host in dev and to its containers on the demo host;
@@ -206,7 +213,8 @@ restarts Keycloak once per registration, whatever the number of themes.
 A registration touches only what the application's registry entry assigns to it, in dev as on the
 demo host: each `--realm` file is named after a realm of the entry (`<realm>-realm.json`) and is
 imported under that name, whatever its own `realm` field says; each theme directory of `--themes`
-is named after a theme of the entry; `--rabbitmq-user` is the entry's; the routes file gives a site
+is named after a theme of the entry, and holds nothing that would show Keycloak's environment
+(above); `--rabbitmq-user` is the entry's; the routes file gives a site
 on the entry's host name, to the application's own upstreams. Anything else is refused, saying
 why, before anything changes.
 No password goes on a command line: Keycloak's admin CLI reads the registration account's secret
@@ -253,10 +261,11 @@ refuses that login ("Account is not fully set up") until then, and `registration
 
 ### The master realm
 
-Keycloak creates its master realm pre-configured, from
-[`keycloak-import/master-realm.json`](keycloak-import/master-realm.json) (`--import-realm`, intent
-0009), on an empty database only: a master realm that exists is never imported again, whatever
-the file says.
+The master realm is created pre-configured, from
+[`keycloak-import/master-realm.json`](keycloak-import/master-realm.json) (intent 0009), by the
+one-shot `keycloak-import` (`kc.sh import --override false`), which runs before Keycloak at each
+start of the stack and exits (intent 0012): on an empty database only, a master realm that exists
+being never imported again, whatever the file says.
 
 - Its SMTP server is Mailpit, with Mailpit's SMTP credentials of `.env`: in dev
   `host.docker.internal:1025` with STARTTLS (Mailpit requires it, and the local leaf holds that
@@ -265,9 +274,11 @@ the file says.
 - *Verify email* is on; *Forgot password* is on in dev only (on the demo host, its mails would land
   in Mailpit, where whoever reads them could reset an administrator's password).
 - Its administrator is `.env`'s `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD`, with
-  the verified address `admin@<INFRA_HOST>`. Keycloak's container gets them as
+  the verified address `admin@<INFRA_HOST>`. `keycloak-import` gets them as
   `C4_MASTER_ADMIN_USERNAME` / `C4_MASTER_ADMIN_PASSWORD`: under their `KC_BOOTSTRAP_*` names,
-  Keycloak would create its temporary administrator as well and abort its start. Neither they nor
+  Keycloak would create its temporary administrator as well and abort. The running Keycloak's
+  environment holds neither, nor Mailpit's SMTP credentials, only its database's password (a
+  database only Keycloak reaches): a theme could show any variable of it (intent 0012). Neither they nor
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
   import's JSON can't take (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev), and
   `INFRA_HOST` is a host name (`demo/write-env.sh` checks it).
@@ -280,8 +291,8 @@ database gives it the configuration, at the cost of everything Keycloak holds: t
 other administrators and the applications' realms. In dev:
 
 ```bash
-docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db
-bash up.sh                        # Keycloak creates the master realm, up.sh the registration account
+docker compose rm -sf keycloak keycloak-import keycloak-db && docker volume rm c4-infra_keycloak_db
+bash up.sh                        # keycloak-import creates the master realm, up.sh the registration account
 bash ../<app>/deploy-dev.sh       # each application imports its realm again
 ```
 
@@ -292,8 +303,9 @@ Keycloak (`register-app.sh` leaves a realm that exists as it is): type it in eac
 settings too; only a realm imported again (`--reset-realms`, which loses its users) takes the
 password its application renders. A new administrator's password in `.env` likewise: type it in
 the console too (realm master, *Users* → the administrator → *Credentials*). Since that password,
-`INFRA_HOST` and the administrator's are in Keycloak's environment, changing one of them recreates
-Keycloak's container at the next start.
+`INFRA_HOST` and the administrator's are in `keycloak-import`'s environment, changing one of them
+recreates its container at the next start, which leaves the master realm as it is (`INFRA_HOST`,
+Keycloak's host name too, recreates Keycloak's).
 
 ### Brute-force protection
 
