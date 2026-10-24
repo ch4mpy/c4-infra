@@ -3,10 +3,11 @@
 # containers of the stack's image (a file database on a throwaway volume, no published port, the
 # values in an --env-file of a temporary directory):
 #
-#   (a) `import --dir <keycloak-import> --override false` on an empty database creates the master
-#       realm from keycloak-import/master-realm.json, its ${VAR} taken from the environment: a
-#       Keycloak started on that database serves it, its administrator logs in with the admin CLI,
-#       and its SMTP host is the environment's;
+#   (a) the import compose.yml gives keycloak-import (`import --dir … --override false`, here on a
+#       file database: kc_import_args) creates, on an empty database, the master realm from
+#       keycloak-import/master-realm.json, its ${VAR} taken from the environment: a Keycloak started
+#       on that database serves it, its administrator logs in with the admin CLI, and its SMTP host
+#       is the environment's;
 #   (b) run again with another SMTP host, the import changes nothing: the master realm keeps the
 #       first one;
 #   (c) docker compose up -d --wait succeeds when a service depends on a one-shot that completed
@@ -19,6 +20,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/keycloak.sh
 
 IMAGE=c4-infra/keycloak
 PREFIX=c4-infra.0012-facts
@@ -34,18 +36,18 @@ host_path() {
 
 umask 077
 work=$(mktemp -d)
-cleanup() {
+remove_throwaways() {
   docker rm -f $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1
   docker volume rm -f "$VOLUME" > /dev/null 2>&1
+}
+cleanup() {
+  remove_throwaways
   [ ! -f "$work/compose.yml" ] || docker compose -p "$PROJECT" -f "$(host_path "$work/compose.yml")" down -v > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
-cleanup_before() {
-  docker rm -f $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1
-  docker volume rm -f "$VOLUME" > /dev/null 2>&1
-}
-cleanup_before
+remove_throwaways
+mapfile -t IMPORT_ARGS < <(kc_import_args)
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD
@@ -56,30 +58,22 @@ import_env() { # <file> <smtp host>
     INFRA_HOST=host.docker.internal MAILPIT_SMTP_USER=mailpit "MAILPIT_SMTP_PASSWORD=$(openssl rand -hex 8)" \
     "C4_MASTER_SMTP_HOST=$2" C4_MASTER_SMTP_STARTTLS=true C4_MASTER_RESET_PASSWORD_ALLOWED=true > "$1"
 }
-# <log> <env file>: the one-shot import on the throwaway volume, its output in $work/<log>
+# <log> <env file>: the one-shot import on the throwaway volume, its output in $work/<log>, shown
+# when it fails
 import_once() {
   docker run --rm --name "$PREFIX-import" --env-file "$(host_path "$2")" \
     -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
-    "$IMAGE" import --db=dev-file --dir /opt/keycloak/data/import --override false > "$work/$1" 2>&1 < /dev/null
+    "$IMAGE" "${IMPORT_ARGS[@]}" > "$work/$1" 2>&1 < /dev/null || { tail -n 10 "$work/$1"; return 1; }
 }
 # A Keycloak on that volume, with no import and none of the import's variables
 serve() {
   docker run -d --name "$PREFIX-serve" -v "$VOLUME:/opt/keycloak/data" "$IMAGE" start-dev --db=dev-file > /dev/null
 }
-ready() {
-  local waited=0
-  until docker exec "$PREFIX-serve" java -cp /opt/keycloak/healthcheck HealthCheck http://localhost:9000/auth/health/ready > /dev/null 2>&1; do
-    if [ -z "$(docker ps -q -f "name=^$PREFIX-serve$")" ] || [ "$waited" -ge 240 ]; then
-      echo "not ready ($waited s); its log:"
-      docker logs --tail 5 "$PREFIX-serve" 2>&1
-      return 1
-    fi
-    sleep 2
-    waited=$((waited + 2))
-  done
-}
+ready() { kc_throwaway_ready "$PREFIX-serve"; }
+# stopped, its file database closed (a killed Keycloak loses its last writes there)
 stop_serving() {
-  docker rm -f "$PREFIX-serve" > /dev/null 2>&1
+  docker stop -t 60 "$PREFIX-serve" > /dev/null 2>&1
+  docker rm "$PREFIX-serve" > /dev/null 2>&1
 }
 admin() { # <kcadm args…>: the import's administrator, with the admin CLI
   docker exec -e KC_CLI_PASSWORD "$PREFIX-serve" "$KCADM" "$@" \
@@ -100,9 +94,7 @@ says() { # <log> <text>
 # (a)
 docker volume create "$VOLUME" > /dev/null
 import_env "$work/first.env" first-smtp-host
-import_once first.log "$work/first.env"
-status=$?
-check "(a) the one-shot import on an empty database exits 0" exited_0 first.log
+check "(a) the one-shot import on an empty database exits 0 (${IMPORT_ARGS[*]})" import_once first.log "$work/first.env"
 check "(a) it imports the master realm" says first.log "Realm 'master' imported"
 serve
 check "(a) a Keycloak started on that database is ready" ready
@@ -112,9 +104,7 @@ stop_serving
 
 # (b)
 import_env "$work/second.env" second-smtp-host
-import_once second.log "$work/second.env"
-status=$?
-check "(b) the import run again exits 0" exited_0 second.log
+check "(b) the import run again exits 0" import_once second.log "$work/second.env"
 serve
 check "(b) Keycloak is ready again" ready
 check "(b) the master realm keeps the first SMTP host" smtp_host_is first-smtp-host

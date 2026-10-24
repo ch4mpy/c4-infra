@@ -32,8 +32,8 @@ images() { # <config file>: "<service> <image>", one per line, sorted
 same_images() {
   local dev demo
   # Keycloak's (and keycloak-import's) is KC_IMAGE in both: built here, pulled from GHCR on the demo host
-  dev=$(images "$work/dev.json" | grep -v -e '^keycloak ' -e '^keycloak-import ')
-  demo=$(images "$work/demo.json" | grep -v -e '^keycloak ' -e '^keycloak-import ')
+  dev=$(images "$work/dev.json" | grep -vE '^keycloak(-import)? ')
+  demo=$(images "$work/demo.json" | grep -vE '^keycloak(-import)? ')
   [ "$dev" = "$demo" ] && [ -n "$dev" ] || { echo "dev:"; echo "$dev"; echo "demo:"; echo "$demo"; return 1; }
 }
 
@@ -95,10 +95,8 @@ check "dev: Keycloak is built from keycloak/" test "$(jq -r '.services.keycloak.
 check "demo: Keycloak is KC_IMAGE, pulled" keycloak_image_is "$work/demo.json" ghcr.io/ch4mpy/c4-infra-keycloak:000000000000
 # 0012: the master realm's one-shot import runs the very Keycloak that serves the database
 import_image_is_keycloaks() { # <config file>
-  local import keycloak
-  import=$(jq -r '.services["keycloak-import"].image' "$1")
-  keycloak=$(jq -r '.services.keycloak.image' "$1")
-  [ "$import" = "$keycloak" ] || { echo "keycloak-import: $import, keycloak: $keycloak"; return 1; }
+  jq -e '.services["keycloak-import"].image == .services.keycloak.image' "$1" > /dev/null \
+    || { jq -r '"keycloak-import: \(.services["keycloak-import"].image), keycloak: \(.services.keycloak.image)"' "$1"; return 1; }
 }
 check "0012, dev: keycloak-import runs Keycloak's image" import_image_is_keycloaks "$work/dev.json"
 check "0012, dev: keycloak-import is built from keycloak/ too" \

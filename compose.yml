@@ -17,6 +17,14 @@ x-logging: &default-logging
     max-size: 10m
     max-file: '3'
 
+# What keycloak-import and Keycloak share (intent 0012): the same database, as the same user
+x-keycloak-environment: &keycloak-environment
+  KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+  KC_DB_USERNAME: keycloak
+  KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+  KC_LOG_LEVEL: ${KC_LOG_LEVEL}
+  TZ: ${TZ}
+
 networks:
   default:
     # a fixed name: the shared services' own network, which no application joins (intent 0007). Each
@@ -105,6 +113,7 @@ services:
       - --override
       - 'false'
     environment:
+      <<: *keycloak-environment
       # What the master realm's import reads (${NAME} in keycloak-import/master-realm.json). As
       # environment rather than arguments: a command line is readable in the host's process list.
       # The administrator isn't KC_BOOTSTRAP_ADMIN_*, which Keycloak would then create as well, and
@@ -114,11 +123,6 @@ services:
       INFRA_HOST: ${INFRA_HOST}
       MAILPIT_SMTP_USER: ${MAILPIT_SMTP_USER}
       MAILPIT_SMTP_PASSWORD: ${MAILPIT_SMTP_PASSWORD}
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
-      KC_LOG_LEVEL: ${KC_LOG_LEVEL}
-      TZ: ${TZ}
     volumes:
       # the directory, not its file: rsync replaces files with new inodes; outside keycloak/, whose
       # content tags the demo host's image (a change here restarts nothing)
@@ -144,15 +148,11 @@ services:
     environment:
       # No secret but its database's, which only Keycloak reaches (intent 0007): a theme's pages
       # could show any variable of this environment (intent 0012)
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      <<: *keycloak-environment
       # every realm's issuer is https://${INFRA_HOST}/auth/realms/<realm>
       KC_HOSTNAME: https://${INFRA_HOST}/auth/
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: xforwarded
-      KC_LOG_LEVEL: ${KC_LOG_LEVEL}
-      TZ: ${TZ}
     volumes:
       - ./keycloak/themes/:/opt/keycloak/themes/:ro
     healthcheck:

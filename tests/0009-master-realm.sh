@@ -13,6 +13,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 source tests/lib/stubs.sh
+source tests/lib/keycloak.sh
 
 IMAGE=c4-infra/keycloak
 NAME=c4-infra.0009-master
@@ -36,11 +37,10 @@ trap 'docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1; docker volume rm -f 
 # the CA Keycloak trusts
 check "the dev model is read (compose.yml + compose.dev.yml, .env)" \
   docker compose -f compose.yml -f compose.dev.yml --env-file .env config --format json -o "$(host_path "$work/dev.json")"
-jq -r '(.services["keycloak-import"].environment | to_entries[]
-    | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*)$"))),
-  (.services.keycloak.environment | to_entries[] | select(.key == "KC_TRUSTSTORE_PATHS"))
-  | "\(.key)=\(.value)"' \
+jq -r '.services["keycloak-import"].environment | to_entries[]
+  | select(.key | test("^(C4_MASTER_.*|INFRA_HOST|MAILPIT_SMTP_.*)$")) | "\(.key)=\(.value)"' \
   < "$work/dev.json" > "$work/kc.env"
+TRUSTSTORE=$(jq -r '.services.keycloak.environment.KC_TRUSTSTORE_PATHS' < "$work/dev.json")
 check "keycloak-import gets the import's variables, and no KC_BOOTSTRAP_ADMIN_* (Keycloak would abort)" \
   test "$(jq -r '.services["keycloak-import"].environment | keys | map(select(startswith("C4_MASTER_") or startswith("KC_BOOTSTRAP_ADMIN_"))) | sort | join(" ")' < "$work/dev.json")" \
   = "C4_MASTER_ADMIN_PASSWORD C4_MASTER_ADMIN_USERNAME C4_MASTER_RESET_PASSWORD_ALLOWED C4_MASTER_SMTP_HOST C4_MASTER_SMTP_STARTTLS"
@@ -62,18 +62,7 @@ admin() {
 admin_in() {
   docker exec -i -e KC_CLI_PASSWORD "$NAME" "$KCADM" "$@" --no-config --server "$SERVER" --realm master --user "$ADMIN"
 }
-ready() {
-  local waited=0
-  until docker exec "$NAME" java -cp /opt/keycloak/healthcheck HealthCheck http://localhost:9000/auth/health/ready > /dev/null 2>&1; do
-    if [ -z "$(docker ps -q -f "name=^$NAME$")" ] || [ "$waited" -ge 240 ]; then
-      echo "not ready ($waited s); its log:"
-      docker logs --tail 5 "$NAME" 2>&1
-      return 1
-    fi
-    sleep 2
-    waited=$((waited + 2))
-  done
-}
+ready() { kc_throwaway_ready "$NAME"; }
 master_is() { # <jq filter> <expected>
   local value
   value=$(admin get realms/master 2> /dev/null | jq -c "$1") || { echo "get realms/master failed"; return 1; }
@@ -82,18 +71,17 @@ master_is() { # <jq filter> <expected>
 
 docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1
 docker volume rm -f "$VOLUME" > /dev/null 2>&1
-# The one-shot import, as keycloak-import runs it, given its variables only (not Keycloak's CA,
-# which it doesn't mount): <log>, its output there, shown when it fails
+# The one-shot import, as compose.yml gives keycloak-import (on a file database: kc_import_args),
+# with its variables: <log>, its output there, shown when it fails
+mapfile -t IMPORT_ARGS < <(kc_import_args)
 import_master() {
-  grep -v '^KC_TRUSTSTORE_PATHS=' "$work/kc.env" > "$work/import.env"
-  docker run --rm --name "$NAME-import" --env-file "$(host_path "$work/import.env")" \
+  docker run --rm --name "$NAME-import" --env-file "$(host_path "$work/kc.env")" \
     -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
-    "$IMAGE" import --db=dev-file --dir /opt/keycloak/data/import --override false > "$work/$1" 2>&1 < /dev/null \
-    || { tail -n 5 "$work/$1"; return 1; }
+    "$IMAGE" "${IMPORT_ARGS[@]}" > "$work/$1" 2>&1 < /dev/null || { tail -n 5 "$work/$1"; return 1; }
 }
 # Keycloak on that database, with none of the import's variables
 serve() {
-  docker run -d --name "$NAME" -e "KC_TRUSTSTORE_PATHS=$(value KC_TRUSTSTORE_PATHS)" \
+  docker run -d --name "$NAME" -e "KC_TRUSTSTORE_PATHS=$TRUSTSTORE" \
     --add-host host.docker.internal:host-gateway -v "$VOLUME:/opt/keycloak/data" \
     -v "$(host_path "$PWD/certs/ca.crt"):/opt/keycloak/certs/ca.crt:ro" "$IMAGE" start-dev --db=dev-file > /dev/null
 }

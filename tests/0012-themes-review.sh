@@ -7,6 +7,8 @@
 #   - U+3000, U+2002 or U+1680 before # under LC_ALL=C.UTF-8, the locale demo/c4-app runs
 #     register-app.sh in (its [:blank:] holds them; Java's blanks are the space, the tab and the
 #     form feed only);
+#   - invalid UTF-8 (Keycloak then reads the file as ISO-8859-1) before a $ and a { joined by a
+#     continuation, which bash read its own way under C.UTF-8 (the security review, round 1);
 #
 # and their must-not-fire twins: blanks (space, tab) before # still make a comment; U+3000 inside a
 # value without ${ passes. A theme.properties the registering user can't read is refused too
@@ -83,6 +85,11 @@ refused_theme 'U+2002 before #' verif-escape \
   'parent=keycloak\n\342\200\202#k=${env.KC_DB_PASSWORD}\n' 'verif-escape/login/theme.properties:2: '
 refused_theme 'U+1680 before !' verif-continued \
   'parent=keycloak\n\341\232\200!k=${env.KC_DB_PASSWORD}\n' 'verif-continued/login/theme.properties:2: '
+# Security review (round 1): invalid UTF-8, which Keycloak reads as ISO-8859-1, before a $ and a { that
+# a continuation joins (found by comparing this check with Java's PropertyResourceBundle on 24,000
+# generated files; under C.UTF-8, bash read it otherwise and let it through)
+refused_theme 'invalid UTF-8 before a continued ${' verif-crlf \
+  '\303\\###0024=env.X}\\:$\\\n{\302\2400024\\t:\n' 'verif-crlf/login/theme.properties:1: '
 
 # The twins pass the theme check: the registration goes on (the fake docker is called)
 passes_theme_check() { # <label> <name> <content>

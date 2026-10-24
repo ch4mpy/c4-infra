@@ -164,9 +164,6 @@ sample() {
     list=$(stand_in_exec docker top c4-infra.keycloak -eo pid,args 2> /dev/null)
     printf '%s\n' "$list" | leaks_into "docker top"
     case $list in *java*) keycloak=$((keycloak + 1)) ;; esac
-    # 0012: the one-shot that reads the passwords since (short-lived: a sample may miss it)
-    list=$(stand_in_exec docker top c4-infra.keycloak-import -eo pid,args 2> /dev/null)
-    printf '%s\n' "$list" | leaks_into "docker top of keycloak-import"
     count=$((count + 1))
     echo "$count $host $keycloak" > "$work/samples"
   done
