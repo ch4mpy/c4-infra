@@ -46,7 +46,10 @@ volumes:
 
 services:
   reverse-proxy:
-    image: caddy:2.11.4-alpine
+    # Caddy with the rate-limit module (intent 0013): built from reverse-proxy/ in dev
+    # (compose.dev.yml: c4-infra/reverse-proxy); on the demo host, the image the workflow pushed to
+    # GHCR, tagged with the content of reverse-proxy/, as Keycloak's
+    image: ${PROXY_IMAGE}
     container_name: c4-infra.reverse-proxy
     restart: unless-stopped
     logging: *default-logging
@@ -98,7 +101,9 @@ services:
     # master realm from keycloak-import/master-realm.json on an empty database (intent 0009), and
     # leaves a realm that exists as it is (--override false), then exits. The master realm's secrets
     # reach this short-lived process only, never the running Keycloak's environment, which a theme
-    # could show on its pages (intent 0012).
+    # could show on its pages (intent 0012). A new Keycloak image's first one migrates the database
+    # (update: an import only validates it by default, and fails on an older one), Keycloak stopped
+    # before it (up.sh, demo/deploy.sh: intent 0013).
     image: ${KC_IMAGE}
     container_name: c4-infra.keycloak-import
     restart: 'no'
@@ -112,6 +117,7 @@ services:
       - /opt/keycloak/data/import
       - --override
       - 'false'
+      - --spi-connections-jpa--quarkus--migration-strategy=update
     environment:
       <<: *keycloak-environment
       # What the master realm's import reads (${NAME} in keycloak-import/master-realm.json). As

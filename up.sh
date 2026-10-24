@@ -85,7 +85,17 @@ fi
 # by all, whatever mode the checkout has (a umask 077 makes it 600 on Linux); no secret in it
 chmod -R a+rX keycloak-import
 
-docker compose up -d --build --wait
+# Built first (keycloak/, reverse-proxy/): a new Keycloak image stops Keycloak before compose runs
+# the new version's import, so that its database migration never runs under the old one (intent
+# 0013). No dump here: the demo host takes one (demo/deploy.sh).
+docker compose build --quiet
+keycloak_image=$(source ./registry.sh && stack_env_read value KC_IMAGE && printf '%s' "$value")
+running_image=$(docker inspect -f '{{.Image}}' c4-infra.keycloak 2> /dev/null | tr -d '\r' || true)
+if [ -n "$running_image" ] && [ "$running_image" != "$(docker image inspect -f '{{.Id}}' "$keycloak_image" | tr -d '\r')" ]; then
+  echo "Keycloak's image changed: Keycloak stopped before its import runs"
+  docker compose stop keycloak
+fi
+docker compose up -d --wait
 # compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy
 # after a pull): reload Caddy (graceful). A configuration it refuses leaves the previous one
 # serving: say so and stop, never restart it (it would start on the refused one, every site down)
