@@ -2,10 +2,10 @@
 
 - Intent: [0011](intent.md)
 - Status: approved
-- Version: 1
+- Version: 2
 - Risk: high (rule: what the demo host runs as root, `sudo c4-app`; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design and "Accounts", 0002 (accounts outside the `docker` group, one root-owned command), 0007 (one network per application, the allowlist), 0011's accepted risk (a leaked deployment key)
-- Approved: v1 2026-10-23, Jérôme Wacongne (PO, and tech lead for the high risk)
+- Approved: v1 2026-10-23, Jérôme Wacongne (PO, and tech lead for the high risk); v2 2026-10-23, Jérôme Wacongne (PO and tech lead)
 
 ## Summary
 
@@ -13,10 +13,10 @@
 
 ## Requirements
 
-- REQ-1 `sudo c4-app up`, `pull` and `down` refuse a compose model in which a service has `build`, naming the service and saying that the application's CI builds its images and pushes them to a registry; nothing is started or changed. (intent: outcome, criterion)
+- REQ-1 `sudo c4-app up` and `pull` refuse a compose model in which a service has `build`, naming the service and saying that the application's CI builds its images and pushes them to a registry; nothing is started or changed. `down` reads no compose file (REQ-4), so what the file says never stops it. (intent: outcome, criterion)
 - REQ-2 The checks that only building needed go, with their documentation: the `build` sub-key allowlist, the confinement of `context`, `dockerfile` and `additional_contexts`, the refusal of `image` beside `build`, and of a `-` in a building service's name. (intent: outcome)
 - REQ-3 The applications' fixtures, which pull their images, still deploy on the stand-in host. (intent: criterion)
-- REQ-4 `sudo c4-app down` stops and removes the application's containers and networks (its compose project) even when the `compose.yml` it holds now is refused, running nothing a model declares (hooks, providers); its volumes stay. (intent: defect 1)
+- REQ-4 `sudo c4-app down` stops and removes the application's containers and networks (its compose project) by the project's name, whatever the `compose.yml` it holds now (refused, or building): it reads no file and runs nothing a model declares (hooks, providers); its volumes stay. (intent: defect 1)
 - REQ-5 `up.sh` tells, when the proxy's reload fails, a configuration Caddy refuses (its message, then "fix caddy/…") from a proxy it can't reach (container not running, `docker exec` failing, admin endpoint not ready: "the reverse proxy isn't reachable, retry"). (intent: defect 2)
 - REQ-6 `networks.sh` writes `compose.apps.yml` the same way on every path, its early return included: under its lock, through a temporary file renamed into place. (intent: defect 3)
 - REQ-7 `registry.sh` tells an `.env` it can't read (an error naming the file) from a key that is missing. (intent: defect 4)
@@ -50,13 +50,13 @@ On `origin/main` (`0697208`):
 
 ### Behaviour per persona
 
-- Application: a workflow that pulls its images deploys as before; a compose file that builds is refused at `up`, `pull` or `down`, with the reason. Its account can always stop its project.
+- Application: a workflow that pulls its images deploys as before; a compose file that builds is refused at `up` or `pull`, with the reason. Its account can always stop its project: `down` reads no file.
 - Developer: `up.sh` works on a fresh clone, and says whether to fix the proxy's configuration or retry.
 - Demo operator: nothing new to do.
 
 ### API and contracts
 
-- `sudo c4-app up|pull|down`: a new refusal, `service <s>: build: the demo host runs the images the application's CI pushes to a registry (README.md, "Accounts")`; the build-specific refusals go.
+- `sudo c4-app up|pull`: a new refusal, `service <s>: build: the demo host runs the images the application's CI pushes to a registry (README.md, "Accounts")`; the build-specific refusals go.
 - `up.sh`, `routes.sh`, `registry.sh`, `networks.sh`: same options and exit codes; only the messages of REQ-5, REQ-7 and REQ-11 change.
 
 ### User interface
@@ -96,7 +96,7 @@ None.
 
 ## Acceptance criteria
 
-- AC-1 Given the stand-in host and an application whose compose file has a service with `build`, when it runs `sudo c4-app up` (and `pull`, `down`), then refused naming the service and the reason, nothing started. (REQ-1)
+- AC-1 Given the stand-in host and an application whose compose file has a service with `build`, when it runs `sudo c4-app up` (and `pull`), then refused naming the service and the reason, nothing started. (REQ-1)
 - AC-2 Given 0007's hostile build fixtures, when checked, then each is refused by REQ-1's message. (REQ-1, REQ-2)
 - AC-3 Given the applications' fixtures (Faito, Hurura'a), when deployed on the stand-in host, then they start as before. (REQ-3)
 - AC-4 Given a project started on the stand-in host, then its `compose.yml` replaced by a refused one, when its account runs `sudo c4-app down`, then its containers and networks are gone, its volumes kept, and no hook of the new file ran. (REQ-4)
@@ -117,3 +117,4 @@ None.
 
 - v1 — 2026-10-23 — first version
 - v1 — 2026-10-23 — approved: PA-1 A, PA-2 A (REQ-8 reworded as a guard, REQ-12 no longer covers it); tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
+- v2 — 2026-10-23 — found while planning: REQ-1 (up, pull and down refuse a building file) contradicted REQ-4 (down stops the project whatever the file). Decided A by the product owner and tech lead: `down` reads no file and stops the project by name. REQ-1, REQ-4, AC-1, Design (persona, contracts) rewritten; nothing else changes
