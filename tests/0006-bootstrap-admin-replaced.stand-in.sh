@@ -112,7 +112,7 @@ secret_into() { # <file>
 }
 
 check "the stand-in host starts" stand_in_up
-check "the Keycloak image built here is loaded into it" stand_in_load_image c4-infra/keycloak
+check "the Keycloak and proxy images built here are loaded into it" stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" "$APPS"
 check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$DIR"
 check "registration-account.sh is among them" stand_in_exec test -f "$DIR/registration-account.sh"

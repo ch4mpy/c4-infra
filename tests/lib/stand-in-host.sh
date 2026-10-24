@@ -123,9 +123,9 @@ stand_in_env() ( # <dir>
     # -e NAME, without a value: docker exec takes it from this environment, not the command line
     options+=(-e "$name")
   done
-  export INFRA_HOST=infra.c4-soft.com KC_IMAGE=c4-infra/keycloak
+  export INFRA_HOST=infra.c4-soft.com KC_IMAGE=c4-infra/keycloak PROXY_IMAGE=c4-infra/reverse-proxy
   stand_in_exec -i sh -c 'cat > /tmp/write-env.sh' < "$STAND_IN_ROOT/demo/write-env.sh" || exit 1
-  MSYS_NO_PATHCONV=1 docker exec "${options[@]}" -e INFRA_HOST -e KC_IMAGE "$STAND_IN_NAME" \
+  MSYS_NO_PATHCONV=1 docker exec "${options[@]}" -e INFRA_HOST -e KC_IMAGE -e PROXY_IMAGE "$STAND_IN_NAME" \
     bash /tmp/write-env.sh "$dir/.env" || exit 1
   stand_in_exec rm -f /tmp/write-env.sh
   stand_in_exec -i sh -c 'cat > "$1"' sh "$dir/compose.no-acme.yml" \
@@ -196,7 +196,7 @@ stand_in_accounts() { # <app>…
       done
     } > "$log" 2>&1 || { tail -n 20 "$log"; exit 1; }
     rm -f /tmp/vps-bootstrap.sh' sh "$STAND_IN_KEYS" "$log" "$@" || return 1
-  stand_in_load_image c4-infra/keycloak || return 1
+  stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy || return 1
   # the shared stack, as the workflow deploys it: its files and .env rsynced as c4-infra (rsync -a
   # keeps .env's mode 600), then demo/deploy.sh run there as c4-infra
   stand_in_exec rm -rf /root/c4-infra-upload
