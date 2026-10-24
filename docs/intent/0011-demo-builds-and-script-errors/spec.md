@@ -1,11 +1,11 @@
 # Spec: The demo host builds images the applications' CI already builds, and some stack scripts misreport errors
 
 - Intent: [0011](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rule: what the demo host runs as root, `sudo c4-app`; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design and "Accounts", 0002 (accounts outside the `docker` group, one root-owned command), 0007 (one network per application, the allowlist), 0011's accepted risk (a leaked deployment key)
-- Approved: —
+- Approved: v1 2026-10-23, Jérôme Wacongne (PO, and tech lead for the high risk)
 
 ## Summary
 
@@ -20,15 +20,15 @@
 - REQ-5 `up.sh` tells, when the proxy's reload fails, a configuration Caddy refuses (its message, then "fix caddy/…") from a proxy it can't reach (container not running, `docker exec` failing, admin endpoint not ready: "the reverse proxy isn't reachable, retry"). (intent: defect 2)
 - REQ-6 `networks.sh` writes `compose.apps.yml` the same way on every path, its early return included: under its lock, through a temporary file renamed into place. (intent: defect 3)
 - REQ-7 `registry.sh` tells an `.env` it can't read (an error naming the file) from a key that is missing. (intent: defect 4)
-- REQ-8 → PA-2: `registry.sh` and compose read an unquoted value with a comment the same way. (intent: defect 5)
+- REQ-8 (PA-2 A: no fix, `registry.sh` unchanged) `registry.sh` and compose read an unquoted value with a comment the same way, guarded by a test. (intent: defect 5)
 - REQ-9 `c4-app`'s check no longer reads `INFRA_HOST` to refuse a service named after it, which can't happen (a service name has no dot); the header and the README stop listing it. (intent: defect 6)
 - REQ-10 `up.sh` runs on a fresh clone, without `certs/tls.crt`, as on a workstation that has one. (intent: defect 7)
 - REQ-11 `routes.sh` refuses an option with an empty key (`=x`) as `<file>:<line>: …`, like any unknown option, and registers nothing. (intent: defect 8)
-- REQ-12 Each fix of REQ-4 to REQ-11 is proven by a test that fails on the code before it. (intent: outcome)
+- REQ-12 Each fix of REQ-4 to REQ-7 and REQ-9 to REQ-11 is proven by a test that fails on the code before it. (intent: outcome)
 
 ## Out of scope
 
-- Everything 0011's accepted risk lists (a hostile compose file from a leaked deployment key): `env_file`, `docker compose config`'s `HOME`, top-level networks and volumes beyond the allowlist, `secrets`/`configs` `file: .`, the staging namespace, aliases, another application's image through `image:` or `pull` → PA-1 for the last.
+- Everything 0011's accepted risk lists (a hostile compose file from a leaked deployment key): `env_file`, `docker compose config`'s `HOME`, top-level networks and volumes beyond the allowlist, `secrets`/`configs` `file: .`, the staging namespace, aliases, another application's image through `image:` or `pull` (PA-1 A: not restricted).
 - c4-infra's own images (Keycloak, and the proxy of 0013): its workflow builds them and the demo host pulls them already.
 - Building in dev: an application's dev compose files are its own.
 
@@ -73,7 +73,7 @@ None.
 | --- | --- |
 | 0002: one root-owned command, accounts outside the `docker` group | unchanged; `down` stays within the application's own compose project (REQ-4) |
 | 0007: the allowlist, nothing unchecked reaches root's compose | REQ-1 shrinks the allowlist; REQ-4's `down` hands compose no model |
-| 0011's accepted risk | unchanged → PA-1 |
+| 0011's accepted risk | unchanged (PA-1 A) |
 | README "Accounts" | REQ-2, REQ-9 update it |
 
 ## Points of attention
@@ -84,7 +84,7 @@ None.
 - Options: A no restriction: under the accepted risk it would only guard against a mistake / B a registry column with each application's image prefix (for example `ghcr.io/ch4mpy/turu-`), refused otherwise by `c4-app`; the registry's format changes (0004)
 - Recommendation: A: a mistaken image name fails visibly at deployment, and B changes the registry's format for every application.
 - Decides: product owner
-- Decision: to decide
+- Decision: A, no restriction (Jérôme Wacongne, product owner, 2026-10-23)
 
 ### PA-2 Defect 5 is not reproduced
 
@@ -92,7 +92,7 @@ None.
 - Options: A drop the fix; keep a test asserting that `dotenv_value` and compose read these cases alike, run on the stand-in host's compose too (the demo host's version) / B end a value at any whitespace before `#` anyway (then it would differ from compose)
 - Recommendation: A: the test guards against a compose change, without a change that would create the divergence.
 - Decides: product owner
-- Decision: to decide
+- Decision: A, no fix; a test asserts the equivalence (Jérôme Wacongne, product owner, 2026-10-23); departs knowingly from the intent's "eight defects fixed": defect 5 doesn't exist with the demo host's compose
 
 ## Acceptance criteria
 
@@ -111,8 +111,9 @@ None.
 
 ## Intent questions
 
-- Restrict each application's images to its own registry namespace, declared in `registry.txt`? → PA-1.
+- Restrict each application's images to its own registry namespace, declared in `registry.txt`? → PA-1, decided A: no restriction.
 
 ## Change log
 
 - v1 — 2026-10-23 — first version
+- v1 — 2026-10-23 — approved: PA-1 A, PA-2 A (REQ-8 reworded as a guard, REQ-12 no longer covers it); tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)

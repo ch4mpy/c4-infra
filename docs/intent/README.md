@@ -58,4 +58,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0008 | [c4-infra's certificate scripts spread the local CA's private key and its password](0008-certificate-scripts-spread-the-ca-key/intent.md) | bug | delivered | 2026-10-22 | 2026-10-22 |
 | 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0010 | [No realm of the shared Keycloak protects its accounts against password guessing](0010-no-brute-force-protection/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
-| 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | accepted | 2026-10-23 | 2026-10-23 |
+| 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | specified | 2026-10-23 | 2026-10-23 |
