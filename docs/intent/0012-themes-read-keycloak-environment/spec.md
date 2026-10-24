@@ -2,10 +2,10 @@
 
 - Intent: [0012](intent.md)
 - Status: approved
-- Version: 1
+- Version: 2
 - Risk: high (rules: secrets, the isolation between applications; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, `CLAUDE.md` (no password on a command line), 0003 (dev and the demo host alike), 0007 (one network per application), 0009 (the master realm's creation), 0011 (its accepted risk)
-- Approved: 2026-10-23, Jérôme Wacongne (product owner, and tech lead for the high risk)
+- Approved: v1 2026-10-23; v2 2026-10-24, Jérôme Wacongne (product owner, and tech lead for the high risk)
 
 ## Summary
 
@@ -19,6 +19,7 @@ Measured on Keycloak 26.7.4 and 26.8.1: a theme brings Keycloak's environment in
 - REQ-4 A theme with neither registers as before: its templates' `${…}` (`${msg(…)}`, `${url.resourcesPath}`) and its messages' `{0}` are untouched; Tickee's `tickee` theme registers unchanged. (intent: constraint)
 - REQ-5 The README states what a theme may not hold and why. (intent: outcome)
 - REQ-6 (PA-2 decided B) The running Keycloak's environment no longer holds the master realm administrator's password nor Mailpit's SMTP password, which only the master realm's creation needs (0009); the master realm is still created with 0009's settings. (intent: suggested solution)
+- REQ-7 (v2) A registration refuses a theme whose `theme.properties` holds a byte outside printable ASCII, the tab, CR, LF and the form feed, wherever it is (a character beyond ASCII is written `\uXXXX`): in ASCII, Keycloak's decodings (UTF-8, or ISO-8859-1 when the file isn't UTF-8) and the check read the same characters. (the security review; the engineer's decision, 2026-10-24)
 
 ## Out of scope
 
@@ -97,13 +98,14 @@ None.
 ## Acceptance criteria
 
 - AC-1 Given a theme whose `login/theme.properties` has `kcHtmlClass=${env.KC_DB_PASSWORD}`, when an application registers with it in dev, then the registration fails naming the file and line, and its realm isn't imported, no theme is installed, its site and RabbitMQ user are unchanged. (REQ-1, REQ-3)
-- AC-2 Given the same value written `${env.KC_DB_PASSWORD}`, or split by a continuation line between `$` and `{`, or a system property (`${java.version}`) in an `email/theme.properties`, when registered, then refused likewise. (REQ-1)
+- AC-2 Given the same value written `\u0024{env.KC_DB_PASSWORD}`, or split by a continuation line between `$` and `{`, or a system property (`${java.version}`) in an `email/theme.properties`, when registered, then refused likewise. (REQ-1)
 - AC-3 Given a theme holding a symbolic link in its resources, when registered in dev, then refused naming the link, nothing registered. (REQ-2, REQ-3)
 - AC-4 Given the stand-in demo host, when an application runs `sudo c4-app register --themes` with AC-1's theme, then refused, nothing registered and Keycloak not restarted; with a link, refused by `c4-app`. (REQ-1, REQ-2, REQ-3)
 - AC-5 Given Tickee's `tickee` theme, and a theme whose templates use `${msg(…)}` and whose messages use `{0}`, when registered, then installed as before. (REQ-4)
 - AC-6 Given the test of AC-1, run on the code before this change, then it fails (the theme is installed): the test guards the fix. (REQ-1)
 - AC-7 Given a stack started on an empty database, in dev and on the stand-in demo host, then the master realm has 0009's settings (0009's tests pass), and the running Keycloak's environment (`/proc/1/environ` in `c4-infra.keycloak`) holds neither the administrator's password nor Mailpit's. (REQ-6)
 - AC-8 The README's themes section states REQ-1 and REQ-2's rules and their reason. (REQ-5)
+- AC-9 (v2) Given a `theme.properties` holding UTF-8's é, U+3000 inside a value, or a DEL in a comment, when registered, then refused naming the file and the line; the same character written `\u00e9` registers. (REQ-7)
 
 ## Intent questions
 
@@ -115,3 +117,4 @@ None.
 
 - v1 — 2026-10-23 — first version
 - v1 — 2026-10-23 — PA-1 and PA-2 decided (A, B); approved
+- v2 — 2026-10-24 — REQ-7, AC-9: a `theme.properties` holds printable ASCII only (the security review found a file that bash, under C.UTF-8, and Java decoded differently); the engineer's decision (Jérôme Wacongne, product owner and tech lead, 2026-10-24); approved
