@@ -243,6 +243,24 @@ properties_check() { # <file> <shown name>
 
 theme_problems=()
 not_assigned=()
+# What a realm export may hold (intent 0013): a client profile whose client-id-metadata-document
+# executor allows the http scheme, or permits any domain, would let Keycloak fetch any URL an
+# unauthenticated client names, on every application's network it is attached to (intent 0007).
+# Keycloak reads the http setting as Jackson does ("True", "TRUE", " true" and 1 are true): only
+# false is accepted. It permits a host equal to a domain, or ending with what follows "*." (Keycloak
+# 26.8.1, tests/0013-keycloak-facts.sh): "*." matches every host written with a final dot; "*" is
+# refused as well (PA-7). It refuses a domain list that isn't a list.
+realm_problems=()
+cimd_problems() { # <realm file>: one line per problem, "<profile>: …" (on its stdin: jq may be a Windows
+  # program, which MSYS_NO_PATHCONV leaves with a path of Git Bash)
+  jq -r '.clientProfiles.profiles[]? | .name as $profile | .executors[]?
+    | select(.executor == "client-id-metadata-document") | (.configuration // {}) as $c
+    | (($c["cimd-allow-http-scheme"] // false) as $http
+        | if $http == false or $http == "false" then empty
+          else "client profile \($profile): its client-id-metadata-document executor allows the http scheme (cimd-allow-http-scheme: \($http | tojson); false only)" end),
+      ($c["cimd-allow-permitted-domains"] // [] | arrays | .[] | select(. == "*" or . == "*.")
+        | "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\"")' < "$1"
+}
 for file in "${realms[@]}"; do
   name=$(basename "$file")
   realm=${name%-realm.json}
@@ -250,6 +268,15 @@ for file in "${realms[@]}"; do
     not_assigned+=("--realm $file: a realm export is named <realm>-realm.json, after the realm it holds")
   elif ! in_entry "$realm" "$REG_REALMS"; then
     not_assigned+=("--realm $file: realm $realm is not $app's (its registry entry's realms: ${REG_REALMS:-none})")
+  elif ! command -v jq > /dev/null; then
+    echo "register-app.sh needs jq to read a realm export (README.md, \"Development\"); nothing was registered." >&2
+    exit 1
+  elif ! found=$(cimd_problems "$file" 2> /dev/null); then
+    realm_problems+=("--realm $file: not JSON that jq can read: refused")
+  else
+    while IFS= read -r problem; do
+      [ -z "$problem" ] || realm_problems+=("--realm $file: $problem: Keycloak would fetch any URL, other applications' containers included: refused")
+    done <<< "$found"
   fi
 done
 if [ -n "$themes" ]; then
@@ -286,22 +313,15 @@ if [ ${#theme_problems[@]} -gt 0 ]; then
   echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"What an application provides\"); nothing was registered." >&2
   exit 1
 fi
+if [ ${#realm_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${realm_problems[@]}" >&2
+  echo "A realm's client policies fetch client metadata documents over https from named domains only (README.md, \"What an application provides\"); nothing was registered." >&2
+  exit 1
+fi
 
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
 if [ -n "$proxy" ]; then
-  # Transition, until Faito registers with its routes file (Faito 0021): an nginx server block, which
-  # Caddy doesn't read, is replaced by c4-infra's example routes file of that application. To remove
-  # once Faito 0021 is delivered (a follow-up change of c4-infra).
-  if [[ $proxy == *.conf ]]; then
-    if [ -f "$INFRA_DIR/examples/routes/$app.routes" ]; then
-      echo "Warning: $proxy is an nginx server block, which the reverse proxy (Caddy) doesn't read: $app is registered with c4-infra's examples/routes/$app.routes instead. Register with a routes file (c4-infra's README.md, \"Routes file\")." >&2
-      proxy=$INFRA_DIR/examples/routes/$app.routes
-    else
-      echo "$proxy is an nginx server block: the reverse proxy is Caddy, which takes a routes file (c4-infra's README.md, \"Routes file\"); nothing was registered." >&2
-      exit 1
-    fi
-  fi
   if ! site=$(routes_generate "$proxy" "$INFRA_ENV"); then
     echo "The routes file $proxy is refused (above); nothing was registered." >&2
     exit 1
