@@ -153,6 +153,91 @@ fi
 in_entry() { # <value> <comma-separated list of the entry>
   [[ ",$2," == *",$1,"* ]]
 }
+
+# What a theme may hold, checked before anything changes too (intent 0012). Keycloak resolves ${…}
+# in a theme.properties from its own environment and Java's system properties, and the theme's pages
+# show the values (the master realm's administrator's password among them); it serves a theme's
+# files, a link's target included (/proc/self/environ: its whole environment). A theme holding
+# either registers nothing. A theme.properties is read as Java's Properties reads it, and what this
+# check can't read the same way is refused too (a NUL byte, which bash drops; a file it can't read).
+
+# $decoded: a logical line of a properties file, Java's escapes decoded (\uXXXX, \t \n \r \f, \<c> → <c>)
+properties_decode() { # <logical line>
+  local in=$1 c
+  decoded=""
+  while [ -n "$in" ]; do
+    c=${in:0:1}
+    if [ "$c" = '\' ] && [ ${#in} -gt 1 ]; then
+      c=${in:1:1}
+      case $c in
+        u)
+          if [[ ${in:2:4} =~ ^[0-9A-Fa-f]{4}$ ]]; then
+            printf -v c "\\u${in:2:4}"
+            decoded+=$c
+            in=${in:6}
+            continue
+          fi ;;
+        t) c=$'\t' ;;
+        n) c=$'\n' ;;
+        r) c=$'\r' ;;
+        f) c=$'\f' ;;
+      esac
+      decoded+=$c
+      in=${in:2}
+    else
+      decoded+=$c
+      in=${in:1}
+    fi
+  done
+}
+
+# What is wrong with a theme.properties, one line each, "<shown name>[:<line>]: …": each logical line
+# holding ${ once read as Java reads it. Lines end at LF, CRLF or CR; Java's blanks are the space, the
+# tab and the form feed, whatever the locale (a Unicode space before # makes no comment); a line whose
+# trailing backslashes are odd in number continues on the next one, its leading blanks dropped; a
+# line starting with # or ! (after blanks) is a comment, never continued.
+properties_placeholders() { # <file> <shown name>
+  local size content line logical="" start=0 number=0 continuing=false backslashes
+  if ! size=$(wc -c < "$1" 2> /dev/null); then
+    echo "$2: can't be read: refused"
+    return
+  fi
+  if [ "$(tr -d '\000' < "$1" | wc -c)" -ne "$size" ]; then
+    echo "$2: a NUL byte, which Java reads and this check can't: refused"
+    return
+  fi
+  if ! content=$(sed -e 's/\r$//' -e 's/\r/\n/g' "$1"); then
+    echo "$2: can't be read: refused"
+    return
+  fi
+  # the empty line after the last one ends a continuation there, as the end of the file does for Java
+  while IFS= read -r line; do
+    number=$((number + 1))
+    line=${line#"${line%%[!$' \t\f']*}"}
+    if ! $continuing; then
+      [ -n "$line" ] || continue
+      case $line in '#'* | '!'*) continue ;; esac
+      start=$number
+      logical=""
+    fi
+    backslashes=${line##*[!\\]}
+    if [ $(( ${#backslashes} % 2 )) -eq 1 ]; then
+      logical+=${line%\\}
+      continuing=true
+      continue
+    fi
+    logical+=$line
+    continuing=false
+    # only a $ or an escape makes a ${
+    [[ $logical == *[\$\\]* ]] || continue
+    properties_decode "$logical"
+    if [[ $decoded == *'${'* ]]; then
+      echo "$2:$start: '\${' is resolved by Keycloak from its environment and Java's system properties, and the theme's pages show the values: refused"
+    fi
+  done <<< "$content"$'\n'
+}
+
+theme_problems=()
 not_assigned=()
 for file in "${realms[@]}"; do
   name=$(basename "$file")
@@ -166,9 +251,22 @@ done
 if [ -n "$themes" ]; then
   for dir in "$themes"/*/; do
     [ -d "$dir" ] || continue
+    dir=${dir%/}
     name=$(basename "$dir")
-    in_entry "$name" "$REG_THEMES" \
-      || not_assigned+=("--themes $themes: theme $name is not $app's (its registry entry's themes: ${REG_THEMES:-none})")
+    if ! in_entry "$name" "$REG_THEMES"; then
+      not_assigned+=("--themes $themes: theme $name is not $app's (its registry entry's themes: ${REG_THEMES:-none})")
+    elif [ -L "$dir" ]; then
+      theme_problems+=("--themes $themes: $name: the theme's directory is a symbolic link: refused")
+    else
+      while IFS= read -r -d '' path; do
+        theme_problems+=("--themes $themes: $name/${path#"$dir/"}: a symbolic link or a special file, whose target Keycloak would serve: refused")
+      done < <(find "$dir" -mindepth 1 ! -type f ! -type d -print0)
+      while IFS= read -r -d '' path; do
+        while IFS= read -r problem; do
+          theme_problems+=("--themes $themes: $problem")
+        done < <(properties_placeholders "$path" "$name/${path#"$dir/"}")
+      done < <(find "$dir" -type f -iname theme.properties -print0)
+    fi
   done
 fi
 if [ -n "$rabbitmq_user" ] && [ "$rabbitmq_user" != "$REG_RABBITMQ_USER" ]; then
@@ -180,95 +278,6 @@ if [ ${#not_assigned[@]} -gt 0 ]; then
   exit 1
 fi
 
-# What a theme may hold, checked before anything changes too (intent 0012). Keycloak resolves ${…}
-# in a theme.properties from its own environment and Java's system properties, and the theme's pages
-# show the values (the master realm's administrator's password among them); it serves a theme's
-# files, a link's target included (/proc/self/environ: its whole environment). A theme holding
-# either registers nothing.
-
-# A logical line of a properties file with Java's escapes decoded: \uXXXX, \t \n \r \f, and \<c> → <c>
-properties_decode() { # <logical line>
-  local in=$1 out="" c
-  while [ -n "$in" ]; do
-    c=${in:0:1}
-    if [ "$c" = '\' ] && [ ${#in} -gt 1 ]; then
-      c=${in:1:1}
-      case $c in
-        u)
-          if [[ ${in:2:4} =~ ^[0-9A-Fa-f]{4}$ ]]; then
-            printf -v c "\\u${in:2:4}"
-            out+=$c
-            in=${in:6}
-            continue
-          fi ;;
-        t) c=$'\t' ;;
-        n) c=$'\n' ;;
-        r) c=$'\r' ;;
-        f) c=$'\f' ;;
-      esac
-      out+=$c
-      in=${in:2}
-    else
-      out+=$c
-      in=${in:1}
-    fi
-  done
-  printf '%s' "$out"
-}
-
-# Each logical line of a properties file that holds ${ once read as Java's Properties reads it, as
-# "<shown name>:<line>: …": lines end at LF, CRLF or CR; a line whose trailing backslashes are odd in
-# number continues on the next one, whose leading blanks are dropped; a line starting with # or !
-# (after blanks) is a comment, never continued
-properties_placeholders() { # <file> <shown name>
-  local line logical="" start=0 number=0 continuing=false backslashes
-  while IFS= read -r line || [ -n "$line" ]; do
-    number=$((number + 1))
-    line=${line#"${line%%[![:blank:]$'\f']*}"}
-    if ! $continuing; then
-      [ -n "$line" ] || continue
-      case $line in '#'* | '!'*) continue ;; esac
-      start=$number
-      logical=""
-    fi
-    backslashes=${line##*[!\\]}
-    [ "$backslashes" != "$line" ] || backslashes=$line
-    if [ $(( ${#backslashes} % 2 )) -eq 1 ]; then
-      logical+=${line%\\}
-      continuing=true
-      continue
-    fi
-    logical+=$line
-    continuing=false
-    if [[ $(properties_decode "$logical") == *'${'* ]]; then
-      echo "$2:$start: '\${' is resolved by Keycloak from its environment and Java's system properties, and the theme's pages show the values: refused"
-    fi
-  done < <(sed -e 's/\r$//' -e 's/\r/\n/g' "$1")
-  if $continuing && [[ $(properties_decode "$logical") == *'${'* ]]; then
-    echo "$2:$start: '\${' is resolved by Keycloak from its environment and Java's system properties, and the theme's pages show the values: refused"
-  fi
-}
-
-theme_problems=()
-if [ -n "$themes" ]; then
-  for dir in "$themes"/*/; do
-    [ -d "$dir" ] || continue
-    dir=${dir%/}
-    name=$(basename "$dir")
-    if [ -L "$dir" ]; then
-      theme_problems+=("--themes $themes: $name: the theme's directory is a symbolic link: refused")
-      continue
-    fi
-    while IFS= read -r -d '' path; do
-      theme_problems+=("--themes $themes: $name/${path#"$dir/"}: a symbolic link or a special file, whose target Keycloak would serve: refused")
-    done < <(find "$dir" -mindepth 1 ! -type f ! -type d -print0)
-    while IFS= read -r -d '' path; do
-      while IFS= read -r problem; do
-        theme_problems+=("--themes $themes: $problem")
-      done < <(properties_placeholders "$path" "$name/${path#"$dir/"}")
-    done < <(find "$dir" -type f -iname theme.properties -print0)
-  done
-fi
 if [ ${#theme_problems[@]} -gt 0 ]; then
   printf '%s\n' "${theme_problems[@]}" >&2
   echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"What an application provides\"); nothing was registered." >&2

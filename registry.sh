@@ -43,7 +43,7 @@ REGISTRY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REGISTRY_FILE=${REGISTRY_FILE:-$REGISTRY_DIR/registry.txt}
 
 # The shared stack's own names (its services, and the stack itself): an application can't take one
-REGISTRY_RESERVED=(c4-infra keycloak keycloak-db mailpit rabbitmq grafana-lgtm reverse-proxy)
+REGISTRY_RESERVED=(c4-infra keycloak keycloak-db keycloak-import mailpit rabbitmq grafana-lgtm reverse-proxy)
 REGISTRY_MAX=38
 # The themes built into Keycloak 26 (its theme jars' META-INF/keycloak-themes.json): a registered
 # theme directory of that name would replace it for every realm, master included. The dotted ones

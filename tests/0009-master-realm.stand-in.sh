@@ -164,6 +164,9 @@ sample() {
     list=$(stand_in_exec docker top c4-infra.keycloak -eo pid,args 2> /dev/null)
     printf '%s\n' "$list" | leaks_into "docker top"
     case $list in *java*) keycloak=$((keycloak + 1)) ;; esac
+    # 0012: the one-shot that reads the passwords since (short-lived: a sample may miss it)
+    list=$(stand_in_exec docker top c4-infra.keycloak-import -eo pid,args 2> /dev/null)
+    printf '%s\n' "$list" | leaks_into "docker top of keycloak-import"
     count=$((count + 1))
     echo "$count $host $keycloak" > "$work/samples"
   done
@@ -188,6 +191,8 @@ check "AC-7: docker top saw Keycloak's JVM ($keycloak_seen of $samples samples)"
 check "AC-7: neither password in ps -eo args nor docker top" no_leak
 check "AC-7: nor in deploy.sh's output" test -z "$(grep -F -f "$work/secrets" "$work/deploy-1.log")"
 check "AC-7: nor in Keycloak's log" test -z "$(stand_in_exec docker logs c4-infra.keycloak 2>&1 | grep -F -f "$work/secrets")"
+check "AC-7: nor in keycloak-import's log (0012: it reads them)" \
+  test -z "$(stand_in_exec docker logs c4-infra.keycloak-import 2>&1 | grep -F -f "$work/secrets")"
 
 # AC-2, AC-9
 check "AC-2: SMTP mailpit:1025 without TLS, Mailpit's user" master_is \
