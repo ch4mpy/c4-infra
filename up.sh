@@ -37,8 +37,9 @@ fi
 bash ./env.sh
 
 # The master realm's import (keycloak-import/, intent 0009) takes these values of .env into its JSON
-# as they are: a double quote, a backslash or a control character makes Keycloak fail its first
-# start on an empty database (demo/write-env.sh refuses them on the demo host)
+# as they are: a double quote, a backslash or a control character makes that import fail at every
+# start of the stack, whatever the database holds (keycloak-import reads the whole file first, then
+# exits 1, intent 0012), and Keycloak doesn't start (demo/write-env.sh refuses them on the demo host)
 (
   source ./registry.sh
   for key in KC_BOOTSTRAP_ADMIN_USERNAME KC_BOOTSTRAP_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
