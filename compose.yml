@@ -32,7 +32,8 @@ networks:
     # services but keycloak-db to it (networks.sh), compose.apps.yml (COMPOSE_FILE) keeps them there.
     name: c4-infra
   keycloak-db:
-    # Keycloak's database, which only Keycloak reaches (intent 0007, REQ-3); no way out of it
+    # Keycloak's database, which only Keycloak and its one-shot import reach (intents 0007, REQ-3, and
+    # 0012); no way out of it
     name: c4-infra.keycloak-db
     internal: true
 
@@ -146,8 +147,8 @@ services:
       - start
       - --optimized
     environment:
-      # No secret but its database's, which only Keycloak reaches (intent 0007): a theme's pages
-      # could show any variable of this environment (intent 0012)
+      # No secret but its database's, which only Keycloak and keycloak-import reach (intent 0007): a
+      # theme's pages could show any variable of this environment (intent 0012)
       <<: *keycloak-environment
       # every realm's issuer is https://${INFRA_HOST}/auth/realms/<realm>
       KC_HOSTNAME: https://${INFRA_HOST}/auth/

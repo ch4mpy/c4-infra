@@ -278,7 +278,8 @@ being never imported again, whatever the file says.
   `C4_MASTER_ADMIN_USERNAME` / `C4_MASTER_ADMIN_PASSWORD`: under their `KC_BOOTSTRAP_*` names,
   Keycloak would create its temporary administrator as well and abort. The running Keycloak's
   environment holds neither, nor Mailpit's SMTP credentials, only its database's password (a
-  database only Keycloak reaches): a theme could show any variable of it (intent 0012). Neither they nor
+  database only Keycloak and keycloak-import reach): a theme could show any variable of it (intent
+  0012). Neither they nor
   Mailpit's SMTP password may hold a double quote, a backslash or a control character, which the
   import's JSON can't take (`demo/write-env.sh` refuses them on the demo host, `up.sh` in dev), and
   `INFRA_HOST` is a host name (`demo/write-env.sh` checks it).
