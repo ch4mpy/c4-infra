@@ -86,9 +86,11 @@ kc_wait_healthy() {
 }
 
 kc_import_args() {
-  (cd "$KC_INFRA_DIR" && docker compose config --format json) \
-    | jq -r '.services["keycloak-import"].command[]' | tr -d '\r' | grep -vx -- --optimized
-  echo --db=dev-file
+  local command
+  command=$( (cd "$KC_INFRA_DIR" && docker compose config --format json) \
+    | jq -r '.services["keycloak-import"].command // [] | .[]' | tr -d '\r' | grep -vx -- --optimized) || true
+  [ -n "$command" ] || { echo "kc_import_args: no keycloak-import command in the dev model" >&2; return 1; }
+  printf '%s\n' "$command" --db=dev-file
 }
 
 kc_throwaway_ready() {

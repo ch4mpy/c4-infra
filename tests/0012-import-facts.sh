@@ -47,7 +47,9 @@ cleanup() {
 }
 trap cleanup EXIT
 remove_throwaways
-mapfile -t IMPORT_ARGS < <(kc_import_args)
+import_args=$(kc_import_args)
+check "keycloak-import's command is read from the dev model (${import_args//$'\n'/ })" test -n "$import_args"
+mapfile -t IMPORT_ARGS <<< "$import_args"
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD

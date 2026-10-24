@@ -202,7 +202,7 @@ properties_check() { # <file> <shown name>
   local LC_ALL=C
   local status=2 content="" line logical="" start=0 number=0 continuing=false backslashes
   # read stops at a NUL byte (status 0), which Java reads and bash can't; at the end otherwise (1)
-  { IFS= read -r -d '' content; status=$?; } < "$1" 2> /dev/null || true
+  { IFS= read -r -d '' content; status=$?; } 2> /dev/null < "$1" || true
   case $status in
     0) theme_problems+=("$2: a NUL byte, which Java reads and this check can't: refused"); return ;;
     1) ;;

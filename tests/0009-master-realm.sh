@@ -73,7 +73,9 @@ docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1
 docker volume rm -f "$VOLUME" > /dev/null 2>&1
 # The one-shot import, as compose.yml gives keycloak-import (on a file database: kc_import_args),
 # with its variables: <log>, its output there, shown when it fails
-mapfile -t IMPORT_ARGS < <(kc_import_args)
+import_args=$(kc_import_args)
+check "keycloak-import's command is read from the dev model (${import_args//$'\n'/ })" test -n "$import_args"
+mapfile -t IMPORT_ARGS <<< "$import_args"
 import_master() {
   docker run --rm --name "$NAME-import" --env-file "$(host_path "$work/kc.env")" \
     -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
