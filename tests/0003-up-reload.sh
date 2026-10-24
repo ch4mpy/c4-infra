@@ -36,5 +36,7 @@ check "a refused reload: up.sh exits 1 (exit $status)" test "$status" -eq 1
 check "it prints Caddy's error" grep -qF 'stub-refused-directive' "$work/err"
 check "it says the previous configuration keeps serving" grep -qF 'keeps serving its previous configuration' "$work/err"
 check "it doesn't restart Caddy" eval '! grep -qF "docker restart" "$work/docker.log"'
-check "nothing runs after it (no registration account)" eval '! grep -qF c4-infra.keycloak "$work/docker.log"'
+# the registration account's admin CLI runs in c4-infra.keycloak (docker exec); up.sh's own look at
+# Keycloak's image (docker inspect, intent 0013) comes before the reload
+check "nothing runs after it (no registration account)" eval '! grep -E "^docker exec .*c4-infra\.keycloak" "$work/docker.log"'
 finish

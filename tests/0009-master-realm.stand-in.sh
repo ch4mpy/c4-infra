@@ -268,7 +268,7 @@ rewrite_env() {
     set -e
     cd "$1"
     value() { local line; line=$(grep -m1 "^$1=" .env); line=${line#*=}; printf "%s" "${line//\$\$/\$}"; }
-    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
+    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) PROXY_IMAGE=$(value PROXY_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
     export KC_ADMIN_PASSWORD=$(value KC_BOOTSTRAP_ADMIN_PASSWORD) KC_DB_PASSWORD=$(value KC_DB_PASSWORD)
     export KC_REGISTRATION_CLIENT_SECRET=$(value KC_REGISTRATION_CLIENT_SECRET)
     export RABBITMQ_ADMIN_PASSWORD=$(value RABBITMQ_ADMIN_PASSWORD) MAILPIT_SMTP_PASSWORD=$NEXT_SMTP_PASSWORD
