@@ -4,7 +4,8 @@
 # registered, verif (i18n, block 47xxx) and verif-ui (no i18n, block 46xxx), in front of echo
 # stand-ins on the workstation's loopback, which answer their name, the Host they were sent and the
 # URI: the gateway over HTTPS with the shared leaf (checked against the local CA), the front ends
-# over HTTP. Then Hurura'a and Turu register from their example routes files (AC-9, dev).
+# over HTTP. Then Hurura'a and Turu register from their example routes files (AC-9, dev), Turu's MCP
+# server on its own origin, turu-mcp.dev.localhost, in front of an echo stand-in on 11280 (intent 0013).
 #
 #   bash tests/0003-dev-routes.sh
 #
@@ -63,8 +64,11 @@ stand_in verif-gateway 47080 https
 stand_in verif-fr 47200 http
 stand_in verif-en 47205 http
 stand_in verif-ui 46200 http
+# Turu's MCP server (block 11xxx): its MCP origin (intent 0013)
+stand_in turu-mcp 11280 https
 waited=0
-until curl -s -o /dev/null http://127.0.0.1:46200/ && curl -sk -o /dev/null https://127.0.0.1:47080/; do
+until curl -s -o /dev/null http://127.0.0.1:46200/ && curl -sk -o /dev/null https://127.0.0.1:47080/ \
+  && curl -sk -o /dev/null https://127.0.0.1:11280/; do
   [ "$waited" -lt 30 ] || break
   sleep 1
   waited=$((waited + 1))
@@ -176,4 +180,13 @@ check "/auth/realms/faito: 200" answered 200
 check "hururaa registers from examples/routes/hururaa.routes" registered "" hururaa examples/routes/hururaa.routes
 check "turu registers from examples/routes/turu.routes" registered "" turu examples/routes/turu.routes
 check "turu's site names turu.dev.localhost" grep -q '^turu.dev.localhost {$' caddy/apps/turu.caddy
+check "0013: and its MCP origin, turu-mcp.dev.localhost" grep -q '^turu-mcp.dev.localhost {$' caddy/apps/turu.caddy
+fetch turu-mcp.dev.localhost /mcp
+check "0013: turu-mcp.dev.localhost/mcp: the HTTPS MCP server (11280), sent the client's Host" \
+  served_by turu-mcp turu-mcp.dev.localhost /mcp
+check "0013: no single-page-app CSP on the MCP origin" no_header Content-Security-Policy
+fetch turu-mcp.dev.localhost /fr/
+check "0013: the MCP origin serves no front end (404)" answered 404
+fetch turu.dev.localhost /mcp
+check "0013: turu.dev.localhost serves no MCP route (404)" answered 404
 finish
