@@ -1,21 +1,84 @@
 #!/usr/bin/env bash
 # The repository's verification: `bash -n` on every shell script, then every test of tests/
-# (tests/NNNN-*.sh). The *.stand-in.sh tests, which start a stand-in demo host, run with --all only.
-# Needs the dev stack running (up.sh) and jq.
+# (tests/NNNN-*.sh), each followed by its duration, the slowest listed at the end. The *.stand-in.sh
+# tests, which start a stand-in demo host, and the *-facts.sh tests, which measure Keycloak's and
+# Caddy's behaviour, run with --all only. Needs the dev stack running (up.sh) and jq.
 #
-#   bash tests/run.sh [--all]
+#   bash tests/run.sh [--all] [--changed [<base>]]
+#
+#   --changed  only the tests the changed files concern (committed since <base>, origin/main or main
+#              by default, staged, unstaged and untracked), as their `# covers:` lines declare them
+#              (paths, a trailing / for a directory, or globs); a test is concerned by its own file
+#              too. A change to tests/run.sh, tests/lib/ or a file no test declares runs every test
+#              the run would run without --changed; the intent home's files (docs/intent/) concern
+#              none. For intermediate checks: the full run stays the proof of a change.
+#
+# Every tracked script must be declared by a test: the run refuses one that isn't before any test.
+# One run at a time per Docker: a run waits for another's end (tests/lib/suite-lock.sh).
 set -uo pipefail
 cd "$(dirname "$0")/.."
+source tests/lib/suite-lock.sh
+
+usage() {
+  echo "Usage: $0 [--all] [--changed [<base>]]" >&2
+  exit 2
+}
 
 all=false
-case "${1:-}" in
-  '') ;;
-  --all) all=true ;;
-  *)
-    echo "Usage: $0 [--all]" >&2
-    exit 2
-    ;;
-esac
+changed=false
+base=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --all) all=true ;;
+    --changed)
+      changed=true
+      if [ $# -gt 1 ] && [[ $2 != -* ]]; then
+        base=$2
+        shift
+      fi
+      ;;
+    *) usage ;;
+  esac
+  shift
+done
+
+tests=(tests/[0-9][0-9][0-9][0-9]-*.sh)
+declare -A covers=()
+for test in "${tests[@]}"; do
+  covers[$test]="$test $(sed -n 's/^# covers: //p' "$test" | tr '\n' ' ')"
+done
+
+matches() { # <file> <pattern>
+  case "$2" in
+    */) [[ $1 == "$2"* ]] ;;
+    *) [[ $1 == $2 ]] ;;
+  esac
+}
+
+concerns() { # <file> <test>: the test declares the file
+  local pattern
+  for pattern in ${covers[$2]}; do
+    matches "$1" "$pattern" && return 0
+  done
+  return 1
+}
+
+declared() { # <file>: some test declares it
+  local test
+  for test in "${tests[@]}"; do
+    concerns "$1" "$test" && return 0
+  done
+  return 1
+}
+
+# RQ-04: no tracked script without a test, before anything runs
+uncovered=0
+while IFS= read -r script; do
+  declared "$script" && continue
+  echo "uncovered: $script (no test declares it in a \"# covers:\" line)" >&2
+  uncovered=1
+done < <(git ls-files -- '*.sh' ':!tests/' demo/c4-app)
+[ "$uncovered" -eq 0 ] || exit 1
 
 failed=()
 
@@ -25,19 +88,93 @@ while IFS= read -r script; do
   bash -n "$script" || failed+=("bash -n $script")
 done < <(git ls-files --cached --others --exclude-standard -- '*.sh')
 
-for test in tests/[0-9][0-9][0-9][0-9]-*.sh; do
-  [ -f "$test" ] || continue
-  if [[ $test == *.stand-in.sh ]] && ! $all; then
-    echo "== $test: skipped (--all runs it)"
-    continue
+every=true
+if $changed; then
+  if [ -z "$base" ]; then
+    base=origin/main
+    git rev-parse -q --verify "$base^{commit}" > /dev/null || base=main
   fi
-  echo "== $test"
-  bash "$test" || failed+=("$test")
+  committed=$(git diff --name-only "$base...HEAD") || usage
+  files=$( {
+    printf '%s\n' "$committed"
+    git diff --name-only --cached
+    git diff --name-only
+    git ls-files --others --exclude-standard
+  } | sed '/^$/d' | sort -u)
+  every=false
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    if [[ $file == tests/run.sh || $file == tests/lib/* ]]; then
+      echo "== --changed: $file is the suite's own: every test runs"
+      every=true
+    elif [[ $file != docs/intent/* ]] && ! declared "$file"; then
+      echo "== --changed: no test declares $file: every test runs"
+      every=true
+    fi
+  done <<< "$files"
+fi
+
+# Why <test> doesn't run in this run: prints it, or nothing when it runs. The facts tests run with
+# --all, and with --changed when a file they declare changes (spec PA-02)
+skipped() { # <test>
+  local file
+  if [[ $1 == *.stand-in.sh ]] && ! $all; then
+    echo "--all runs it"
+  elif $every; then
+    if [[ $1 == *-facts.sh ]] && ! $all; then
+      echo "--all runs it"
+    fi
+  else
+    while IFS= read -r file; do
+      [ -n "$file" ] && concerns "$file" "$1" && return
+    done <<< "$files"
+    echo "not concerned by the change"
+  fi
+}
+
+selected=()
+for test in "${tests[@]}"; do
+  reason=$(skipped "$test")
+  if [ -n "$reason" ]; then
+    echo "== $test: skipped ($reason)"
+  else
+    selected+=("$test")
+  fi
 done
+
+micros() {
+  echo "${EPOCHREALTIME/[.,]/}"
+}
+
+seconds() { # <microseconds>: in seconds, one decimal
+  printf '%d.%d s' $(($1 / 1000000)) $(($1 / 100000 % 10))
+}
+
+durations=()
+if [ ${#selected[@]} -gt 0 ]; then
+  suite_lock_take || exit 1
+  run_start=$(micros)
+  for test in "${selected[@]}"; do
+    echo "== $test"
+    start=$(micros)
+    bash "$test" {SUITE_LOCK_FD}>&- || failed+=("$test")
+    took=$(($(micros) - start))
+    echo "-- $test: $(seconds "$took")"
+    durations+=("$took $test")
+  done
+  echo "total: $(seconds $(($(micros) - run_start))) for ${#selected[@]} test(s); the slowest:"
+  printf '%s\n' "${durations[@]}" | sort -rn | head -n 5 | while read -r took test; do
+    echo "  $(seconds "$took")  $test"
+  done
+fi
 
 if [ ${#failed[@]} -gt 0 ]; then
   echo "FAILED:"
   printf '  %s\n' "${failed[@]}"
   exit 1
 fi
-echo "verification passed"
+if $changed; then
+  echo "verification passed (--changed: ${#selected[@]} of ${#tests[@]} tests)"
+else
+  echo "verification passed"
+fi
