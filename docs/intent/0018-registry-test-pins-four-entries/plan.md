@@ -83,3 +83,5 @@ Facts read:
 | One more valid line passes | OK | `bash tests/0018-registry-grows.sh` → `every check passed`; mutation check above |
 | The real registry still passes `check` and holds the four applications of 0004 | OK | `git diff main...HEAD -- tests/0004-registry.sh`: the count check removed and the header rewrapped (*Deviations*); `ok - entries: check passes on registry.txt`, `ok - entries: {turu,hururaa,tickee,faito} has one entry of seven fields` |
 | The full verification is green | OK | `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh` → `verification passed` on e49e53c |
+
+**After deployment** (run 40579004575 on `9259d2f`, `success`, 2026-10-27): tests only, the images unchanged; no proof deferred to it, no smoke test declared; master's discovery on `infra.c4-soft.com` → `200`.
