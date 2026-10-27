@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0007: on a stand-in demo host, an application's containers reach their own network's containers
-# and the shared services they use, and nothing else (AC-1 to AC-4, AC-9, AC-10):
+# and the shared services they use, and nothing else (AC-01 to AC-04, AC-09, AC-10):
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts
 #     faito hururaa: deployed as c4-infra over ssh, demo/deploy.sh); the probe image
@@ -12,13 +12,13 @@
 #   - AC-10: c4-infra.faito holds faito.gateway and the five shared services, not keycloak-db;
 #     c4-infra.keycloak-db holds Keycloak and its database only, which is on no other network;
 #     c4-infra.hururaa is the same before and after Faito's registration;
-#   - from faito.gateway: AC-1, neither hururaa.gateway nor keycloak-db, by name or by address;
-#     AC-2, Mailpit's API answers 401; AC-3, Keycloak, SMTP with Mailpit's credentials, AMQP, OTLP
+#   - from faito.gateway: AC-01, neither hururaa.gateway nor keycloak-db, by name or by address;
+#     AC-02, Mailpit's API answers 401; AC-03, Keycloak, SMTP with Mailpit's credentials, AMQP, OTLP
 #     and the shared host's name (Caddy's address on c4-infra.faito) answer, and Keycloak and Caddy
-#     reach faito.gateway; AC-9, nmap finds open on each shared service exactly the ports of REQ-2,
-#     REQ-4 and REQ-6;
-#   - AC-4: the shared stack recreated as c4-infra (docker compose up -d --force-recreate --wait),
-#     AC-3's reachability again, without registering anything.
+#     reach faito.gateway; AC-09, nmap finds open on each shared service exactly the ports of RQ-02,
+#     RQ-04 and RQ-06;
+#   - AC-04: the shared stack recreated as c4-infra (docker compose up -d --force-recreate --wait),
+#     AC-03's reachability again, without registering anything.
 #
 #   bash tests/0007-isolation.stand-in.sh      (bash tests/run.sh --all runs it)
 #
@@ -36,8 +36,8 @@ STACK=/home/c4-infra/c4-infra
 UPLOADS=/root/apps-0007
 PROBE=c4-test/probe
 SHARED=(reverse-proxy keycloak mailpit rabbitmq grafana-lgtm)
-# AC-9: the ports that answer on each shared service, from an application's network (REQ-2, REQ-4,
-# REQ-6; RabbitMQ's 4369 and 25672, its 15672 and Grafana LGTM's 7946, 9095-9097 and 13133 not)
+# AC-09: the ports that answer on each shared service, from an application's network (RQ-02, RQ-04,
+# RQ-06; RabbitMQ's 4369 and 25672, its 15672 and Grafana LGTM's 7946, 9095-9097 and 13133 not)
 declare -A OPEN=(
   [keycloak]='8080 9000'
   [mailpit]='1025 8025'
@@ -112,7 +112,7 @@ address_on() { # <container> <network>
     | tr -d '\r'
 }
 
-# AC-1: from faito.gateway (running), nc doesn't connect
+# AC-01: from faito.gateway (running), nc doesn't connect
 unreachable() { # <host or address> <port>
   running faito.gateway || return 1
   if from_faito nc -z -w 3 "$1" "$2" > /dev/null 2>&1; then
@@ -162,7 +162,7 @@ caddy_reaches_gateway() {
   body=$(in_container c4-infra.reverse-proxy wget -qO- http://faito.gateway:7080/ | tr -d '\r')
   [ "$body" = faito.gateway ] || { echo "answer: ${body:-none}"; return 1; }
 }
-# AC-9: the TCP ports nmap finds open on <host> from faito.gateway, sorted, on one line
+# AC-09: the TCP ports nmap finds open on <host> from faito.gateway, sorted, on one line
 open_ports() { # <host>
   from_faito nmap -Pn -p- --open -T4 -oG - "$1" | tr -d '\r' | sed -n 's/.*Ports: //p' | tr ',' '\n' \
     | sed -n 's|^[[:space:]]*\([0-9][0-9]*\)/open/.*|\1|p' | sort -n | paste -sd' ' -
@@ -226,37 +226,37 @@ check "AC-10: c4-infra.hururaa held hururaa.gateway and the five shared services
   test "$hururaa_before" = 'c4-infra.grafana-lgtm c4-infra.keycloak c4-infra.mailpit c4-infra.rabbitmq c4-infra.reverse-proxy hururaa.gateway'
 check "AC-10: and is unchanged after it" containers_are c4-infra.hururaa "$hururaa_before"
 
-# AC-1, from faito.gateway: by name, then by every address
-check "AC-1: hururaa.gateway:7080 can't be reached by name" unreachable hururaa.gateway 7080
-check "AC-1: keycloak-db:5432 can't be reached by name" unreachable keycloak-db 5432
+# AC-01, from faito.gateway: by name, then by every address
+check "AC-01: hururaa.gateway:7080 can't be reached by name" unreachable hururaa.gateway 7080
+check "AC-01: keycloak-db:5432 can't be reached by name" unreachable keycloak-db 5432
 hururaa_addresses=$(addresses_of hururaa.gateway)
 check "hururaa.gateway has an address ($(paste -sd' ' - <<< "$hururaa_addresses"))" test -n "$hururaa_addresses"
 for address in $hururaa_addresses; do
-  check "AC-1: hururaa.gateway can't be reached at $address:7080" unreachable "$address" 7080
+  check "AC-01: hururaa.gateway can't be reached at $address:7080" unreachable "$address" 7080
 done
 keycloak_db_addresses=$(addresses_of c4-infra.keycloak-db)
 check "keycloak-db has an address ($(paste -sd' ' - <<< "$keycloak_db_addresses"))" test -n "$keycloak_db_addresses"
 for address in $keycloak_db_addresses; do
-  check "AC-1: keycloak-db can't be reached at $address:5432" unreachable "$address" 5432
+  check "AC-01: keycloak-db can't be reached at $address:5432" unreachable "$address" 5432
 done
 
-# AC-2, a Faito container's part (Caddy's: tests/0003-demo-edge.sh)
-check "AC-2: http://mailpit:8025/mailpit/api/v1/messages without credentials answers 401" \
+# AC-02, a Faito container's part (Caddy's: tests/0003-demo-edge.sh)
+check "AC-02: http://mailpit:8025/mailpit/api/v1/messages without credentials answers 401" \
   answers 401 http://mailpit:8025/mailpit/api/v1/messages
 
-# AC-3
-ac3_reachability "AC-3"
+# AC-03
+ac3_reachability "AC-03"
 
-# AC-9
+# AC-09
 for service in "${SHARED[@]}"; do
-  check "AC-9: open on $service: exactly ${OPEN[$service]}" open_ports_are "$service" "${OPEN[$service]}"
+  check "AC-09: open on $service: exactly ${OPEN[$service]}" open_ports_are "$service" "${OPEN[$service]}"
 done
 
-# AC-4: a deployment recreating the shared stack, nothing registered again
+# AC-04: a deployment recreating the shared stack, nothing registered again
 as recreate.log c4-infra "cd ~/c4-infra && docker compose up -d --force-recreate --wait --wait-timeout 300 < /dev/null"
-check "AC-4: as c4-infra, docker compose up -d --force-recreate --wait exits 0" exited_0 recreate.log
-ac3_reachability "AC-4, after the recreation"
-check "AC-4: c4-infra.faito still holds faito.gateway and the five shared services" containers_are c4-infra.faito \
+check "AC-04: as c4-infra, docker compose up -d --force-recreate --wait exits 0" exited_0 recreate.log
+ac3_reachability "AC-04, after the recreation"
+check "AC-04: c4-infra.faito still holds faito.gateway and the five shared services" containers_are c4-infra.faito \
   'c4-infra.grafana-lgtm c4-infra.keycloak c4-infra.mailpit c4-infra.rabbitmq c4-infra.reverse-proxy faito.gateway'
-check "AC-4: hururaa.gateway still can't be reached" unreachable hururaa.gateway 7080
+check "AC-04: hururaa.gateway still can't be reached" unreachable hururaa.gateway 7080
 finish

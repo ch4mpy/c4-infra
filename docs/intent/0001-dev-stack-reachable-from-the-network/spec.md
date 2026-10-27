@@ -13,15 +13,15 @@ The dev stack publishes its ports on the workstation's loopback only, so that no
 
 ## Requirements
 
-- REQ-1 Every port the dev stack publishes (80, 443, 1025, 8025, 5672, 15672, 3000, 4317, 4318) is bound to `127.0.0.1`, with no setting to publish it on another interface (PA-2 decided). (intent: proposed outcome)
-- REQ-2 From another device on the local network, none of these ports answers. (intent: success criterion)
-- REQ-3 The browser, the JVMs and the Node processes of the workstation reach the stack as today through `host.docker.internal`; an application's login, logout and back-channel logout keep working, and so do the e-mails Keycloak sends through the shared Mailpit (`host.docker.internal:1025`). (intent: success criterion)
-- REQ-4 When `host.docker.internal` doesn't resolve to `127.0.0.1` on the workstation, `up.sh` stops before starting anything and says how to fix it: a hosts-file line `127.0.0.1 host.docker.internal`, and Docker Desktop's option that writes that line turned off (PA-1 decided). (intent: constraint)
+- **RQ-01:** Every port the dev stack publishes (80, 443, 1025, 8025, 5672, 15672, 3000, 4317, 4318) is bound to `127.0.0.1`, with no setting to publish it on another interface (PA-02 decided). (intent: proposed outcome)
+- **RQ-02:** From another device on the local network, none of these ports answers. (intent: success criterion)
+- **RQ-03:** The browser, the JVMs and the Node processes of the workstation reach the stack as today through `host.docker.internal`; an application's login, logout and back-channel logout keep working, and so do the e-mails Keycloak sends through the shared Mailpit (`host.docker.internal:1025`). (intent: success criterion)
+- **RQ-04:** When `host.docker.internal` doesn't resolve to `127.0.0.1` on the workstation, `up.sh` stops before starting anything and says how to fix it: a hosts-file line `127.0.0.1 host.docker.internal`, and Docker Desktop's option that writes that line turned off (PA-01 decided). (intent: constraint)
 
 ## Out of scope
 
 - The applications' own processes (Faito's gateway and REST API listen on every interface): each project's intent (Faito 0019, skills 0013).
-- Testing an application from another device of the local network: the device would need host names it can resolve, a certificate authority it trusts and return addresses the gateways allow — a need of its own (PA-2).
+- Testing an application from another device of the local network: the device would need host names it can resolve, a certificate authority it trusts and return addresses the gateways allow — a need of its own (PA-02).
 - The demo host: only Caddy publishes 80 and 443, by design.
 
 ## Design
@@ -38,7 +38,7 @@ The dev stack publishes its ports on the workstation's loopback only, so that no
 
 ### API and contracts
 
-- `up.sh`: a new refusal, with its message, when `host.docker.internal` resolves elsewhere (REQ-4).
+- `up.sh`: a new refusal, with its message, when `host.docker.internal` resolves elsewhere (RQ-04).
 
 ### User interface
 
@@ -52,12 +52,12 @@ None.
 
 | Rule | How it is satisfied |
 | --- | --- |
-| README design ("host names that resolve where they are used") | REQ-3, REQ-4 |
-| Faito's decision 0001 (back-channel logout on `host.docker.internal:<port>`) | REQ-3 |
+| README design ("host names that resolve where they are used") | RQ-03, RQ-04 |
+| Faito's decision 0001 (back-channel logout on `host.docker.internal:<port>`) | RQ-03 |
 
 ## Points of attention
 
-### PA-1 `host.docker.internal` resolving to the LAN address (decided)
+### PA-01: `host.docker.internal` resolving to the LAN address (decided)
 
 - Issue: Docker Desktop can write the machine's LAN address for `host.docker.internal` in the hosts file; a loopback binding then breaks the workstation's own clients.
 - Options: A `up.sh` refuses, with how to point the name at `127.0.0.1` / B `up.sh` binds to whatever address the name resolves to (the LAN address: exposed again) / C ignore it
@@ -65,7 +65,7 @@ None.
 - Decides: tech lead
 - Decision: A, `up.sh` refuses and explains (tech lead, 2026-10-21)
 
-### PA-2 Opening the stack to the local network (decided)
+### PA-02: Opening the stack to the local network (decided)
 
 - Issue: an opt-in setting would put Keycloak's master console, Mailpit and Grafana back on the local network, without making a device test work (host names, certificate authority, allowed return addresses).
 - Options: A loopback only, no opt-in; testing from a device is a need of its own / B an opt-in setting publishing every interface
@@ -75,19 +75,19 @@ None.
 
 ## Acceptance criteria
 
-- AC-1 Given the stack started by `up.sh`, then `docker ps` shows every published port on `127.0.0.1`. (REQ-1)
-- AC-2 From another device on the local network, a connection to 443, 8025 or 15672 of the workstation is refused. (REQ-2)
-- AC-3 Given Faito registered, when a user logs in and out on `https://faito.dev.localhost/` and Keycloak ends their sessions, then `/me` turns anonymous. (REQ-3)
-- AC-4 Given a user registering in Faito's realm, then Keycloak's verification e-mail shows in Mailpit. (REQ-3)
-- AC-5 Given `host.docker.internal` resolving to a LAN address, when `up.sh` runs, then it stops with its message and starts nothing. (REQ-4)
+- **AC-01:** Given the stack started by `up.sh`, then `docker ps` shows every published port on `127.0.0.1`. (RQ-01)
+- **AC-02:** From another device on the local network, a connection to 443, 8025 or 15672 of the workstation is refused. (RQ-02)
+- **AC-03:** Given Faito registered, when a user logs in and out on `https://faito.dev.localhost/` and Keycloak ends their sessions, then `/me` turns anonymous. (RQ-03)
+- **AC-04:** Given a user registering in Faito's realm, then Keycloak's verification e-mail shows in Mailpit. (RQ-03)
+- **AC-05:** Given `host.docker.internal` resolving to a LAN address, when `up.sh` runs, then it stops with its message and starts nothing. (RQ-04)
 
 ## Intent questions
 
-- Reachable from a phone on the local network → PA-2: no.
-- Loopback binding with a setting to open it → REQ-1: loopback, no setting (PA-2).
+- Reachable from a phone on the local network → PA-02: no.
+- Loopback binding with a setting to open it → RQ-01: loopback, no setting (PA-02).
 
 ## Change log
 
 - v1 — 2026-10-21 — first version
-- v1 — 2026-10-21 — draft: coherence review (no opt-in, SMTP path, hosts-file wording), PA-1 and PA-2 decided
+- v1 — 2026-10-21 — draft: coherence review (no opt-in, SMTP path, hosts-file wording), PA-01 and PA-02 decided
 - v1 — 2026-10-21 — approved: every point of attention decided; tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)

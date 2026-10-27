@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 0003: the dev stack's Caddy serves the sites generated from routes files (REQ-3, REQ-4), against
+# 0003: the dev stack's Caddy serves the sites generated from routes files (RQ-03, RQ-04), against
 # the running stack (bash up.sh). Two fixture applications of tests/fixtures/0003/registry.txt are
 # registered, verif (i18n, block 47xxx) and verif-ui (no i18n, block 46xxx), in front of echo
 # stand-ins on the workstation's loopback, which answer their name, the Host they were sent and the
 # URI: the gateway over HTTPS with the shared leaf (checked against the local CA), the front ends
-# over HTTP. Then Hurura'a and Turu register from their example routes files (AC-9, dev).
+# over HTTP. Then Hurura'a and Turu register from their example routes files (AC-09, dev).
 #
 #   bash tests/0003-dev-routes.sh
 #
@@ -110,14 +110,14 @@ check "verif registers from its routes file" registered "$FIXTURES/registry.txt"
 check "verif-ui registers from its routes file" registered "$FIXTURES/registry.txt" verif-ui "$FIXTURES/verif-ui.routes"
 check "verif's site names verif.dev.localhost (INFRA_ENV=dev)" grep -q '^verif.dev.localhost {$' caddy/apps/verif.caddy
 
-# AC-4: the template served, each role to its port of the block
+# AC-04: the template served, each role to its port of the block
 fetch verif.dev.localhost /gateway/x
 check "/gateway/x: 200" answered 200
 check "/gateway/x: the HTTPS gateway (47080), sent the client's Host" served_by verif-gateway verif.dev.localhost /gateway/x
 check "/gateway/x: no single-page-app CSP" no_header Content-Security-Policy
 fetch verif.dev.localhost /fr/x
 check "/fr/x: the fr front end (47200)" served_by verif-fr verif.dev.localhost /fr/x
-# AC-1 (headers): the demo's single-page-app headers, in dev
+# AC-01 (headers): the demo's single-page-app headers, in dev
 check "/fr/x: a CSP holding $CSP_FONTS" header_holds Content-Security-Policy "$CSP_FONTS"
 check "/fr/x: X-Frame-Options DENY" header_holds X-Frame-Options DENY
 check "/fr/x: Permissions-Policy" header_holds Permissions-Policy 'camera=()'
@@ -151,7 +151,7 @@ check "verif-ui /ui/x: a CSP" header_holds Content-Security-Policy "$CSP_FONTS"
 fetch verif-ui.dev.localhost /
 check "verif-ui /: 302 to /ui/" answered 302 https://verif-ui.dev.localhost/ui/
 
-# AC-2: no HSTS in dev
+# AC-02: no HSTS in dev
 fetch faito.dev.localhost /
 check "faito.dev.localhost/: answered by its site (302 to /fr/)" answered 302 https://faito.dev.localhost/fr/
 check "faito.dev.localhost/: no Strict-Transport-Security" no_header Strict-Transport-Security
@@ -160,11 +160,11 @@ check "host.docker.internal/: the landing page" answered 200
 check "host.docker.internal/: no Strict-Transport-Security" no_header Strict-Transport-Security
 check "the landing page links verif" grep -qF 'https://verif.dev.localhost/' caddy/html/index.html
 
-# AC-6, dev: the realm discovery, from Keycloak
+# AC-06, dev: the realm discovery, from Keycloak
 fetch host.docker.internal /.well-known/openid-configuration/auth/realms/faito
 check "realm discovery of faito: 200" answered 200
 check "realm discovery of faito: Keycloak's issuer" grep -qF '"issuer":"https://host.docker.internal/auth/realms/faito"' "$work/body"
-# the shared services, dev's additions included (REQ-2)
+# the shared services, dev's additions included (RQ-02)
 fetch host.docker.internal /rabbitmq/
 check "/rabbitmq/: 200 (dev)" answered 200
 fetch host.docker.internal /mailpit/
@@ -172,7 +172,7 @@ check "/mailpit/: 200, no authentication (dev)" answered 200
 fetch host.docker.internal /auth/realms/faito
 check "/auth/realms/faito: 200" answered 200
 
-# AC-9, dev: Hurura'a and Turu register from their example routes files
+# AC-09, dev: Hurura'a and Turu register from their example routes files
 check "hururaa registers from examples/routes/hururaa.routes" registered "" hururaa examples/routes/hururaa.routes
 check "turu registers from examples/routes/turu.routes" registered "" turu examples/routes/turu.routes
 check "turu's site names turu.dev.localhost" grep -q '^turu.dev.localhost {$' caddy/apps/turu.caddy
