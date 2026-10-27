@@ -2,10 +2,10 @@
 
 - Intent: [0015](intent.md)
 - Status: approved
-- Version: 1
+- Version: 2
 - Risk: high (PA-02, decided by the tech lead: an application may relax its visitors' protection on its own origin, the public demo included; no risk rule names it; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design (one origin per application; one reverse proxy, the sites' headers written once), 0003 (one routes file, dev and demo alike), README "Routes file" (refusals before anything is registered), 0013 (the MCP origin, `_routes_site`)
-- Approved: 2026-10-27, Jérôme Wacongne (product owner, and tech lead for the high risk)
+- Approved: 2026-10-27, Jérôme Wacongne (product owner, and tech lead for the high risk): v2, the same day
 
 ## Summary
 
@@ -16,15 +16,16 @@ A front-end route (`fr`, `en`, `ui`) of an application's routes file may take `h
 - **RQ-01:** A route whose target is `fr`, `en` or `ui` may take the option `headers=app`. On that route, each of Content-Security-Policy, `X-Frame-Options` and `Permissions-Policy` that the application's response carries reaches the browser with the application's values only, unchanged: the shared value isn't added. (intent: outcome, criterion)
 - **RQ-02:** On that route, each of the three headers a response lacks gets the shared value (`spa-headers`), header by header: on the application's responses and on the proxy's own (`413` of `max-body=`, `502`/`504` when the front end doesn't answer). A response with only `Content-Security-Policy-Report-Only` therefore gets the shared policy enforced as well. (intent: outcome, decided at acceptance: B)
 - **RQ-03:** The headers every site gets stay on such a route: `X-Content-Type-Options`, `Referrer-Policy` (PA-01), no `Server`, HSTS on the demo host only. (intent: outcome)
-- **RQ-04:** A route without the option gets exactly today's headers. (intent: outcome)
+- **RQ-04:** A route without the option gets exactly today's headers, except the proxy's own error responses (RQ-08). (intent: outcome)
 - **RQ-05:** Refused as `<file>:<line>: …`, the registration then registering nothing, in dev and through `sudo c4-app register` on the demo host: `headers=app` on `gateway`, `mcp` or `redirect`; `headers=` with any other value; `headers=` twice. (intent: criterion, constraint)
 - **RQ-06:** Dev and the demo host serve the same headers from the same routes file; the defaults are the values of `spa-headers`, written once. (intent: constraint, 0003)
 - **RQ-07:** README "Routes file" documents the option: where it is accepted, what the browser receives, that the application then owns its pages' policy and should send it on every response (static assets and error pages included). (intent: affected systems)
+- **RQ-08:** On every site, every route and both environments, a response the proxy makes itself (a `413`, `502`, `504`, any error it answers) carries the headers of `common-headers` as the site's other responses do: `X-Content-Type-Options`, `Referrer-Policy`, no `Server`, HSTS on the demo host only. Today they carry none of them and `Server: Caddy` (measured on 2.11.4, a gateway `502`: `common-headers` is deferred by its `-Server`). (product owner, v2: the same cause as RQ-02's error responses)
 
 ## Out of scope
 
 - An application's own `Referrer-Policy` or any other header of `common-headers` (unless PA-01 decides otherwise).
-- Any change to the shared values, to the gateway's, the MCP origin's or the shared host's headers.
+- Any change to the shared values, to the gateway's, the MCP origin's or the shared host's headers, other than RQ-08's error responses.
 - Checking the content of an application's policy: its own tests do (immo's CA-16).
 - A floor the stack would keep under an application's policy: the intent gives the application the three headers whole.
 
@@ -101,6 +102,7 @@ None.
 - **AC-05:** Given a front-end route without the option, then its headers are today's, and the 0003 tests pass unchanged. (RQ-04)
 - **AC-06:** Given `headers=app` on `gateway`, `mcp` or `redirect`, `headers=self`, or `headers=app` twice, when the application registers in dev and through `sudo c4-app register` on the stand-in, then it exits 1 with `<file>:<line>: …` and registers nothing. (RQ-05)
 - **AC-07:** Given the README and `routes.sh`'s usage text, then both name the option, where it is accepted and what it changes. (RQ-07)
+- **AC-08:** Given a site of the stack in dev and on the stand-in demo host, when the proxy answers itself (a `502` of a stopped gateway and of a stopped front end, a `413` of `max-body=`), then the response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, no `Server`, and HSTS on the demo host only; the proof fails on v1's `caddy/Caddyfile`. (RQ-08)
 
 ## Intent questions
 
@@ -113,3 +115,4 @@ None.
 
 - v1 — 2026-10-27 — first version
 - v1 — 2026-10-27 — approved: PA-01 A, PA-02 A (high risk)
+- v2 — 2026-10-27 — RQ-08 and AC-08 added, RQ-04 and *Out of scope* amended: every response the proxy makes itself carries `common-headers` on every site (found while planning: they carry none, the same cause as RQ-02's error responses); scope widened by the product owner; approved the same day by Jérôme Wacongne, product owner and tech lead
