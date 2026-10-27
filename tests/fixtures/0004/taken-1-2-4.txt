@@ -1,4 +1,4 @@
-# tests/0004: numbers 1, 2 and 4 taken (AC-4)
+# tests/0004: numbers 1, 2 and 4 taken (AC-04)
 1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
 2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
 4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com

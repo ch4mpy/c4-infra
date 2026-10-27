@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# 0009: on a stand-in demo host, the master realm Keycloak creates from keycloak-import/ (AC-2 to
+# 0009: on a stand-in demo host, the master realm Keycloak creates from keycloak-import/ (AC-02 to
 # AC-10, demo side):
 #
 #   - the first deployment, on an empty database: neither the administrator's nor Mailpit's SMTP
 #     password appears in the host's `ps -eo args`, `docker top` of Keycloak nor deploy.sh's output
-#     (AC-7); the master realm has the demo host's SMTP settings, Verify email on, Forgot password
-#     off, its administrator admin@<INFRA_HOST>, verified, and its Test connection works (AC-2, AC-9);
-#     the registration account is created, and still may not change the master realm (AC-8);
+#     (AC-07); the master realm has the demo host's SMTP settings, Verify email on, Forgot password
+#     off, its administrator admin@<INFRA_HOST>, verified, and its Test connection works (AC-02, AC-09);
+#     the registration account is created, and still may not change the master realm (AC-08);
 #   - a second deployment, then the master realm's settings changed and Keycloak restarted: nothing
-#     changes them back, no administrator logs in (AC-3);
+#     changes them back, no administrator logs in (AC-03);
 #   - the administrator's address unverified and the account to repair: deploy.sh fails, naming the
 #     pending action (AC-10);
 #   - a new MAILPIT_SMTP_PASSWORD: Test connection fails until the master realm's password is set as
-#     docs/demo-setup.md says (AC-6);
-#   - ops replaces admin: the deployment and the master realm's mails go on (AC-5);
+#     docs/demo-setup.md says (AC-06);
+#   - ops replaces admin: the deployment and the master realm's mails go on (AC-05);
 #   - last, Keycloak's database re-created with docs/demo-setup.md's command: the next deployment
-#     creates the master realm and the registration account again, a realm registers (AC-4).
+#     creates the master realm and the registration account again, a realm registers (AC-04).
 #
 #   bash tests/0009-master-realm.stand-in.sh      (bash tests/run.sh --all runs it)
 #
@@ -144,15 +144,15 @@ check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$
 check "keycloak-import/master-realm.json is among them" stand_in_exec test -f "$DIR/keycloak-import/master-realm.json"
 check ".env is written there by demo/write-env.sh" stand_in_env "$DIR"
 
-# AC-7: both passwords, from the stand-in's .env, into a file the detector reads (mode 600)
+# AC-07: both passwords, from the stand-in's .env, into a file the detector reads (mode 600)
 stand_in_exec sh -c 'grep -E "^(KC_BOOTSTRAP_ADMIN_PASSWORD|MAILPIT_SMTP_PASSWORD)=" "$1" | cut -d= -f2-' sh "$DIR/.env" \
   | tr -d '\r' > "$work/secrets"
-check "AC-7: both passwords are read from the stand-in's .env" test "$(grep -c . "$work/secrets")" = 2
+check "AC-07: both passwords are read from the stand-in's .env" test "$(grep -c . "$work/secrets")" = 2
 leaks_into() { # <source name>
   if grep -F -f "$work/secrets" > /dev/null; then echo "$1" >> "$work/leaks"; fi
 }
 leaks_into control < "$work/secrets"
-check "AC-7: the detector catches them when they are there" grep -qx control "$work/leaks"
+check "AC-07: the detector catches them when they are there" grep -qx control "$work/leaks"
 rm -f "$work/leaks"
 # each sample counted, and those that saw the deployment (the host) and Keycloak's JVM (docker top)
 sample() {
@@ -183,18 +183,18 @@ no_leak() {
   [ ! -s "$work/leaks" ] || { echo "a password appears in:"; sort "$work/leaks" | uniq -c; return 1; }
 }
 read -r samples host_seen keycloak_seen < "$work/samples"
-check "AC-7: ps -eo args saw the deployment at work ($host_seen of $samples samples)" test "${host_seen:-0}" -ge 1
-check "AC-7: docker top saw Keycloak's JVM ($keycloak_seen of $samples samples)" test "${keycloak_seen:-0}" -ge 1
-check "AC-7: neither password in ps -eo args nor docker top" no_leak
-check "AC-7: nor in deploy.sh's output" test -z "$(grep -F -f "$work/secrets" "$work/deploy-1.log")"
-check "AC-7: nor in Keycloak's log" test -z "$(stand_in_exec docker logs c4-infra.keycloak 2>&1 | grep -F -f "$work/secrets")"
+check "AC-07: ps -eo args saw the deployment at work ($host_seen of $samples samples)" test "${host_seen:-0}" -ge 1
+check "AC-07: docker top saw Keycloak's JVM ($keycloak_seen of $samples samples)" test "${keycloak_seen:-0}" -ge 1
+check "AC-07: neither password in ps -eo args nor docker top" no_leak
+check "AC-07: nor in deploy.sh's output" test -z "$(grep -F -f "$work/secrets" "$work/deploy-1.log")"
+check "AC-07: nor in Keycloak's log" test -z "$(stand_in_exec docker logs c4-infra.keycloak 2>&1 | grep -F -f "$work/secrets")"
 
-# AC-2, AC-9
-check "AC-2: SMTP mailpit:1025 without TLS, Mailpit's user" master_is \
+# AC-02, AC-09
+check "AC-02: SMTP mailpit:1025 without TLS, Mailpit's user" master_is \
   '.smtpServer | [.host, .port, .starttls, .ssl, .auth, .user, .from]' \
   "[\"mailpit\",\"1025\",\"false\",\"false\",\"true\",\"mailpit\",\"noreply@$HOST\"]"
-check "AC-2: Verify email on" master_is .verifyEmail true
-check "AC-9: Forgot password off on the demo host" master_is .resetPasswordAllowed false
+check "AC-02: Verify email on" master_is .verifyEmail true
+check "AC-09: Forgot password off on the demo host" master_is .resetPasswordAllowed false
 # the master realm's login page, as the console opens it (its PKCE parameters), fetched by Caddy's
 # container from Keycloak on their network
 login_page() {
@@ -204,29 +204,29 @@ login_page() {
   stand_in_exec docker exec c4-infra.reverse-proxy wget -q -O - "$url"
 }
 login_page > "$work/login.html" 2>&1
-check "AC-9: the master realm's login page shows its form" grep -qF login-actions/authenticate "$work/login.html"
-check "AC-9: without a Forgot password? link" test -z "$(grep -F login-actions/reset-credentials "$work/login.html")"
-check "AC-2: the administrator's address is admin@$HOST, verified" \
+check "AC-09: the master realm's login page shows its form" grep -qF login-actions/authenticate "$work/login.html"
+check "AC-09: without a Forgot password? link" test -z "$(grep -F login-actions/reset-credentials "$work/login.html")"
+check "AC-02: the administrator's address is admin@$HOST, verified" \
   test "$(user_field admin admin '[.email, .emailVerified]')" = "[\"admin@$HOST\",true]"
-check "AC-2: the master realm's Test connection succeeds" test_connection admin
+check "AC-02: the master realm's Test connection succeeds" test_connection admin
 
-# AC-8
-check "AC-8: the registration account may not change the master realm (403)" \
+# AC-08
+check "AC-08: the registration account may not change the master realm (403)" \
   refused_with 403 as_account update realms/master -s displayName=x
 
-# AC-3
+# AC-03
 in_stack deploy-2.log bash ./demo/deploy.sh
-check "AC-3: a second deployment exits 0" exited 0 deploy-2.log
-check "AC-3: with no administrator's login" never_says deploy-2.log "Logged in as"
-check "AC-3: the master realm's SMTP host changed by the administrator" \
+check "AC-03: a second deployment exits 0" exited 0 deploy-2.log
+check "AC-03: with no administrator's login" never_says deploy-2.log "Logged in as"
+check "AC-03: the master realm's SMTP host changed by the administrator" \
   kc_as admin update realms/master -s smtpServer.host=other.example < /dev/null
 stand_in_exec docker restart c4-infra.keycloak > /dev/null
-check "AC-3: Keycloak restarted is healthy" keycloak_healthy
-check "AC-3: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
-check "AC-3: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
+check "AC-03: Keycloak restarted is healthy" keycloak_healthy
+check "AC-03: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
+check "AC-03: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
 kc_as admin update realms/master -s smtpServer.host=mailpit < /dev/null > /dev/null 2>&1
 
-# An administrator ops (a verified address), for AC-10 and AC-5
+# An administrator ops (a verified address), for AC-10 and AC-05
 create_ops() {
   printf '{"username":"ops","enabled":true,"email":"ops@%s","emailVerified":true,"credentials":[{"type":"password","value":"%s","temporary":false}]}' \
     "$HOST" "$OPS_PASSWORD" | kc_as admin -i create users -f - > /dev/null \
@@ -253,7 +253,7 @@ in_stack deploy-4.log bash ./demo/deploy.sh
 check "AC-10: deploy.sh then exits 0" exited 0 deploy-4.log
 check "AC-10: and creates the registration account again" says deploy-4.log "Registration account $CLIENT: created"
 
-# AC-6: a new Mailpit SMTP password, the workflow's way (.env rewritten by write-env.sh)
+# AC-06: a new Mailpit SMTP password, the workflow's way (.env rewritten by write-env.sh)
 rewrite_env() {
   stand_in_exec -i sh -c 'cat > /tmp/write-env.sh' < demo/write-env.sh || return 1
   MSYS_NO_PATHCONV=1 docker exec -e NEXT_SMTP_PASSWORD "$STAND_IN_NAME" bash -c '
@@ -269,10 +269,10 @@ rewrite_env() {
     rm -f /tmp/write-env.sh
     sed -i "s/^COMPOSE_FILE=.*/&:compose.no-acme.yml/" .env' sh "$DIR"
 }
-check "AC-6: .env rewritten by write-env.sh with a new MAILPIT_SMTP_PASSWORD" rewrite_env
+check "AC-06: .env rewritten by write-env.sh with a new MAILPIT_SMTP_PASSWORD" rewrite_env
 in_stack deploy-5.log bash ./demo/deploy.sh
-check "AC-6: the deployment exits 0" exited 0 deploy-5.log
-check "AC-6: the master realm's Test connection now fails (its former password)" \
+check "AC-06: the deployment exits 0" exited 0 deploy-5.log
+check "AC-06: the master realm's Test connection now fails (its former password)" \
   refused_with "Failed to send email" test_connection admin
 # docs/demo-setup.md: the new password typed in the master realm's Email settings; here the admin
 # API's equivalent, the password from this shell's environment into JSON on stdin
@@ -280,28 +280,28 @@ set_smtp_password() {
   master admin | jq -c '.smtpServer | .password = env.NEXT_SMTP_PASSWORD | {smtpServer: .}' \
     | kc_as admin -i update realms/master -f -
 }
-check "AC-6: the master realm's SMTP password set to the new one" set_smtp_password
-check "AC-6: its Test connection succeeds again" test_connection admin
+check "AC-06: the master realm's SMTP password set to the new one" set_smtp_password
+check "AC-06: its Test connection succeeds again" test_connection admin
 
-# AC-5: ops replaces admin
-check "AC-5: ops deletes the administrator of .env" kc_as ops delete "users/$admin_id" < /dev/null
+# AC-05: ops replaces admin
+check "AC-05: ops deletes the administrator of .env" kc_as ops delete "users/$admin_id" < /dev/null
 in_stack deploy-6.log bash ./demo/deploy.sh
-check "AC-5: the next deployment exits 0" exited 0 deploy-6.log
-check "AC-5: with no administrator's login" never_says deploy-6.log "Logged in as"
-check "AC-5: the master realm's Test connection, as ops, succeeds" test_connection ops
+check "AC-05: the next deployment exits 0" exited 0 deploy-6.log
+check "AC-05: with no administrator's login" never_says deploy-6.log "Logged in as"
+check "AC-05: the master realm's Test connection, as ops, succeeds" test_connection ops
 
-# AC-4: Keycloak's database re-created with docs/demo-setup.md's command
-check "AC-4: docs/demo-setup.md holds the re-creation command" grep -qF -- "$RECREATE" docs/demo-setup.md
+# AC-04: Keycloak's database re-created with docs/demo-setup.md's command
+check "AC-04: docs/demo-setup.md holds the re-creation command" grep -qF -- "$RECREATE" docs/demo-setup.md
 in_stack recreate.log bash -c "$RECREATE"
-check "AC-4: Keycloak's database is removed" exited 0 recreate.log
+check "AC-04: Keycloak's database is removed" exited 0 recreate.log
 in_stack deploy-7.log bash ./demo/deploy.sh
-check "AC-4: the next deployment exits 0" exited 0 deploy-7.log
-check "AC-4: Keycloak imported the master realm again" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
-check "AC-4: deploy.sh creates the registration account again" says deploy-7.log "Registration account $CLIENT: created"
-check "AC-4: the master realm has its SMTP settings" master_is .smtpServer.host '"mailpit"'
-check "AC-4: and delivers with the current password" test_connection admin
+check "AC-04: the next deployment exits 0" exited 0 deploy-7.log
+check "AC-04: Keycloak imported the master realm again" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
+check "AC-04: deploy.sh creates the registration account again" says deploy-7.log "Registration account $CLIENT: created"
+check "AC-04: the master realm has its SMTP settings" master_is .smtpServer.host '"mailpit"'
+check "AC-04: and delivers with the current password" test_connection admin
 stand_in_exec mkdir -p "$APPS"
 printf '{"realm":"faito","enabled":true}\n' | stand_in_exec -i sh -c 'cat > "$1"' sh "$APPS/faito-realm.json"
 in_stack register.log bash ./register-app.sh --app faito --realm "$APPS/faito-realm.json"
-check "AC-4: a registration imports its realm" says register.log "Importing realm faito"
+check "AC-04: a registration imports its realm" says register.log "Importing realm faito"
 finish

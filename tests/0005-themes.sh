@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 0005: in dev, Keycloak caches no theme, and a registration installs a new or changed theme without
 # restarting it: the login page shows the change on reload, and another application's realm keeps
-# answering (AC-1, AC-2, AC-4); with INFRA_ENV=demo, a changed theme restarts Keycloak once and an
-# unchanged one doesn't (AC-3, AC-4).
+# answering (AC-01, AC-02, AC-04); with INFRA_ENV=demo, a changed theme restarts Keycloak once and an
+# unchanged one doesn't (AC-03, AC-04).
 #
 #   bash tests/0005-themes.sh
 #
@@ -89,7 +89,7 @@ page_shows() { # <stamp>: the login page of realm verif-theme, as a reload gets 
   grep -qF "VERIF-STAMP-$1<" "$work/page" || { echo "status $status, page:"; head -c 800 "$work/page"; echo; return 1; }
 }
 
-# The stylesheet the login page links: served, and not kept by browsers for days (REQ-1)
+# The stylesheet the login page links: served, and not kept by browsers for days (RQ-01)
 stylesheet_not_kept() {
   local resources status max_age
   resources=$(sed -n 's/.*RESOURCES=\([^<]*\)<.*/\1/p' "$work/page")
@@ -128,13 +128,13 @@ changed_since() { # <start time>
   [ "$(kc_started_at)" != "$1" ] || { echo "still started at $1"; return 1; }
 }
 
-# AC-4's setting: dev, with Caddy as the proxy
+# AC-04's setting: dev, with Caddy as the proxy
 check "INFRA_ENV=dev in .env" set_env dev
 check "the reverse proxy is Caddy" bash -c "docker inspect -f '{{.Config.Image}}' c4-infra.reverse-proxy | grep -q '^caddy:'"
 check "Keycloak is healthy" kc_wait_healthy 60
 started=$(kc_started_at)
 
-# dev, a new theme (AC-1, AC-4)
+# dev, a new theme (AC-01, AC-04)
 stamp A
 check "dev: verif-theme registers, with its realm and theme (stamp A)" register --realm "$FIXTURE/verif-theme-realm.json" --themes "$work/themes"
 check "dev: the theme is installed" diff -r "$work/themes/verif-theme" "$INSTALLED"
@@ -144,7 +144,7 @@ check "dev: the login page shows stamp A" page_shows A
 check "dev: Keycloak wasn't restarted by a new theme (same start time)" unchanged_since "$started"
 check "dev: the theme's stylesheet isn't kept by browsers for days" stylesheet_not_kept
 
-# dev, a changed template, while another application's realm is polled (AC-1, AC-2, AC-4)
+# dev, a changed template, while another application's realm is polled (AC-01, AC-02, AC-04)
 check "dev: realm faito answers before the change" test "$(curl --ssl-no-revoke --cacert certs/ca.crt -s -o /dev/null -w '%{http_code}' "$OTHER_REALM")" = 200
 poll_other_realm &
 poller=$!
@@ -160,7 +160,7 @@ poller=""
 check "dev: Keycloak wasn't restarted (same start time)" unchanged_since "$started"
 check "dev: realm faito answered 200 throughout ($(wc -l < "$work/poll.codes" | tr -d ' ') requests)" polled_only_200
 
-# INFRA_ENV=demo: a changed theme restarts Keycloak, once; an unchanged one doesn't (AC-3, AC-4)
+# INFRA_ENV=demo: a changed theme restarts Keycloak, once; an unchanged one doesn't (AC-03, AC-04)
 check "INFRA_ENV=demo in .env" set_env demo
 stamp C
 check "demo: verif-theme registers its changed theme (stamp C)" register --themes "$work/themes"
@@ -175,7 +175,7 @@ check "demo: nothing installed" never_said "Theme verif-theme installed"
 check "demo: no restart announced" never_said "Restarting Keycloak"
 check "demo: Keycloak wasn't restarted (same start time)" unchanged_since "$started"
 
-# back to INFRA_ENV=dev: a changed theme restarts nothing (AC-4)
+# back to INFRA_ENV=dev: a changed theme restarts nothing (AC-04)
 check "INFRA_ENV=dev in .env" set_env dev
 stamp D
 check "dev: verif-theme registers its changed theme (stamp D)" register --themes "$work/themes"

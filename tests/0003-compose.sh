@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 0003: the compose base and its two overrides (REQ-5, REQ-9): `docker compose config` of dev
+# 0003: the compose base and its two overrides (RQ-05, RQ-09): `docker compose config` of dev
 # (COMPOSE_FILE of .env, as up.sh runs it) and of the demo host (compose.yml + compose.demo.yml, with
 # the dummy values of tests/fixtures/0003/demo.env). The image versions are written once, in the
-# base, and an upgrade there shows in both (AC-5); dev publishes every port on 127.0.0.1, the demo
-# host 80 and 443 only (AC-10); what the demo host doesn't expose stays dev's (REQ-2).
+# base, and an upgrade there shows in both (AC-05); dev publishes every port on 127.0.0.1, the demo
+# host 80 and 443 only (AC-10); what the demo host doesn't expose stays dev's (RQ-02).
 #
 #   bash tests/0003-compose.sh
 set -uo pipefail
@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 
 DEMO_ENV=tests/fixtures/0003/demo.env
-# the ports 0001 publishes in dev (its REQ-1)
+# the ports 0001 publishes in dev (its RQ-01)
 DEV_PORTS='1025 15672 3000 4317 4318 443 5672 80 8025'
 
 work=$(mktemp -d)
@@ -87,7 +87,7 @@ has_mount() { # <config file> <service> <target>
   mounts "$1" "$2" | grep -qxF -- "$3" || { echo "$2 mounts:"; mounts "$1" "$2"; return 1; }
 }
 
-# REQ-5: the versions once, in the base
+# RQ-05: the versions once, in the base
 check "every shared image is the same in dev and on the demo host" same_images
 check "no image: in compose.dev.yml nor compose.demo.yml" no_image_in_overrides
 check "dev: Keycloak is the image built here, c4-infra/keycloak" keycloak_image_is "$work/dev.json" c4-infra/keycloak
@@ -96,7 +96,7 @@ check "demo: Keycloak is KC_IMAGE, pulled" keycloak_image_is "$work/demo.json" g
 check "demo: nothing is built" test -z "$(jq -r '.services[].build // empty' "$work/demo.json")"
 check "dev: the proxy is Caddy" value_is "$work/dev.json" '.services["reverse-proxy"].image' caddy:2.11.4-alpine
 
-# REQ-9, AC-10
+# RQ-09, AC-10
 check "no ports: in compose.yml" no_ports_in_base
 check "dev: every published port is on 127.0.0.1" all_on_loopback
 check "dev: the nine ports of 0001" ports_are "$work/dev.json" "$DEV_PORTS"
@@ -115,7 +115,7 @@ check "demo: Mailpit asks for its UI credentials (MP_UI_AUTH)" \
 check "demo: Caddy has no alias on c4-infra" \
   value_is "$work/demo.json" '.services["reverse-proxy"].networks.default.aliases // [] | length' 0
 
-# REQ-2: dev's additions stay dev's
+# RQ-02: dev's additions stay dev's
 check "dev: RabbitMQ's management plugin enabled" has_mount "$work/dev.json" rabbitmq /etc/rabbitmq/enabled_plugins
 check "demo: no RabbitMQ management plugin" lacks_mount "$work/demo.json" rabbitmq /etc/rabbitmq/enabled_plugins
 check "demo: no RabbitMQ management configuration" lacks_mount "$work/demo.json" rabbitmq /etc/rabbitmq/conf.d/20-c4-infra.conf
@@ -123,15 +123,15 @@ check "demo: Grafana's anonymous access off" \
   value_is "$work/demo.json" '.services["grafana-lgtm"].environment.GF_AUTH_ANONYMOUS_ENABLED' false
 check "dev: Mailpit's UI without TLS" value_is "$work/dev.json" '.services.mailpit.environment.MP_UI_TLS_CERT // "none"' none
 
-# AC-5: an image version changed in compose.yml only shows in both configurations
+# AC-05: an image version changed in compose.yml only shows in both configurations
 mkdir -p "$work/copy"
 cp compose.yml compose.dev.yml compose.demo.yml "$DEMO_ENV" "$work/copy/"
 sed -i 's|axllent/mailpit:v1.31.0|axllent/mailpit:v0.0.0-test|' "$work/copy/compose.yml"
-check "AC-5: the copy's compose.yml names v0.0.0-test" grep -q 'axllent/mailpit:v0.0.0-test' "$work/copy/compose.yml"
+check "AC-05: the copy's compose.yml names v0.0.0-test" grep -q 'axllent/mailpit:v0.0.0-test' "$work/copy/compose.yml"
 for override in dev demo; do
   (cd "$work/copy" && docker compose -f compose.yml -f "compose.$override.yml" --env-file demo.env config --format json) \
     > "$work/copy-$override.json" 2> /dev/null
-  check "AC-5: $override's configuration shows axllent/mailpit:v0.0.0-test" \
+  check "AC-05: $override's configuration shows axllent/mailpit:v0.0.0-test" \
     value_is "$work/copy-$override.json" .services.mailpit.image axllent/mailpit:v0.0.0-test
 done
 finish

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0006: the Keycloak behaviours the registration account relies on (REQ-1, REQ-2, REQ-4), checked in
+# 0006: the Keycloak behaviours the registration account relies on (RQ-01, RQ-02, RQ-04), checked in
 # a throwaway Keycloak of the stack's image (start-dev on an in-memory database, no published port,
 # its bootstrap password in an --env-file of a temporary directory):
 #

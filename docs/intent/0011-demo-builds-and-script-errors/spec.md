@@ -13,22 +13,22 @@
 
 ## Requirements
 
-- REQ-1 `sudo c4-app up` and `pull` refuse a compose model in which a service has `build`, naming the service and saying that the application's CI builds its images and pushes them to a registry; nothing is started or changed. `down` reads no compose file (REQ-4), so what the file says never stops it. (intent: outcome, criterion)
-- REQ-2 The checks that only building needed go, with their documentation: the `build` sub-key allowlist, the confinement of `context`, `dockerfile` and `additional_contexts`, the refusal of `image` beside `build`, and of a `-` in a building service's name. (intent: outcome)
-- REQ-3 The applications' fixtures, which pull their images, still deploy on the stand-in host. (intent: criterion)
-- REQ-4 `sudo c4-app down` stops and removes the application's containers and networks (its compose project) by the project's name, whatever the `compose.yml` it holds now (refused, or building): it reads no file and runs nothing a model declares (hooks, providers); its volumes stay. (intent: defect 1)
-- REQ-5 `up.sh` tells, when the proxy's reload fails, a configuration Caddy refuses (its message, then "fix caddy/…") from a proxy it can't reach (container not running, `docker exec` failing, admin endpoint not ready: "the reverse proxy isn't reachable, retry"). (intent: defect 2)
-- REQ-6 `networks.sh` writes `compose.apps.yml` the same way on every path, its early return included: under its lock, through a temporary file renamed into place. (intent: defect 3)
-- REQ-7 `registry.sh` tells an `.env` it can't read (an error naming the file) from a key that is missing. (intent: defect 4)
-- REQ-8 (PA-2 A: no fix, `registry.sh` unchanged) `registry.sh` and compose read an unquoted value with a comment the same way, guarded by a test. (intent: defect 5)
-- REQ-9 `c4-app`'s check no longer reads `INFRA_HOST` to refuse a service named after it, which can't happen (a service name has no dot); the header and the README stop listing it. (intent: defect 6)
-- REQ-10 `up.sh` runs on a fresh clone, without `certs/tls.crt`, as on a workstation that has one. (intent: defect 7)
-- REQ-11 `routes.sh` refuses an option with an empty key (`=x`) as `<file>:<line>: …`, like any unknown option, and registers nothing. (intent: defect 8)
-- REQ-12 Each fix of REQ-4 to REQ-7 and REQ-9 to REQ-11 is proven by a test that fails on the code before it. (intent: outcome)
+- **RQ-01:** `sudo c4-app up` and `pull` refuse a compose model in which a service has `build`, naming the service and saying that the application's CI builds its images and pushes them to a registry; nothing is started or changed. `down` reads no compose file (RQ-04), so what the file says never stops it. (intent: outcome, criterion)
+- **RQ-02:** The checks that only building needed go, with their documentation: the `build` sub-key allowlist, the confinement of `context`, `dockerfile` and `additional_contexts`, the refusal of `image` beside `build`, and of a `-` in a building service's name. (intent: outcome)
+- **RQ-03:** The applications' fixtures, which pull their images, still deploy on the stand-in host. (intent: criterion)
+- **RQ-04:** `sudo c4-app down` stops and removes the application's containers and networks (its compose project) by the project's name, whatever the `compose.yml` it holds now (refused, or building): it reads no file and runs nothing a model declares (hooks, providers); its volumes stay. (intent: defect 1)
+- **RQ-05:** `up.sh` tells, when the proxy's reload fails, a configuration Caddy refuses (its message, then "fix caddy/…") from a proxy it can't reach (container not running, `docker exec` failing, admin endpoint not ready: "the reverse proxy isn't reachable, retry"). (intent: defect 2)
+- **RQ-06:** `networks.sh` writes `compose.apps.yml` the same way on every path, its early return included: under its lock, through a temporary file renamed into place. (intent: defect 3)
+- **RQ-07:** `registry.sh` tells an `.env` it can't read (an error naming the file) from a key that is missing. (intent: defect 4)
+- **RQ-08:** (PA-02 A: no fix, `registry.sh` unchanged) `registry.sh` and compose read an unquoted value with a comment the same way, guarded by a test. (intent: defect 5)
+- **RQ-09:** `c4-app`'s check no longer reads `INFRA_HOST` to refuse a service named after it, which can't happen (a service name has no dot); the header and the README stop listing it. (intent: defect 6)
+- **RQ-10:** `up.sh` runs on a fresh clone, without `certs/tls.crt`, as on a workstation that has one. (intent: defect 7)
+- **RQ-11:** `routes.sh` refuses an option with an empty key (`=x`) as `<file>:<line>: …`, like any unknown option, and registers nothing. (intent: defect 8)
+- **RQ-12:** Each fix of RQ-04 to RQ-07 and RQ-09 to RQ-11 is proven by a test that fails on the code before it. (intent: outcome)
 
 ## Out of scope
 
-- Everything 0011's accepted risk lists (a hostile compose file from a leaked deployment key): `env_file`, `docker compose config`'s `HOME`, top-level networks and volumes beyond the allowlist, `secrets`/`configs` `file: .`, the staging namespace, aliases, another application's image through `image:` or `pull` (PA-1 A: not restricted).
+- Everything 0011's accepted risk lists (a hostile compose file from a leaked deployment key): `env_file`, `docker compose config`'s `HOME`, top-level networks and volumes beyond the allowlist, `secrets`/`configs` `file: .`, the staging namespace, aliases, another application's image through `image:` or `pull` (PA-01 A: not restricted).
 - c4-infra's own images (Keycloak, and the proxy of 0013): its workflow builds them and the demo host pulls them already.
 - Building in dev: an application's dev compose files are its own.
 
@@ -57,7 +57,7 @@ On `origin/main` (`0697208`):
 ### API and contracts
 
 - `sudo c4-app up|pull`: a new refusal, `service <s>: build: the demo host runs the images the application's CI pushes to a registry (README.md, "Accounts")`; the build-specific refusals go.
-- `up.sh`, `routes.sh`, `registry.sh`, `networks.sh`: same options and exit codes; only the messages of REQ-5, REQ-7 and REQ-11 change.
+- `up.sh`, `routes.sh`, `registry.sh`, `networks.sh`: same options and exit codes; only the messages of RQ-05, RQ-07 and RQ-11 change.
 
 ### User interface
 
@@ -71,14 +71,14 @@ None.
 
 | Rule | How it is satisfied |
 | --- | --- |
-| 0002: one root-owned command, accounts outside the `docker` group | unchanged; `down` stays within the application's own compose project (REQ-4) |
-| 0007: the allowlist, nothing unchecked reaches root's compose | REQ-1 shrinks the allowlist; REQ-4's `down` hands compose no model |
-| 0011's accepted risk | unchanged (PA-1 A) |
-| README "Accounts" | REQ-2, REQ-9 update it |
+| 0002: one root-owned command, accounts outside the `docker` group | unchanged; `down` stays within the application's own compose project (RQ-04) |
+| 0007: the allowlist, nothing unchecked reaches root's compose | RQ-01 shrinks the allowlist; RQ-04's `down` hands compose no model |
+| 0011's accepted risk | unchanged (PA-01 A) |
+| README "Accounts" | RQ-02, RQ-09 update it |
 
 ## Points of attention
 
-### PA-1 Each application's images in its own registry namespace
+### PA-01: Each application's images in its own registry namespace
 
 - Issue: the intent's open question. With building gone, an application's `image:` may still name another application's image (0011's accepted risk); a namespace per application, declared in `registry.txt`, would refuse it.
 - Options: A no restriction: under the accepted risk it would only guard against a mistake / B a registry column with each application's image prefix (for example `ghcr.io/ch4mpy/turu-`), refused otherwise by `c4-app`; the registry's format changes (0004)
@@ -86,7 +86,7 @@ None.
 - Decides: product owner
 - Decision: A, no restriction (Jérôme Wacongne, product owner, 2026-10-23)
 
-### PA-2 Defect 5 is not reproduced
+### PA-02: Defect 5 is not reproduced
 
 - Issue: with Docker Compose v5.6.0, a tab before `#` doesn't start a comment, and `registry.sh` reads all six cases as compose does. The intent asks for eight defects fixed.
 - Options: A drop the fix; keep a test asserting that `dotenv_value` and compose read these cases alike, run on the stand-in host's compose too (the demo host's version) / B end a value at any whitespace before `#` anyway (then it would differ from compose)
@@ -96,25 +96,25 @@ None.
 
 ## Acceptance criteria
 
-- AC-1 Given the stand-in host and an application whose compose file has a service with `build`, when it runs `sudo c4-app up` (and `pull`), then refused naming the service and the reason, nothing started. (REQ-1)
-- AC-2 Given 0007's hostile build fixtures, when checked, then each is refused by REQ-1's message. (REQ-1, REQ-2)
-- AC-3 Given the applications' fixtures (Faito, Hurura'a), when deployed on the stand-in host, then they start as before. (REQ-3)
-- AC-4 Given a project started on the stand-in host, then its `compose.yml` replaced by a refused one, when its account runs `sudo c4-app down`, then its containers and networks are gone, its volumes kept, and no hook of the new file ran. (REQ-4)
-- AC-5 Given `up.sh` with the proxy's container stopped, then its message says the proxy isn't reachable; with a site Caddy refuses, then it says the configuration is refused. (REQ-5)
-- AC-6 Given no daemon answering and no `compose.apps.yml`, when `networks.sh` writes it while another rewrite holds the lock, then it waits for the lock and the file is never partial. (REQ-6)
-- AC-7 Given an `.env` that exists but can't be read, when `registry.sh` reads a key, then it fails naming the file. (REQ-7)
-- AC-8 Given the six values of Current behaviour, when read by `dotenv_value` and by `docker compose config`, then alike, in dev and on the stand-in host. (REQ-8, PA-2 A)
-- AC-9 Given a service named like `INFRA_HOST`, then refused by the name rule, and the check reads no `INFRA_HOST`. (REQ-9)
-- AC-10 Given a clone without `certs/tls.crt`, when `up.sh` runs, then it creates the certificate and starts the stack, or stops with a message: never a silent exit. (REQ-10)
-- AC-11 Given a routes file with `/x/* gateway =x`, when registered, then refused as `<file>:1: …`, nothing registered. (REQ-11)
-- AC-12 Given the tests of AC-4 to AC-7 and AC-9 to AC-11, run on the code before the fix, then each fails. (REQ-12)
+- **AC-01:** Given the stand-in host and an application whose compose file has a service with `build`, when it runs `sudo c4-app up` (and `pull`), then refused naming the service and the reason, nothing started. (RQ-01)
+- **AC-02:** Given 0007's hostile build fixtures, when checked, then each is refused by RQ-01's message. (RQ-01, RQ-02)
+- **AC-03:** Given the applications' fixtures (Faito, Hurura'a), when deployed on the stand-in host, then they start as before. (RQ-03)
+- **AC-04:** Given a project started on the stand-in host, then its `compose.yml` replaced by a refused one, when its account runs `sudo c4-app down`, then its containers and networks are gone, its volumes kept, and no hook of the new file ran. (RQ-04)
+- **AC-05:** Given `up.sh` with the proxy's container stopped, then its message says the proxy isn't reachable; with a site Caddy refuses, then it says the configuration is refused. (RQ-05)
+- **AC-06:** Given no daemon answering and no `compose.apps.yml`, when `networks.sh` writes it while another rewrite holds the lock, then it waits for the lock and the file is never partial. (RQ-06)
+- **AC-07:** Given an `.env` that exists but can't be read, when `registry.sh` reads a key, then it fails naming the file. (RQ-07)
+- **AC-08:** Given the six values of Current behaviour, when read by `dotenv_value` and by `docker compose config`, then alike, in dev and on the stand-in host. (RQ-08, PA-02 A)
+- **AC-09:** Given a service named like `INFRA_HOST`, then refused by the name rule, and the check reads no `INFRA_HOST`. (RQ-09)
+- **AC-10:** Given a clone without `certs/tls.crt`, when `up.sh` runs, then it creates the certificate and starts the stack, or stops with a message: never a silent exit. (RQ-10)
+- **AC-11:** Given a routes file with `/x/* gateway =x`, when registered, then refused as `<file>:1: …`, nothing registered. (RQ-11)
+- **AC-12:** Given the tests of AC-04 to AC-07 and AC-09 to AC-11, run on the code before the fix, then each fails. (RQ-12)
 
 ## Intent questions
 
-- Restrict each application's images to its own registry namespace, declared in `registry.txt`? → PA-1, decided A: no restriction.
+- Restrict each application's images to its own registry namespace, declared in `registry.txt`? → PA-01, decided A: no restriction.
 
 ## Change log
 
 - v1 — 2026-10-23 — first version
-- v1 — 2026-10-23 — approved: PA-1 A, PA-2 A (REQ-8 reworded as a guard, REQ-12 no longer covers it); tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
-- v2 — 2026-10-23 — found while planning: REQ-1 (up, pull and down refuse a building file) contradicted REQ-4 (down stops the project whatever the file). Decided A by the product owner and tech lead: `down` reads no file and stops the project by name. REQ-1, REQ-4, AC-1, Design (persona, contracts) rewritten; nothing else changes
+- v1 — 2026-10-23 — approved: PA-01 A, PA-02 A (RQ-08 reworded as a guard, RQ-12 no longer covers it); tech lead's agreement for the high risk (Jérôme Wacongne, PO and tech lead)
+- v2 — 2026-10-23 — found while planning: RQ-01 (up, pull and down refuse a building file) contradicted RQ-04 (down stops the project whatever the file). Decided A by the product owner and tech lead: `down` reads no file and stops the project by name. RQ-01, RQ-04, AC-01, Design (persona, contracts) rewritten; nothing else changes

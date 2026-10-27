@@ -13,7 +13,7 @@
 
 ## Requirements
 
-- REQ-1 <testable requirement> (intent: <outcome, criterion or constraint it comes from>)
+- **RQ-01:** <testable requirement> (intent: <outcome, criterion or constraint it comes from>)
 
 ## Out of scope
 
@@ -45,7 +45,7 @@
 
 ## Points of attention
 
-### PA-1 <title>
+### PA-01: <title>
 
 - Issue: <conflict, unsatisfiable rule, product choice or risk>
 - Options: <A …> / <B …>
@@ -55,7 +55,7 @@
 
 ## Acceptance criteria
 
-- AC-1 Given <context>, when <action>, then <observable result>. (REQ-1)
+- **AC-01:** Given <context>, when <action>, then <observable result>. (RQ-01)
 
 ## Intent questions
 

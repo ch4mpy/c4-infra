@@ -9,19 +9,19 @@
 
 ## Summary
 
-In dev, Keycloak doesn't cache themes, and a registration installs a new or changed theme without restarting it: re-running the registration, then reloading the login page, shows the change (PA-1). On the demo host, caching stays on and only a changed theme restarts Keycloak, as today.
+In dev, Keycloak doesn't cache themes, and a registration installs a new or changed theme without restarting it: re-running the registration, then reloading the login page, shows the change (PA-01). On the demo host, caching stays on and only a changed theme restarts Keycloak, as today.
 
 ## Requirements
 
-- REQ-1 In dev, Keycloak caches neither themes nor templates, and its static resources aren't cached by browsers. (intent: proposed outcome)
-- REQ-2 In dev, `register-app.sh` installs a new or changed theme without restarting Keycloak. (intent: success criterion)
-- REQ-3 A developer iterating on a theme re-runs the registration (`deploy-dev.sh`, or `register-app.sh --themes`), then reloads the login page to see the change (PA-1 decided). (intent: success criterion, narrowed)
-- REQ-4 On the demo host, theme caching stays on, and Keycloak is restarted only when a theme a registration installs differs from the installed one — today's behaviour, kept. (intent: constraint, "as little as possible")
-- REQ-5 Dev and the demo host are told apart by the setting of the stack's `.env` that names its environment (`dev` or `demo`, 0003 REQ-7), never by the proxy in use, which becomes Caddy in both (0003 PA-1); whichever of the two specs is delivered first introduces it. (intent: constraint, production-like caching stays on the demo host; 0003)
+- **RQ-01:** In dev, Keycloak caches neither themes nor templates, and its static resources aren't cached by browsers. (intent: proposed outcome)
+- **RQ-02:** In dev, `register-app.sh` installs a new or changed theme without restarting Keycloak. (intent: success criterion)
+- **RQ-03:** A developer iterating on a theme re-runs the registration (`deploy-dev.sh`, or `register-app.sh --themes`), then reloads the login page to see the change (PA-01 decided). (intent: success criterion, narrowed)
+- **RQ-04:** On the demo host, theme caching stays on, and Keycloak is restarted only when a theme a registration installs differs from the installed one — today's behaviour, kept. (intent: constraint, "as little as possible")
+- **RQ-05:** Dev and the demo host are told apart by the setting of the stack's `.env` that names its environment (`dev` or `demo`, 0003 RQ-07), never by the proxy in use, which becomes Caddy in both (0003 PA-01); whichever of the two specs is delivered first introduces it. (intent: constraint, production-like caching stays on the demo host; 0003)
 
 ## Out of scope
 
-- Keycloak reading an application's theme directory live (PA-1 B).
+- Keycloak reading an application's theme directory live (PA-01 B).
 - Zero-downtime theme updates on the demo host (one Keycloak node).
 
 ## Design
@@ -37,7 +37,7 @@ In dev, Keycloak doesn't cache themes, and a registration installs a new or chan
 
 ### API and contracts
 
-- Dev Keycloak's options for theme caching (the exact option names of the Keycloak version in use, settled in the plan), in the dev part of the compose files (0003 PA-2).
+- Dev Keycloak's options for theme caching (the exact option names of the Keycloak version in use, settled in the plan), in the dev part of the compose files (0003 PA-02).
 
 ### User interface
 
@@ -51,11 +51,11 @@ None.
 
 | Rule | How it is satisfied |
 | --- | --- |
-| README design (one Keycloak for every application) | REQ-2: no restart in dev |
+| README design (one Keycloak for every application) | RQ-02: no restart in dev |
 
 ## Points of attention
 
-### PA-1 What a developer does to see a theme change (decided)
+### PA-01: What a developer does to see a theme change (decided)
 
 - Issue: the intent's criterion is "edit and reload"; Keycloak reading each application's theme directory live needs one mount per application in a shared stack.
 - Options: A re-run the registration, then reload (no cache, no restart) / B edit and reload, Keycloak reading the application's directory live
@@ -65,10 +65,10 @@ None.
 
 ## Acceptance criteria
 
-- AC-1 Given a theme registered in dev, when one of its templates is edited and the registration re-run, then the login page shows the change on reload, and Keycloak's container wasn't restarted (same start time). (REQ-1, REQ-2, REQ-3)
-- AC-2 Given another application logged in, when the theme changes in dev, then its session stays valid. (REQ-2)
-- AC-3 Non-regression on the demo host: when a deployment installs an unchanged theme, Keycloak isn't restarted; when it installs a changed one, it is, once. (REQ-4)
-- AC-4 Given the stack's environment set to `dev` with Caddy as its proxy, when a changed theme is registered, then Keycloak isn't restarted; set to `demo`, it is. (REQ-5)
+- **AC-01:** Given a theme registered in dev, when one of its templates is edited and the registration re-run, then the login page shows the change on reload, and Keycloak's container wasn't restarted (same start time). (RQ-01, RQ-02, RQ-03)
+- **AC-02:** Given another application logged in, when the theme changes in dev, then its session stays valid. (RQ-02)
+- **AC-03:** Non-regression on the demo host: when a deployment installs an unchanged theme, Keycloak isn't restarted; when it installs a changed one, it is, once. (RQ-04)
+- **AC-04:** Given the stack's environment set to `dev` with Caddy as its proxy, when a changed theme is registered, then Keycloak isn't restarted; set to `demo`, it is. (RQ-05)
 
 ## Intent questions
 
@@ -77,6 +77,6 @@ None.
 ## Change log
 
 - v1 — 2026-10-21 — first version
-- v1 — 2026-10-21 — draft: coherence review (the intent's criterion narrowed by a decision, demo behaviour stated as kept, dev/demo setting shared with 0003), PA-1 decided
-- v1 — 2026-10-21 — draft: second coherence review (the environment named in `.env` rather than told by the proxy, criterion AC-4)
+- v1 — 2026-10-21 — draft: coherence review (the intent's criterion narrowed by a decision, demo behaviour stated as kept, dev/demo setting shared with 0003), PA-01 decided
+- v1 — 2026-10-21 — draft: second coherence review (the environment named in `.env` rather than told by the proxy, criterion AC-04)
 - v1 — 2026-10-21 — approved by the PO: every point of attention decided
