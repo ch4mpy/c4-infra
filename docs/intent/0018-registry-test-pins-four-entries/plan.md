@@ -55,5 +55,31 @@ Facts read:
 <!-- filled during implementation: date — what — why — impact on files or proof -->
 
 - 2026-10-27 — step 0's baseline (`bash tests/run.sh`, 957 s, stack at 26.8.1): 11 tests fail, not one. (1) Docker Desktop on this workstation doesn't share `/tmp`: the five tests that bind-mount their `mktemp` directory (`0003-caddy-config`, `0003-demo-edge`, `0007-dev`, `0007-listeners`, `0009-master-import-facts`) pass with `TMPDIR=$HOME/.cache/c4-infra-tests`, which the verification uses from here on. (2) `../faito` is not Faito's repository here (a repository without a commit) and realm `faito` isn't in the dev Keycloak: `0003-dev-routes`, `0005-themes`, `0006-account`, `0006-keycloak-facts` and `0006-registration-without-bootstrap-password` fail on that alone; none of them covers a file 0018 changes. (3) `0004-registry.sh`: the bug, `entries: four entries` its only `KO`. Impact on proof: "the full verification is green" needs Faito on the workstation (product owner's decision).
-- 2026-10-27 — step 2: "applications'" lengthened the header's line, so its next two comment lines are rewrapped (`(AC-03), `next`` moved down a line); no check other than the count changes. No impact on proof.
+- 2026-10-27 — step 2: "applications'" lengthened the header's line, so its next two comment lines are rewrapped ("(AC-03), `next`" moved down a line); no check other than the count changes. No impact on proof.
 - 2026-10-27 — `sdlc-verify`'s bug review: `tests/0018-registry-grows.sh` glued its entry to a last line without a new line, which `registry.sh check` accepts (measured: then `13 columns, 7 expected`), and an exported `REGISTRY_FILE` turned its two calls away from the scratch registry. Unfrozen with the product owner's go and changed: the entry on a line of its own, `REGISTRY_FILE` unset, the entry inlined, a shorter header; frozen again. Impact on proof: the mutation check runs again with the changed test, at `74c4796`.
+
+## Verification
+
+### Verification — e49e53c
+
+- Verification command: `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh` → `verification passed` (2026-10-27, 20:06–20:28 UTC, 1310 s; dev stack at 26.8.1, Faito registered from `../faito`)
+- Risk tier: standard (tests only; no risk rule applies)
+- Reviews: bootstrap mode: 1 round; bugs (`code-review`, high): 10 findings, 4 fixed in e49e53c, 6 answered; no security pass (standard risk), no quality pass (bootstrap mode)
+  - fixed: the added entry glued to a last line without a new line, which `registry.sh check` accepts (measured: `13 columns, 7 expected`); an exported `REGISTRY_FILE` turning the test's two calls away; the single-use function; the long header (tests/0018-registry-grows.sh)
+  - answered, out of scope: 0004 also pins other live registry data (Tickee's line, `entry faito`'s fields and Faito's ports), so editing an existing line would break it the same way; the intent keeps every other check → bug intent suggested, 0004's contract checks on a fixture (tests/0004-registry.sh:84)
+  - answered, the project's idiom: the scratch copy's `cp` and `next` aren't checked one by one, as in `tests/0006-registration-without-bootstrap-password.sh:24`; 0004's output names what is missing, and a failing `next` gives a 6-column line `check` refuses (tests/0018-registry-grows.sh:14)
+  - answered, by design: the count also kept a stray test entry out of the real registry, and kept every new application out with it (tests/0004-registry.sh:82); the scratch copy has no `.env`, since the test is about growth, and the real 0004 run checks the RabbitMQ administrator rule (tests/0018-registry-grows.sh:14)
+  - answered, fixed at the source outside this branch: `TMPDIR` for Docker Desktop, and Faito, in `CLAUDE.md`'s Verification on `main` (b556bc3)
+- Mutation check (bug): e49e53c's `tests/0018-registry-grows.sh` in a worktree at 74c4796 (before the fix) → exit 1, `KO - entries: four entries` the only `KO` in 0004's output, `1 check(s) failed`; at e49e53c with `registry.txt` lacking its final new line → `every check passed`; with `REGISTRY_FILE` exported to a fixture → `every check passed`
+- Verifier: 3/4 criteria OK, 0 KO; the fourth (the full suite) not rerun by it, proved by the verification command above
+  - detail it raised, not fixed (one fix round): the 0018 test doesn't assert that the scratch registry holds the added entry; the mutation check shows the entry reaches 0004 at this commit
+- Not verifiable here: none
+- Files outside the plan: none
+- Pre-existing findings (not fixed, out of scope): 0004's other pins on live registry data (above) → bug intent suggested
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| `main` with immo's line passes | OK | `bash tests/0004-registry.sh` (registry, scripts, docs) → 87 `ok`, 0 `KO`, `every check passed` (verifier); within the verification command |
+| One more valid line passes | OK | `bash tests/0018-registry-grows.sh` → `every check passed`; mutation check above |
+| The real registry still passes `check` and holds the four applications of 0004 | OK | `git diff main...HEAD -- tests/0004-registry.sh`: the count check removed and the header rewrapped (*Deviations*); `ok - entries: check passes on registry.txt`, `ok - entries: {turu,hururaa,tickee,faito} has one entry of seven fields` |
+| The full verification is green | OK | `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh` → `verification passed` on e49e53c |
