@@ -21,6 +21,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 - Modules / systems: shared stack (`compose.yml` with `compose.dev.yml` or `compose.demo.yml`, `up.sh`, `env.sh`), reverse proxy (`caddy/`, `routes.sh`), demo host (`demo/`: `c4-app`, `deploy.sh`, `vps-bootstrap.sh`), registration (`register-app.sh`, `registration-account.sh`, `networks.sh`, `export-realm.sh`, `new-realm-ids.sh`), registry (`registry.txt`, `registry.sh`), certificates (`certs/`), deployment workflow (`.github/workflows/`)
 - Standing constraints: the design section of [README.md](../../README.md); the decision that created this stack, [Faito's decision 0001](https://github.com/ch4mpy/faito/blob/main/docs/decisions/0001-infra-partagee.md) (one origin per application, Keycloak on PostgreSQL, `infra.c4-soft.com`)
 - Base branch: main
+- Mode: bootstrap (until the first production release)
 - Product owner(s): Jérôme Wacongne (also tech lead)
 - Intent template: [_intent-template.md](_intent-template.md)
 - Policies: none yet
