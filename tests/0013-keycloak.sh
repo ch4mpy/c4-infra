@@ -14,28 +14,25 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/keycloak.sh
 
 BASE=https://host.docker.internal
-curl_ca() { curl --ssl-no-revoke --cacert certs/ca.crt -s "$@"; }
 
 # AC-01, from the log of Keycloak's last start
 log=$(docker logs c4-infra.keycloak 2>&1 | tr -d '\r')
-says_once() { # <text>
+log_says() { # <text>
   grep -qF -- "$1" <<< "$log" || { echo "Keycloak's log lacks: $1"; return 1; }
 }
-check "AC-01: Keycloak 26.8.1" says_once "Keycloak 26.8.1 on JVM"
-features() { # <preview|experimental>: the features of its last start, sorted, on one line
-  grep -oiE "$1 features enabled: .*" <<< "$log" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
-}
+check "AC-01: Keycloak 26.8.1" log_says "Keycloak 26.8.1 on JVM"
 check "AC-01: the preview features: token-exchange-delegation, parameterized-scopes" \
-  test "$(features Preview)" = "parameterized-scopes:v1,token-exchange-delegation:v1"
-check "AC-01: the experimental feature: cimd, alone" test "$(features Experimental)" = "cimd:v1"
+  test "$(kc_features Preview "$log")" = "parameterized-scopes:v1,token-exchange-delegation:v1"
+check "AC-01: the experimental feature: cimd, alone" test "$(kc_features Experimental "$log")" = "cimd:v1"
 
 # AC-12
-metadata=$(curl_ca "$BASE/.well-known/oauth-authorization-server/auth/realms/master")
+metadata=$(kc_curl "$BASE/.well-known/oauth-authorization-server/auth/realms/master")
 field() { # <jq filter> <expected>
   local value
-  value=$(jq -c "$1" <<< "$metadata" | tr -d '\r')
+  value=$(jq -c "$1" <<< "$metadata")
   [ "$value" = "$2" ] || { echo "$1 is $value, not $2"; return 1; }
 }
 check "AC-12: the RFC 8414 metadata of realm master, on the issuer host's root" \
@@ -45,7 +42,7 @@ check "AC-12: iss in the authorization response" field .authorization_response_i
 check "AC-12: client ID metadata documents" field .client_id_metadata_document_supported true
 login_page_with_resource() {
   local page
-  page=$(curl_ca -G "$BASE/auth/realms/master/protocol/openid-connect/auth" --data-urlencode client_id=security-admin-console \
+  page=$(kc_curl -G "$BASE/auth/realms/master/protocol/openid-connect/auth" --data-urlencode client_id=security-admin-console \
     --data-urlencode "redirect_uri=$BASE/auth/admin/master/console/" --data-urlencode response_type=code \
     --data-urlencode scope=openid --data-urlencode code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM \
     --data-urlencode code_challenge_method=S256 --data-urlencode "resource=https://faito-mcp.dev.localhost/mcp")

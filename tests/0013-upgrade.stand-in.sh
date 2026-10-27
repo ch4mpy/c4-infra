@@ -123,7 +123,7 @@ VERIF_PASSWORD=$password jq -n --arg realm "$REALM" --arg client "$CLIENT" '{
 }' > "$work/realm.json"
 check "a realm with a user is created" kc_admin -i create realms -f - < "$work/realm.json"
 printf 'grant_type=password&client_id=%s&username=verif.user&password=%s&scope=openid' "$CLIENT" "$password" | token > "$work/login.json"
-refresh_token=$(jq -r '.refresh_token // empty' "$work/login.json" | tr -d '\r')
+refresh_token=$(jq -r '.refresh_token // empty' "$work/login.json")
 check "the user logs in: a session, its refresh token" test -n "$refresh_token"
 master_before=$(master_settings)
 check "the master realm's settings are read" test -n "$master_before"
@@ -151,7 +151,7 @@ user_kept() {
 check "AC-02: the user is kept" user_kept
 printf 'grant_type=refresh_token&client_id=%s&refresh_token=%s' "$CLIENT" "$refresh_token" | token > "$work/refresh.json"
 check "AC-02: the session is kept: its refresh token refreshes ($(jq -c '.error // "ok"' "$work/refresh.json"))" \
-  test -n "$(jq -r '.access_token // empty' "$work/refresh.json" | tr -d '\r')"
+  test -n "$(jq -r '.access_token // empty' "$work/refresh.json")"
 check "AC-02: the master realm's settings are kept" test "$(master_settings)" = "$master_before"
 
 # The same image again

@@ -23,6 +23,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 source tests/lib/stand-in-host.sh
+source tests/lib/keycloak.sh
 
 STACK=/home/c4-infra/c4-infra
 UPLOAD=/root/apps-0013/turu
@@ -64,13 +65,6 @@ site_names() { # <line>
 token_from_mcp() {
   stand_in_exec -i docker exec -i turu.mcp curl -s --max-time 20 -d @- "$TOKEN"
 }
-# Payload of a JWT, padding restored
-claims() {
-  local payload
-  payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
-  while [ $((${#payload} % 4)) -ne 0 ]; do payload="${payload}="; done
-  printf '%s' "$payload" | base64 -d
-}
 
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, turu), the shared stack deployed as c4-infra" stand_in_accounts turu
@@ -100,12 +94,12 @@ check "AC-06: Caddy reaches turu.mcp:9080 (its answer)" caddy_reaches_mcp
 
 # AC-13
 printf 'grant_type=client_credentials&client_id=verif-subject&client_secret=secret' | token_from_mcp > "$work/subject.json"
-subject=$(jq -r '.access_token // empty' "$work/subject.json" | tr -d '\r')
+subject=$(jq -r '.access_token // empty' "$work/subject.json")
 check "AC-13: from turu.mcp, through http://keycloak:8080/auth, a token ($(jq -c '.error // "ok"' "$work/subject.json"))" test -n "$subject"
-check "AC-13: issued for the public issuer ($ISSUER)" test "$(claims "$subject" | jq -r .iss | tr -d '\r')" = "$ISSUER"
+check "AC-13: issued for the public issuer ($ISSUER)" test "$(kc_claims "$subject" | jq -r .iss)" = "$ISSUER"
 printf 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=verif-mcp&client_secret=secret&subject_token=%s&subject_token_type=urn:ietf:params:oauth:token-type:access_token' "$subject" \
   | token_from_mcp > "$work/exchanged.json"
-exchanged=$(jq -r '.access_token // empty' "$work/exchanged.json" | tr -d '\r')
+exchanged=$(jq -r '.access_token // empty' "$work/exchanged.json")
 check "AC-13: exchanged there by verif-mcp ($(jq -c '.error_description // .error // "ok"' "$work/exchanged.json"))" test -n "$exchanged"
-check "AC-13: the exchanged token's issuer is the public one" test "$(claims "$exchanged" | jq -r .iss | tr -d '\r')" = "$ISSUER"
+check "AC-13: the exchanged token's issuer is the public one" test "$(kc_claims "$exchanged" | jq -r .iss)" = "$ISSUER"
 finish

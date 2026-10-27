@@ -47,14 +47,6 @@ cleanup() {
 trap cleanup EXIT
 remove_fixture
 
-curl_ca() { curl --ssl-no-revoke --cacert certs/ca.crt -s "$@"; }
-# Payload of a JWT, padding restored
-claims() {
-  local payload
-  payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
-  while [ $((${#payload} % 4)) -ne 0 ]; do payload="${payload}="; done
-  printf '%s' "$payload" | base64 -d
-}
 absolute() { case "$1" in /*) echo "$SERVER$1" ;; *) echo "$1" ;; esac; }
 
 # The agent's login by the browser flow: username then password, the agency asked when it is, the
@@ -64,7 +56,7 @@ agent_login() { # <user> <scope>
   rm -f "$jar"
   verifier=$(head -c 48 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-64)
   challenge=$(printf '%s' "$verifier" | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '=')
-  curl_ca -c "$jar" -b "$jar" -o "$page" -G "$OIDC/auth" --data-urlencode "client_id=$AGENT" \
+  kc_curl -c "$jar" -b "$jar" -o "$page" -G "$OIDC/auth" --data-urlencode "client_id=$AGENT" \
     --data-urlencode response_type=code --data-urlencode "redirect_uri=$REDIRECT" --data-urlencode "scope=$2" \
     --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256 --data-urlencode state=check
   location=""
@@ -82,25 +74,25 @@ agent_login() { # <user> <scope>
     else
       break
     fi
-    printf '%s' "$SECRET" | curl_ca -c "$jar" -b "$jar" -D "$headers" -o "$page" "${data[@]}" "$action"
+    printf '%s' "$SECRET" | kc_curl -c "$jar" -b "$jar" -D "$headers" -o "$page" "${data[@]}" "$action"
     location=$(grep -i '^location:' "$headers" | tr -d '\r' | sed 's/^[Ll]ocation: //')
     if [ -n "$location" ]; then
       case "$location" in "$REDIRECT"*) break ;; esac
-      curl_ca -c "$jar" -b "$jar" -o "$page" "$(absolute "$location")"
+      kc_curl -c "$jar" -b "$jar" -o "$page" "$(absolute "$location")"
       location=""
     fi
   done
   code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
   [ -n "$code" ] || return 1
-  curl_ca -d grant_type=authorization_code -d "client_id=$AGENT" -d "code=$code" -d "redirect_uri=$REDIRECT" \
+  kc_curl -d grant_type=authorization_code -d "client_id=$AGENT" -d "code=$code" -d "redirect_uri=$REDIRECT" \
     -d "code_verifier=$verifier" "$OIDC/token"
 }
 # A POST to the realm's token endpoint, the form (secret included) on stdin: the response
 token_request() {
-  curl_ca -d @- "$OIDC/token"
+  kc_curl -d @- "$OIDC/token"
 }
 client_token() { # <client>
-  printf 'grant_type=client_credentials&client_id=%s&client_secret=%s' "$1" "$SECRET" | token_request | jq -r .access_token | tr -d '\r'
+  printf 'grant_type=client_credentials&client_id=%s&client_secret=%s' "$1" "$SECRET" | token_request | jq -r .access_token
 }
 delegated_exchange() { # <client> <subject token> <actor token>
   printf 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=%s&client_secret=%s&subject_token=%s&subject_token_type=urn:ietf:params:oauth:token-type:access_token&actor_token=%s&actor_token_type=urn:ietf:params:oauth:token-type:access_token' \
@@ -114,34 +106,34 @@ register() {
 check "verif-delegation registers its realm (Turu's export, ids of its own)" register
 
 # 1
-agent_token=$(agent_login uri.accountant "openid delegation:client:$ACTOR" | jq -r '.access_token // empty' | tr -d '\r')
+agent_token=$(agent_login uri.accountant "openid delegation:client:$ACTOR" | jq -r '.access_token // empty')
 check "1: the agent's login, asking delegation:client:$ACTOR, gives a token" test -n "$agent_token"
-agent_claims=$(claims "$agent_token")
-check "1: its may_act names $ACTOR" test "$(jq -r '.may_act.client_id' <<< "$agent_claims" | tr -d '\r')" = "$ACTOR"
-check "1: its audience is the MCP server" bash -c 'jq -e ".aud | index(\"turu-mcp\")" > /dev/null' <<< "$agent_claims"
+agent_claims=$(kc_claims "$agent_token")
+check "1: its may_act names $ACTOR" test "$(jq -r '.may_act.client_id' <<< "$agent_claims")" = "$ACTOR"
+check "1: its audience is the MCP server" jq -e '.aud | index("turu-mcp")' <<< "$agent_claims"
 
 # 2
-plain=$(agent_login uri.accountant openid | jq -r '.access_token // empty' | tr -d '\r')
+plain=$(agent_login uri.accountant openid | jq -r '.access_token // empty')
 actor_token=$(client_token "$ACTOR")
 check "2: without the delegation scope, a token" test -n "$plain"
-check "2: without may_act" test -z "$(claims "$plain" | jq -r '.may_act // empty' | tr -d '\r')"
+check "2: without may_act" test -z "$(kc_claims "$plain" | jq -r '.may_act // empty')"
 check "2: and the delegated exchange is refused" \
-  test -z "$(delegated_exchange "$ACTOR" "$plain" "$actor_token" | jq -r '.access_token // empty' | tr -d '\r')"
+  test -z "$(delegated_exchange "$ACTOR" "$plain" "$actor_token" | jq -r '.access_token // empty')"
 
 # 3 (AC-03)
 exchanged=$(delegated_exchange "$ACTOR" "$agent_token" "$actor_token")
-delegated=$(jq -r '.access_token // empty' <<< "$exchanged" | tr -d '\r')
+delegated=$(jq -r '.access_token // empty' <<< "$exchanged")
 check "AC-03: the actor's delegated exchange gives a token ($(jq -c '.error // "ok"' <<< "$exchanged"))" test -n "$delegated"
-delegated_claims=$(claims "$delegated")
-check "AC-03: its act names the actor" test "$(jq -r '.act.client_id' <<< "$delegated_claims" | tr -d '\r')" = "$ACTOR"
+delegated_claims=$(kc_claims "$delegated")
+check "AC-03: its act names the actor" test "$(jq -r '.act.client_id' <<< "$delegated_claims")" = "$ACTOR"
 check "AC-03: its subject is the user's" \
-  test "$(jq -r .sub <<< "$delegated_claims" | tr -d '\r')" = "$(jq -r .sub <<< "$agent_claims" | tr -d '\r')"
-check "AC-03: no refresh token" test -z "$(jq -r '.refresh_token // empty' <<< "$exchanged" | tr -d '\r')"
+  test "$(jq -r .sub <<< "$delegated_claims")" = "$(jq -r .sub <<< "$agent_claims")"
+check "AC-03: no refresh token" test -z "$(jq -r '.refresh_token // empty' <<< "$exchanged")"
 
 # 4
 standard=$(printf 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=%s&client_secret=%s&subject_token=%s&subject_token_type=urn:ietf:params:oauth:token-type:access_token&audience=turu-api' \
   "$ACTOR" "$SECRET" "$agent_token" | token_request)
-check "4: a standard exchange of a token carrying may_act is refused" test -z "$(jq -r '.access_token // empty' <<< "$standard" | tr -d '\r')"
+check "4: a standard exchange of a token carrying may_act is refused" test -z "$(jq -r '.access_token // empty' <<< "$standard")"
 
 # AC-04: 1 and 3's requests again, once the realm holds no delegate permission. Keycloak checks it at
 # the login (measured on 26.8.1): the token then carries neither the delegation scope nor may_act.
@@ -154,15 +146,15 @@ remove_delegate_permission() {
   kc_registration delete "$permissions/$id" -r verif-delegation
 }
 check "AC-04: the realm's delegate permission (agents-delegate) is removed" remove_delegate_permission
-agent_token=$(agent_login uri.accountant "openid delegation:client:$ACTOR" | jq -r '.access_token // empty' | tr -d '\r')
-agent_claims=$(claims "$agent_token")
+agent_token=$(agent_login uri.accountant "openid delegation:client:$ACTOR" | jq -r '.access_token // empty')
+agent_claims=$(kc_claims "$agent_token")
 check "AC-04: the agent's login, asking delegation:client:$ACTOR, gives a token" test -n "$agent_token"
-check "AC-04: without delegation:client:$ACTOR among its scopes ($(jq -r .scope <<< "$agent_claims" | tr -d '\r'))" \
+check "AC-04: without delegation:client:$ACTOR among its scopes ($(jq -r .scope <<< "$agent_claims"))" \
   jq -e --arg scope "delegation:client:$ACTOR" '.scope | split(" ") | index($scope) == null' <<< "$agent_claims"
-check "AC-04: nor may_act" test -z "$(jq -r '.may_act // empty' <<< "$agent_claims" | tr -d '\r')"
+check "AC-04: nor may_act" test -z "$(jq -r '.may_act // empty' <<< "$agent_claims")"
 actor_token=$(client_token "$ACTOR")
 exchanged=$(delegated_exchange "$ACTOR" "$agent_token" "$actor_token")
 check "AC-04: the actor's delegated exchange is refused ($(jq -c '.error_description // "granted"' <<< "$exchanged"))" \
-  test -z "$(jq -r '.access_token // empty' <<< "$exchanged" | tr -d '\r')"
+  test -z "$(jq -r '.access_token // empty' <<< "$exchanged")"
 
 finish

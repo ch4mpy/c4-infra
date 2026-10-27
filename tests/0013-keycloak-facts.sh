@@ -69,17 +69,14 @@ check "(a) the throwaway answers the image's healthcheck" kc_throwaway_ready "$N
 
 # (b)
 log=$(docker logs "$NAME" 2>&1 | tr -d '\r')
-features() { # <Preview|Experimental>: those of its start, sorted, on one line
-  grep -oE "$1 features enabled: .*" <<< "$log" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
-}
 check "(b) Keycloak 26.8.1" grep -qF "Keycloak 26.8.1 on JVM" <<< "$log"
 check "(b) preview: parameterized-scopes, token-exchange-delegation" \
-  test "$(features Preview)" = "parameterized-scopes:v1,token-exchange-delegation:v1"
-check "(b) experimental: cimd alone" test "$(features Experimental)" = "cimd:v1"
+  test "$(kc_features Preview "$log")" = "parameterized-scopes:v1,token-exchange-delegation:v1"
+check "(b) experimental: cimd alone" test "$(kc_features Experimental "$log")" = "cimd:v1"
 
 # (c)
 executor=$(admin get serverinfo < /dev/null | jq -c '[.componentTypes[][] | select(.id == "client-id-metadata-document")
-  | .properties[] | select(.name | startswith("cimd-allow-")) | {(.name): .type}] | add' | tr -d '\r')
+  | .properties[] | select(.name | startswith("cimd-allow-")) | {(.name): .type}] | add')
 check "(c) the executor's settings: cimd-allow-http-scheme a boolean, cimd-allow-permitted-domains a list ($executor)" \
   test "$executor" = '{"cimd-allow-http-scheme":"boolean","cimd-allow-permitted-domains":"MultivaluedString"}'
 
@@ -95,7 +92,7 @@ cimd_realm() { # <realm> <schemes JSON> <executor configuration JSON>
   }' | admin create realms -f - > /dev/null
 }
 exported() { # <realm> <jq filter>: the value in the realm's partial export
-  admin create "realms/$1/partial-export" -o < /dev/null | jq -c "$2" | tr -d '\r'
+  admin create "realms/$1/partial-export" -o < /dev/null | jq -c "$2"
 }
 cimd_realm facts-export '["https"]' '{"cimd-allow-http-scheme":true,"cimd-allow-permitted-domains":["*.example.org"]}'
 check "(c) exported as a boolean and a list" \

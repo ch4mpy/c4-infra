@@ -14,6 +14,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/keycloak.sh
 
 BASE=https://host.docker.internal
 REGISTRATION=/auth/realms/master/clients-registrations/openid-connect
@@ -22,7 +23,7 @@ trap 'docker rm -f "$PROBE" > /dev/null 2>&1' EXIT
 docker rm -f "$PROBE" > /dev/null 2>&1
 
 register() { # the status of one anonymous registration, from this workstation
-  curl --ssl-no-revoke --cacert certs/ca.crt -s -o /dev/null -w '%{http_code}' -X POST \
+  kc_curl -o /dev/null -w '%{http_code}' -X POST \
     -H 'Content-Type: application/json' -d '{"redirect_uris":["https://example.org/callback"]}' "$BASE$REGISTRATION"
 }
 
@@ -31,7 +32,7 @@ for _ in $(seq 1 11); do statuses+=("$(register)"); done
 first_ten=$(printf '%s\n' "${statuses[@]:0:10}" | sort -u | paste -sd' ' -)
 check "AC-14: the first 10 registrations of the minute reach Keycloak ($first_ten)" test "$first_ten" = 403
 check "AC-14: the 11th gets 429 from the proxy (${statuses[10]})" test "${statuses[10]}" = 429
-discovery=$(curl --ssl-no-revoke --cacert certs/ca.crt -s -o /dev/null -w '%{http_code}' "$BASE/auth/realms/master/.well-known/openid-configuration")
+discovery=$(kc_curl -o /dev/null -w '%{http_code}' "$BASE/auth/realms/master/.well-known/openid-configuration")
 check "AC-14: the same address's other requests to Keycloak are answered ($discovery)" test "$discovery" = 200
 
 # Another address: a container on c4-infra, reaching the proxy by its network address, under the
