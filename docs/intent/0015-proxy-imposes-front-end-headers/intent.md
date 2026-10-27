@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (immo's plan 0001, step 11, and spec 0001, PA-07, 2026-10-26)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-26
 - Decided: 2026-10-27
 - Supersedes: —

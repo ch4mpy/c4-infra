@@ -1,11 +1,11 @@
 # Spec: The shared proxy imposes its security headers on every application's front end
 
 - Intent: [0015](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
-- Risk: high, proposed (PA-02: no risk rule names a page's security headers; the tech lead decides)
+- Risk: high (PA-02, decided by the tech lead: an application may relax its visitors' protection on its own origin, the public demo included; no risk rule names it; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design (one origin per application; one reverse proxy, the sites' headers written once), 0003 (one routes file, dev and demo alike), README "Routes file" (refusals before anything is registered), 0013 (the MCP origin, `_routes_site`)
-- Approved: —
+- Approved: 2026-10-27, Jérôme Wacongne (product owner, and tech lead for the high risk)
 
 ## Summary
 
@@ -82,7 +82,7 @@ None.
 - Options: A the stack's value stays / B on a `headers=app` route, the stack's value as a default only / C a default only, on every route
 - Recommendation: A: no application needs it today; a later intent if one does.
 - Decides: PO
-- Decision: to decide
+- Decision: A, the stack's value stays (PO, Jérôme Wacongne, 2026-10-27)
 
 ### PA-02: Risk level
 
@@ -90,7 +90,7 @@ None.
 - Options: A high (tech lead's review) / B standard
 - Recommendation: A: it changes a protection of the visitors' sessions that the stack guarantees today; adding the rule to the README's risk rules is the PO's call, apart.
 - Decides: tech lead
-- Decision: to decide
+- Decision: A, high (tech lead, Jérôme Wacongne, 2026-10-27)
 
 ## Acceptance criteria
 
@@ -112,3 +112,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-27 — first version
+- v1 — 2026-10-27 — approved: PA-01 A, PA-02 A (high risk)
