@@ -210,12 +210,13 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     resolves on those networks (PA-08): an IP address (`10.0.0.1`, `[::1]`), a single label
     (`keycloak`), a last label outside the IANA root zone (`*.mcp`, `faito.gateway`,
     `host.docker.internal`; the list is
-    [`tlds-alpha-by-domain.txt`](tlds-alpha-by-domain.txt)), or two labels whose first is a
-    registered application's name or `c4-infra` (a container: `faito.app`, `c4-infra.rabbitmq`),
-    after a leading `*.`, case ignored and a final dot removed; and one holding a realm attribute
-    `client-policies.*`, where Keycloak stores the profiles and policies, out of that check. The
-    check reads the domain's name, not what it resolves to: a public name pointed at an internal
-    address passes, and would let Keycloak fetch from it;
+    [`tlds-alpha-by-domain.txt`](tlds-alpha-by-domain.txt)), a wildcard over a whole top-level
+    domain (`*.com`, `*.xn--p1ai`: every domain of it; `*.xn--d1acufc.xn--p1ai` passes), or two
+    labels whose first is a registered application's name or `c4-infra` (a container: `faito.app`,
+    `c4-infra.rabbitmq`), after a leading `*.`, case ignored and a final dot removed; and one
+    holding a realm attribute `client-policies.*`, where Keycloak stores the profiles and policies,
+    out of that check. The check reads the domain's name, not what it resolves to: a public name
+    pointed at an internal address passes, and would let Keycloak fetch from it;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
