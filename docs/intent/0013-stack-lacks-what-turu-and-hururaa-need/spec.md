@@ -75,7 +75,7 @@ The shared Keycloak moves to 26.8.1 with the two preview features Turu's agent d
 - Image: Keycloak `26.8.1` (the tag, which a rebuild refreshes with its base image's fixes; alternative, a digest: reproducible, but no fix without an edit), `KC_FEATURES=token-exchange-delegation,parameterized-scopes,cimd`.
 - Proxy: a Caddy image with a rate-limit module (the stock image has none), in dev and on the demo host.
 - Routes file: unchanged notation; the lines whose target is `mcp` form the MCP origin's site, `<app>-mcp.<domain of the registry's host>`. Demo upstreams: `gateway` `http://<app>.gateway:7080`, `mcp` `http://<app>.mcp:9080`, `fr`/`en`/`ui` `http://<app>.frontend:80`.
-- Registration refusal (RQ-17): `<realm file>: client profile '<name>': the client-id-metadata-document executor allows http (or the domain '*'), or permits a domain that names no public host): Keycloak would fetch any URL, other applications' containers included: refused`.
+- Registration refusal (RQ-17): `<realm file>: client profile '<name>': the client-id-metadata-document executor allows http (or the domain '*'), or permits a domain that names no public host: Keycloak would fetch any URL, other applications' containers included: refused`.
 
 ### User interface
 
