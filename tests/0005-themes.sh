@@ -130,7 +130,8 @@ changed_since() { # <start time>
 
 # AC-04's setting: dev, with Caddy as the proxy
 check "INFRA_ENV=dev in .env" set_env dev
-check "the reverse proxy is Caddy" bash -c "docker inspect -f '{{.Config.Image}}' c4-infra.reverse-proxy | grep -q '^caddy:'"
+check "the reverse proxy is the stack's Caddy (c4-infra/reverse-proxy, intent 0013)" \
+  bash -c "docker inspect -f '{{.Config.Image}}' c4-infra.reverse-proxy | grep -qx 'c4-infra/reverse-proxy'"
 check "Keycloak is healthy" kc_wait_healthy 60
 started=$(kc_started_at)
 

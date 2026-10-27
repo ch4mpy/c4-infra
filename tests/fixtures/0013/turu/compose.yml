@@ -1,0 +1,13 @@
+# 0013 fixture: Turu's MCP server on the demo host, as the README describes it since 0013: a
+# container named turu.mcp, answering on 9080, on Turu's own network c4-infra.turu, which its
+# registration creates. The probe (tests/fixtures/0007/probe/: an echo, and curl), built in the
+# stand-in: no pull.
+services:
+  mcp:
+    image: c4-test/probe
+    container_name: turu.mcp
+    command: [caddy, respond, --listen, ':9080', turu.mcp]
+    networks: [c4-infra.turu]
+networks:
+  c4-infra.turu:
+    external: true

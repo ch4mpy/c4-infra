@@ -101,6 +101,9 @@ part_registry() {
     "bad-fields.txt:3: number '39' is not between 1 and 38" \
     "bad-fields.txt:4: host name 'verif2.dev.localhost:14080' is not a host name"
   refused reserved-name.txt 'reserved-name.txt:6: keycloak-db is reserved for the shared stack'
+  # 0013: each application's MCP origin, which no other entry may take, as a host or a name
+  refused mcp-origin-host.txt "host name faito-mcp.dev.localhost: faito's MCP origin (line 5) and verif (line 6)"
+  refused mcp-origin-name.txt "application faito-mcp: faito's MCP origin (line 5) and faito-mcp (line 6)"
 
   # AC-04
   run_with "$FIXTURES/taken-1-4.txt" bash registry.sh next
@@ -135,11 +138,8 @@ part_registry() {
   upstream_is fr demo http://faito.frontend:80
   upstream_is ui demo http://faito.frontend:80
   upstream_is en demo http://faito.frontend:80
-  run_with "" bash registry.sh upstream faito mcp demo
-  check "upstream faito mcp demo exits 2" exited 2
-  check "upstream faito mcp demo prints nothing on stdout" prints_nothing
-  check "upstream faito mcp demo names the README section" \
-    says "README.md, 'What an application's deployment does'"
+  # 0013: the MCP server's container port, which the README fixes
+  upstream_is mcp demo http://faito.mcp:9080
   run_with "" bash registry.sh upstream faito admin dev
   check "upstream faito admin dev (unknown role) exits 1" exited 1
   run_with "" bash registry.sh upstream verif gateway dev

@@ -126,7 +126,7 @@ say_not_set_up() {
   for name in "${not_set_up[@]}"; do
     [[ $not_set_up_said == *" $name "* ]] && continue
     not_set_up_said+="$name "
-    echo "Keycloak refuses $name for a pending required action (\"Account is not fully set up\"): an e-mail address to verify (the master realm's Verify email), a temporary password to update… Log in to the console as $name and complete it (a verification mail lands in Mailpit, /mailpit/), or remove that required action from $name in the console; the admin CLI logs in as $name afterwards." >&2
+    echo "Keycloak refuses $name for a pending required action (\"Account is not fully set up\"): an e-mail address to verify (the master realm's Verify email), a temporary password to update… Log in to the console as $name and complete it (a verification mail lands in Mailpit, /mailpit/), or, as another administrator, mark $name's address verified (or remove its required action) in the console; the admin CLI logs in as $name afterwards." >&2
   done
 }
 

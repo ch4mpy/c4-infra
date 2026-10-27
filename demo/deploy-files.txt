@@ -7,6 +7,7 @@ registry.txt
 registry.sh
 routes.sh
 register-app.sh
+tlds-alpha-by-domain.txt
 registration-account.sh
 networks.sh
 keycloak-import/master-realm.json

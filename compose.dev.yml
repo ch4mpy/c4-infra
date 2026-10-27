@@ -5,6 +5,8 @@
 # applications' processes on the host through the same name (extra_hosts).
 services:
   reverse-proxy:
+    # Caddy's version is the Dockerfile's; tagged ${PROXY_IMAGE} (c4-infra/reverse-proxy)
+    build: ./reverse-proxy
     ports:
       - 127.0.0.1:80:80
       - 127.0.0.1:443:443

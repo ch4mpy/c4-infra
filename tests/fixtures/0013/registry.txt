@@ -1,0 +1,6 @@
+# registry.txt's four entries, and the fixture application of tests/0013-*.sh (block 41xxx): its realms (delegation, CIMD policies)
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+31 verif-delegation verif-delegation,verif-cimd-http,verif-cimd-any,verif-cimd-ok verif-delegation-api - verif-delegation.dev.localhost verif-delegation.c4-soft.com

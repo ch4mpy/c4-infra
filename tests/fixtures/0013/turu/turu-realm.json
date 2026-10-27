@@ -1,0 +1,39 @@
+{
+  "realm": "turu",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "verif-subject",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "verif-mcp audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "verif-mcp",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "verif-mcp",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "secret",
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      }
+    }
+  ]
+}
