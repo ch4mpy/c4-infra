@@ -13,3 +13,5 @@ c4-infra: the infrastructure the c4-soft applications share on one machine (deve
 ## Verification
 
 `bash tests/run.sh`, with the dev stack running (`bash up.sh`) and `jq` installed; `bash tests/run.sh --all` before a change to the demo host: it also runs the `*.stand-in.sh` tests, on a stand-in demo host (`tests/lib/stand-in-host.sh`: a privileged Ubuntu container running its own Docker, whose volume keeps the pulled images).
+
+Prerequisites beyond the stack: Faito registered from `../faito` (its `deploy-dev.sh`), which several tests use as the sample application; with Docker Desktop, a `TMPDIR` it shares (e.g. `mkdir -p ~/.cache/c4-infra-tests && TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh`), since the tests bind-mount their `mktemp` directories and `/tmp` isn't shared by default.
