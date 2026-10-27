@@ -105,3 +105,57 @@
 - 2026-10-27 — spec v4 (PA-08 A, found by the bug review): `register-app.sh` also refuses a CIMD permitted domain that names no public host (an IP address, a single label, a last label outside the IANA root zone, `<registered application or c4-infra>.<x>`, after a leading `*.`, case ignored, a final dot removed), naming the file, the profile and the domain. Files: `tlds-alpha-by-domain.txt` (new, IANA's list as downloaded, its version line kept) and `demo/deploy-files.txt` (it sends the list to the demo host, where `c4-app` runs `register-app.sh` from the stack's directory), both outside *Files*, and `tests/0002-register-scope.sh`'s scratch stack copies it (its registration with a realm stopped on the missing list); README's realm rule lists the refusals and says the check reads the name, not what it resolves to, and its Keycloak paragraph says when the `delegate` permission is checked (AC-04, decided by the product owner). Proof: AC-15's line also covers `10.0.0.1`, `[::1]`, `keycloak`, `*.mcp`, `faito.gateway`, `host.docker.internal`, `faito.rest-api-db`, `c4-infra.rabbitmq` and `faito.app` refused before any docker call, `turu.c4-soft.com`, `*.xn--p1ai` and `*.example.org` passing; AC-16: `tests/0013-register.sh` on `b250f1d`'s `register-app.sh`, 18 `KO`, all in the new refused cases.
 - 2026-10-27 — spec v5: `register-app.sh` also refuses a wildcard over a whole top-level domain (`*.<one label>`: `*.com`, `*.xn--p1ai`, every domain of it), its own reason in the message; a last label outside the IANA root zone is named first (`*.mcp`), the clearer cause. Files: `register-app.sh`, `tests/0013-register.sh`, README's realm rule, no new one. Proof: AC-15's line refuses `*.com` and `*.xn--p1ai` too, its IDN twin is `*.xn--d1acufc.xn--p1ai` (passes, docker called) instead of `*.xn--p1ai`; AC-16: `tests/0013-register.sh` on `b250f1d`'s `register-app.sh`, 22 `KO`, all in the refused cases (two per domain), none in the twins.
 - 2026-10-27 — spec v4's list `tlds-alpha-by-domain.txt`: `tests/0006-registration-without-bootstrap-password.sh` copies the stack's scripts into a scratch directory without it, and its realm registration stopped (`--all` on 27da175: 2 KO, "tlds-alpha-by-domain.txt is missing"); its copy line gains the list, as `tests/0002-register-scope.sh`'s did; no check changed.
+
+## Verification
+
+<!-- sdlc-verify's evidence block as posted on PR #4 on 2026-10-27, in normal mode (4 review rounds), carried over as is when 0013 went to bootstrap mode -->
+
+### Verification — 509e7fd
+
+- Verification command: `bash tests/run.sh --all` → 39/40 passed on 27da175 (2026-10-27, 15:39–16:34 UTC), the one KO `tests/0006-registration-without-bootstrap-password.sh` (its scratch copy lacked v4's `tlds-alpha-by-domain.txt`), fixed in 509e7fd → `bash tests/0006-registration-without-bootstrap-password.sh` → `every check passed`; earlier full runs: `--all` → `verification passed` on 89f6911, `bash tests/run.sh` → `verification passed` on c15b737
+- Risk tier: high (authentication: Keycloak 26.8.1 with preview and experimental features shared by every application; what a host exposes: an MCP origin per application, the registration endpoint's rate limit)
+- Spec: v4 and v5 at verification (PA-08 A, approved by Jérôme Wacongne, product owner and tech lead, 2026-10-27): RQ-17 also refuses CIMD domains that name no public host (IP, single label, last label outside the IANA list, a wildcard over a single label, `<app or c4-infra>.<x>`)
+- Reviews: 4 rounds
+  - round 1: bugs 6 Important (4 fixed, 1 refuted by measurement, 1 → spec v4) and 9 detail (5 fixed, 4 answered); security 2 detail (1 fixed, 1 refuted); quality 6 (5 applied, 1 answered)
+  - round 2: 0 Important, 2 detail (answered); round 3 (verifier): 1 bug of round 1's fix, fixed (d3e876c); round 4 (v4/v5 diff): 0 Important, 5 detail, open below
+  - rate limit bypass by `;a=1`, `/./`, `x/../`, `//`: refuted, measured through the dev proxy (Keycloak refuses `;`; the others get `429` from the 11th request)
+  - kept, with reasons in the plan's *Deviations*: Turu's real port 11280 in `tests/0003-dev-routes.sh`; one rate-limit bucket per workstation in dev; the project's multi-line comments; `up.sh`'s and `deploy.sh`'s different image comparisons (with containerd, `up.sh`'s can only stop Keycloak once more than needed)
+- Mutation checks: AC-16: `routes.sh` + `registry.sh` at e493826 → `tests/0003-routes.sh` `13 check(s) failed`; `register-app.sh` at e493826 → `tests/0013-register.sh` `39 check(s) failed`; v4/v5: `register-app.sh` at b250f1d → `tests/0013-register.sh` `22 check(s) failed`
+- Verifier (89f6911): 15/16 criteria OK, 0 KO; AC-15 re-proved on v5 by `tests/0013-register.sh` → `every check passed`
+- Not verifiable here: AC-02's dev half (the dev stack already runs 26.8.1); AC-14 on `infra.c4-soft.com` (step 9, after the merge)
+- Files outside the plan: `tests/fixtures/0003/demo.env` (follows the `write-env.sh` deviation); the rest are in *Deviations*
+- Pre-existing (not fixed, out of scope): the dev proxy answers an unregistered host (`nobody.dev.localhost`) with an empty `200` → bug intent suggested
+
+**Open for the next session** (round 4's details, not fixed, no Important)
+- A shape check for CIMD domains (`^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.?$` after downcasing) would refuse `" faito.app"` (a leading space passes today, harmless only if Keycloak doesn't trim, unmeasured), `**.com`, `a.*.com`, and give `""` its own reason instead of "not JSON".
+- Wildcards over multi-label public suffixes and wildcard-DNS services pass (`*.co.uk`, `*.nip.io`, `*.localtest.me`): PA-08's accepted limit; name them in the README or in the PA-08 B intent (an egress filter for Keycloak).
+- The check reads the registry at registration: an application registered later doesn't re-check the others' realms.
+- The README doesn't say how to refresh `tlds-alpha-by-domain.txt`; a Unicode domain could be told to use its `xn--` form.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 | OK | `tests/0013-keycloak.sh` → `every check passed` (26.8.1, exact feature lists) |
+| AC-02 | OK (stand-in); dev half not verifiable here | `tests/0013-upgrade.stand-in.sh` → `ok - AC-02: the session is kept: its refresh token refreshes ("ok")` |
+| AC-03 | OK | `tests/0013-delegation.sh` → `ok - AC-03: its act names the actor` |
+| AC-04 | OK | `ok - AC-04: the actor's delegated exchange is refused ("Invalid may_act claim in the subject_token")`; with the permission kept: `3 check(s) failed`; README: `delegate` is checked when a token is issued (product owner, 2026-10-27) |
+| AC-05 | OK | `tests/0003-routes.sh` → `every check passed` |
+| AC-06 | OK | `tests/0013-mcp.stand-in.sh` → `ok - AC-06: Caddy reaches turu.mcp:9080 (its answer)` |
+| AC-07 | OK | `ok - AC-07: dumped before Keycloak stops` |
+| AC-08 | OK | `tests/0013-register.sh` (the `.conf` refused, docker never called) |
+| AC-09 | OK (review) | `docs/migration.md`, `README.md` |
+| AC-10 | OK | `tests/0004-registry.sh` → `every check passed`; demo host by hand: exit 1 naming both lines |
+| AC-11 | OK | `ok - AC-11: the dev leaf is valid for faito-mcp.dev.localhost` |
+| AC-12 | OK | `ok - AC-12: an authorization request with resource= shows the login page` |
+| AC-13 | OK | `ok - AC-13: the exchanged token's issuer is the public one` |
+| AC-14 | OK (dev, demo configuration); `infra.c4-soft.com` after the merge | `ok - AC-14: the 11th gets 429 from the proxy (429)` |
+| AC-15 | OK (v5) | `tests/0013-register.sh` → `every check passed` |
+| AC-16 | OK | mutation checks above |
+
+Next: the round-4 details above (optional), then `/sdlc-review 0013`; delivery order 0013 → 0017 → 0011 → 0015 → 0016.
+
+**Delivery** (bootstrap mode, Jérôme Wacongne, product owner, 2026-10-27)
+
+- Manual proofs: AC-02's dev half (a session kept across the upgrade of a dev stack at 26.7.5) not done, the product owner's choice; the stand-in proof covers the demo side. AC-14 on `infra.c4-soft.com`: step 9, after the deployment, below.
+- No review stage in bootstrap mode: the evidence above stands for `sdlc-verify`'s round. Round 4's four details stay open, none Important.
+- Agent configuration: `CLAUDE.md` gains one layout line; the project has no evals.
+- Not the first production release: the demo host is not production (product owner).
