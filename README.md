@@ -200,11 +200,14 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     the application accepts; `export-realm.sh` exports the generated ones, which stay dev keys:
     the demo rendering removes them again;
   - client policies that fetch client metadata documents (`cimd`, intent 0013) over https from
-    named domains only: a registration refuses an export whose `client-id-metadata-document`
-    executor allows the http scheme (`cimd-allow-http-scheme` other than `false`: Keycloak reads
-    `"true"`, `"TRUE"` or `1` as true) or permits the domain `*` or `*.` (which matches every host
-    written with a final dot). Keycloak, on every application's network, would otherwise fetch any
-    URL an unauthenticated client names, other applications' containers included;
+    named domains: a registration refuses an export whose `client-id-metadata-document` executor
+    allows the http scheme (`cimd-allow-http-scheme` other than `false`: Keycloak reads `"true"`,
+    `"TRUE"` or `1` as true) or permits the domain `*` or `*.` (which matches every host written
+    with a final dot), with which Keycloak, on every application's network, would fetch any URL an
+    unauthenticated client names; and one holding a realm attribute `client-policies.*`, where
+    Keycloak stores the profiles and policies, out of that check. That is all it refuses (PA-07):
+    any other permitted domain is the realm's own choice, and a container's name among them (say
+    `faito.mcp`) would let Keycloak fetch from that container;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
@@ -235,9 +238,9 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   docker compose -f compose-rest-api-db.yml up -d --wait
   ```
 
-  Until Faito registers with its routes file (Faito 0021), its `deploy-dev.sh` passes its former
-  nginx block, `reverse-proxy/faito.conf`: `register-app.sh` then registers
-  [`examples/routes/faito.routes`](examples/routes/faito.routes) in its place, with a warning.
+  Since intent 0013, `register-app.sh` refuses a `--proxy` nginx block (`reverse-proxy/faito.conf`,
+  Faito's former one), as any file that isn't a routes file: Faito passes its routes file
+  ([`examples/routes/faito.routes`](examples/routes/faito.routes), copied by Faito 0021).
 
 A project created before this stack existed moves onto it with [docs/migration.md](docs/migration.md).
 
@@ -601,11 +604,15 @@ first.
 
 [`demo/deploy.sh`](demo/deploy.sh) installs [`demo/backup.sh`](demo/backup.sh) in the `c4-infra` account's crontab, nightly
 at 03:15 (host time): a hot `pg_dump` of Keycloak's database in `~/backups/`, kept 7 days. Each
-application backs up its own databases. To restore, from `~/c4-infra`:
+application backs up its own databases. To restore, from `~/c4-infra`, into a database recreated
+empty (`pg_restore --clean` drops only what the dump holds: a table created since, as a newer
+Keycloak's migration adds, would stay; measured on a throwaway `postgres:18.6`, intent 0013):
 
 ```bash
 docker compose stop keycloak
-docker compose exec -T keycloak-db pg_restore -U keycloak -d keycloak --clean --if-exists \
+docker compose exec -T keycloak-db psql -U keycloak -d postgres -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE keycloak WITH (FORCE)' -c 'CREATE DATABASE keycloak OWNER keycloak'
+docker compose exec -T keycloak-db pg_restore -U keycloak -d keycloak \
   < ~/backups/c4-infra-keycloak-db-<stamp>.dump
 docker compose start keycloak
 ```
@@ -617,7 +624,8 @@ it with the content of `keycloak/`), `demo/deploy.sh` dumps the database first,
 removed by hand), stops Keycloak, then starts the stack: the new version's `keycloak-import`
 migrates the database (`--spi-connections-jpa--quarkus--migration-strategy=update`; an import only
 validates it by default), then the new Keycloak starts on it. Logins fail during that restart. To
-go back: `docker compose stop keycloak`, restore that dump with the `pg_restore` line above (not
+go back: `docker compose stop keycloak`, restore that dump with the `psql` and `pg_restore` lines
+above, which leave none of the tables the migration added (not
 `start`: the newer Keycloak would migrate it again), then deploy the previous version (revert the
 merge that brought the new one), whose import and Keycloak read the restored database (neither
 reads one the newer version migrated). In dev, `up.sh` stops Keycloak when its image changed, and
