@@ -65,3 +65,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | planned | 2026-10-23 | 2026-10-23 |
 | 0012 | [An application's Keycloak theme may read the shared Keycloak's environment](0012-themes-read-keycloak-environment/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0013 | [The shared stack lacks what Turu and Hurura'a need to move onto it](0013-stack-lacks-what-turu-and-hururaa-need/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
+| 0018 | [The registry test requires exactly four applications, so registering a new one fails the verification](0018-registry-test-pins-four-entries/intent.md) | bug | accepted | 2026-10-27 | 2026-10-27 |
