@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0013: the proxy limits a realm's client registration endpoint to 10 requests a minute per client
-# address, 429 beyond, and nothing else (AC-14, REQ-16), on the dev stack:
+# address, 429 beyond, and nothing else (AC-14, RQ-16), on the dev stack:
 #
 #   - from this workstation, 11 anonymous registrations of realm master within the minute: the first
 #     10 answered by Keycloak (403, its Trusted Hosts policy), the 11th by the proxy (429);

@@ -254,7 +254,7 @@ not_assigned=()
 # Keycloak reads the http setting as Jackson does ("True", "TRUE", " true" and 1 are true): only
 # false is accepted. It permits a host equal to a domain, or ending with what follows "*." (Keycloak
 # 26.8.1, tests/0013-keycloak-facts.sh): "*." matches every host written with a final dot; "*" is
-# refused as well (PA-7). It refuses a domain list that isn't a list.
+# refused as well (PA-07). It refuses a domain list that isn't a list.
 realm_problems=()
 cimd_problems() { # <realm file>: one line per problem, "<profile>: …" (on its stdin: jq may be a Windows
   # program, which MSYS_NO_PATHCONV leaves with a path of Git Bash)

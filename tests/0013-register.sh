@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0013: what a registration refuses since 0013 (REQ-11, REQ-17), on the workstation, with a fake
+# 0013: what a registration refuses since 0013 (RQ-11, RQ-17), on the workstation, with a fake
 # docker (tests/lib/stubs.sh): each refusal says why, before any docker call.
 #
 #   - AC-15: a realm export whose client profile holds a client-id-metadata-document executor that
@@ -8,7 +8,7 @@
 #     26.8.1: tests/0013-keycloak-facts.sh): Keycloak would fetch any URL an unauthenticated client
 #     names, other applications' containers included; its twins, http off (false, "false") with
 #     *.example.org and a named domain, pass the check (docker is called);
-#   - AC-8: a --proxy file that is an nginx server block (.conf): refused by the routes notation,
+#   - AC-08: a --proxy file that is an nginx server block (.conf): refused by the routes notation,
 #     as any file that isn't a routes file, since the transition is gone.
 #
 #   bash tests/0013-register.sh
@@ -78,10 +78,10 @@ for value in false '"false"'; do
   check "AC-15's twin: the registration goes on (docker is called)" test -s "$work/docker.log"
 done
 
-# AC-8: the .conf transition is gone
+# AC-08: the .conf transition is gone
 printf 'server {\n  listen 443 ssl;\n  location / { proxy_pass https://host.docker.internal:14200; }\n}\n' > "$work/faito.conf"
 register --app faito --proxy "$work/faito.conf"
-refused_before_docker "AC-8: a --proxy nginx block (.conf)" "The routes file $work/faito.conf is refused (above)"
-check "AC-8: no example routes file replaces it" never_says "examples/routes/faito.routes"
+refused_before_docker "AC-08: a --proxy nginx block (.conf)" "The routes file $work/faito.conf is refused (above)"
+check "AC-08: no example routes file replaces it" never_says "examples/routes/faito.routes"
 
 finish

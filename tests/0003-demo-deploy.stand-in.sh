@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0003: the demo deployment on a stand-in demo host (REQ-6, AC-8, AC-9): a host holding only what
+# 0003: the demo deployment on a stand-in demo host (RQ-06, AC-08, AC-09): a host holding only what
 # the deployment sends (demo/deploy-files.txt) and the .env demo/write-env.sh writes, mode 600; the
 # host's side of the deployment (demo/deploy.sh) starts the stack healthy from the compose base and
 # its demo override; then the applications register there: Faito, Hurura'a and Turu from their routes
@@ -46,7 +46,7 @@ check ".env says INFRA_ENV=demo" stand_in_exec grep -qx INFRA_ENV=demo "$DIR/.en
 check ".env names the compose base, its demo override and the applications' networks (0007)" \
   stand_in_exec grep -qx 'COMPOSE_FILE=compose.yml:compose.demo.yml:compose.apps.yml:compose.no-acme.yml' "$DIR/.env"
 
-# AC-8: the host's side of the deployment
+# AC-08: the host's side of the deployment
 in_stack bash ./demo/deploy.sh > "$work/deploy.log" 2>&1
 status=$?
 deployed() { [ "$status" -eq 0 ] || { tail -n 30 "$work/deploy.log"; return 1; }; }
@@ -61,7 +61,7 @@ check "the proxy runs the demo rules (its INFRA_ENV: $proxy_env)" test "$proxy_e
 check "the nightly backup is in the crontab" \
   stand_in_exec sh -c 'crontab -l | grep -qxF "15 3 * * * cd ~/c4-infra && bash ./demo/backup.sh >> ~/backups/c4-infra-backup.log 2>&1"'
 
-# AC-9: the applications register there, from their routes files
+# AC-09: the applications register there, from their routes files
 stand_in_exec mkdir -p "$APPS"
 if [ -f "$FAITO_REALM" ]; then
   stand_in_exec -i sh -c 'cat > "$1"' sh "$APPS/faito-realm.json" < "$FAITO_REALM"

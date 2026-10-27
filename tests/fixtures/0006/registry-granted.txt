@@ -1,4 +1,4 @@
-# registry.txt's four entries, and the fixture application of tests/0006-account.sh's AC-3 (block 43xxx): its realm, which an administrator creates before the account manages it, as AC-3's Given says, and which up.sh's ensure then grants
+# registry.txt's four entries, and the fixture application of tests/0006-account.sh's AC-03 (block 43xxx): its realm, which an administrator creates before the account manages it, as AC-03's Given says, and which up.sh's ensure then grants
 1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
 2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
 3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com

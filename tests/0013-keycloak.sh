@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 0013: what the shared Keycloak offers since 0013, on the dev stack (AC-1, AC-11, AC-12):
+# 0013: what the shared Keycloak offers since 0013, on the dev stack (AC-01, AC-11, AC-12):
 #
-#   - AC-1: its log names version 26.8.1, exactly two preview features (token-exchange-delegation,
+#   - AC-01: its log names version 26.8.1, exactly two preview features (token-exchange-delegation,
 #     parameterized-scopes) and one experimental feature (cimd);
 #   - AC-12: a realm's RFC 8414 metadata answers on the issuer host's root, with S256, the iss
 #     parameter of the authorization response and client ID metadata documents; an authorization
@@ -18,18 +18,18 @@ source tests/lib/assert.sh
 BASE=https://host.docker.internal
 curl_ca() { curl --ssl-no-revoke --cacert certs/ca.crt -s "$@"; }
 
-# AC-1, from the log of Keycloak's last start
+# AC-01, from the log of Keycloak's last start
 log=$(docker logs c4-infra.keycloak 2>&1 | tr -d '\r')
 says_once() { # <text>
   grep -qF -- "$1" <<< "$log" || { echo "Keycloak's log lacks: $1"; return 1; }
 }
-check "AC-1: Keycloak 26.8.1" says_once "Keycloak 26.8.1 on JVM"
+check "AC-01: Keycloak 26.8.1" says_once "Keycloak 26.8.1 on JVM"
 features() { # <preview|experimental>: the features of its last start, sorted, on one line
   grep -oiE "$1 features enabled: .*" <<< "$log" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
 }
-check "AC-1: the preview features: token-exchange-delegation, parameterized-scopes" \
+check "AC-01: the preview features: token-exchange-delegation, parameterized-scopes" \
   test "$(features Preview)" = "parameterized-scopes:v1,token-exchange-delegation:v1"
-check "AC-1: the experimental feature: cimd, alone" test "$(features Experimental)" = "cimd:v1"
+check "AC-01: the experimental feature: cimd, alone" test "$(features Experimental)" = "cimd:v1"
 
 # AC-12
 metadata=$(curl_ca "$BASE/.well-known/oauth-authorization-server/auth/realms/master")

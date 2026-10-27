@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0012: the behaviours the master realm's one-shot import relies on (REQ-6), checked in throwaway
+# 0012: the behaviours the master realm's one-shot import relies on (RQ-06), checked in throwaway
 # containers of the stack's image (a file database on a throwaway volume, no published port, the
 # values in an --env-file of a temporary directory):
 #

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 0001: the dev stack publishes its ports on the loopback only (REQ-1, AC-1), and up.sh refuses to
-# start when host.docker.internal resolves elsewhere (REQ-4, AC-5).
+# 0001: the dev stack publishes its ports on the loopback only (RQ-01, AC-01), and up.sh refuses to
+# start when host.docker.internal resolves elsewhere (RQ-04, AC-05).
 #
 #   bash tests/0001-loopback-ports.sh [config|running|resolution]...   (every part by default)
 #
-#   config      the compose model: every published port on 127.0.0.1, and the nine of REQ-1 there
+#   config      the compose model: every published port on 127.0.0.1, and the nine of RQ-01 there
 #   running     the running stack (started by up.sh): every mapping of a c4-infra container on
 #               127.0.0.1
 #   resolution  up.sh with fake docker, getent and powershell.exe: answering a LAN address, it stops,
@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 source tests/lib/stubs.sh
 
-# REQ-1: every port the dev stack publishes
+# RQ-01: every port the dev stack publishes
 PORTS=(80 443 1025 8025 5672 15672 3000 4317 4318)
 LAN_ADDRESS=192.168.1.20
 

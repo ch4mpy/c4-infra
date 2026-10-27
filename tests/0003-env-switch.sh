@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0003: the stack's environment, INFRA_ENV in .env, picks the host name and the upstreams of an
-# application's site at registration (REQ-7, AC-7): with INFRA_ENV=demo on the workstation, Faito
+# application's site at registration (RQ-07, AC-07): with INFRA_ENV=demo on the workstation, Faito
 # registers from its one routes file with the demo host's names and upstreams, served by the
 # running dev Caddy (its dev certificate, no HSTS: register-app.sh only reloads it), in front of echo
 # stand-ins named as the demo containers; set back to dev, the dev ones.

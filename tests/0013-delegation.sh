@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0013: the delegation Turu's agents rely on, on the shared Keycloak (AC-3, AC-4, REQ-5, REQ-6), in
+# 0013: the delegation Turu's agents rely on, on the shared Keycloak (AC-03, AC-04, RQ-05, RQ-06), in
 # dev: the fixture application verif-delegation (tests/fixtures/0013/registry.txt) registers its realm,
 # Turu's own export with ids of its own (tests/fixtures/0013/verif-delegation-realm.json), then the
 # checks 1 to 4 of Turu's keycloak/check-agent-delegation.sh run against it:
@@ -8,10 +8,10 @@
 #      delegation:client:<actor> gives a token for the MCP server carrying may_act, which names the
 #      actor;
 #   2. without that scope, no may_act, and the delegated exchange is refused;
-#   3. the actor's delegated exchange gives an access token whose act names the actor (AC-3);
+#   3. the actor's delegated exchange gives an access token whose act names the actor (AC-03);
 #   4. a standard exchange of a token carrying may_act is refused;
 #
-# and AC-4: a client without the delegate permission (turu-api, a service account the realm's FGAP v2
+# and AC-04: a client without the delegate permission (turu-api, a service account the realm's FGAP v2
 # permission doesn't name) gets no delegated token.
 #
 #   bash tests/0013-delegation.sh
@@ -125,24 +125,24 @@ check "2: without may_act" test -z "$(claims "$plain" | jq -r '.may_act // empty
 check "2: and the delegated exchange is refused" \
   test -z "$(delegated_exchange "$ACTOR" "$plain" "$actor_token" | jq -r '.access_token // empty' | tr -d '\r')"
 
-# 3 (AC-3)
+# 3 (AC-03)
 exchanged=$(delegated_exchange "$ACTOR" "$agent_token" "$actor_token")
 delegated=$(jq -r '.access_token // empty' <<< "$exchanged" | tr -d '\r')
-check "AC-3: the actor's delegated exchange gives a token ($(jq -c '.error // "ok"' <<< "$exchanged"))" test -n "$delegated"
+check "AC-03: the actor's delegated exchange gives a token ($(jq -c '.error // "ok"' <<< "$exchanged"))" test -n "$delegated"
 delegated_claims=$(claims "$delegated")
-check "AC-3: its act names the actor" test "$(jq -r '.act.client_id' <<< "$delegated_claims" | tr -d '\r')" = "$ACTOR"
-check "AC-3: its subject is the user's" \
+check "AC-03: its act names the actor" test "$(jq -r '.act.client_id' <<< "$delegated_claims" | tr -d '\r')" = "$ACTOR"
+check "AC-03: its subject is the user's" \
   test "$(jq -r .sub <<< "$delegated_claims" | tr -d '\r')" = "$(jq -r .sub <<< "$agent_claims" | tr -d '\r')"
-check "AC-3: no refresh token" test -z "$(jq -r '.refresh_token // empty' <<< "$exchanged" | tr -d '\r')"
+check "AC-03: no refresh token" test -z "$(jq -r '.refresh_token // empty' <<< "$exchanged" | tr -d '\r')"
 
 # 4
 standard=$(curl_ca -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange -d "client_id=$ACTOR" -d "client_secret=$SECRET" \
   -d "subject_token=$agent_token" -d subject_token_type=urn:ietf:params:oauth:token-type:access_token -d audience=turu-api "$OIDC/token")
 check "4: a standard exchange of a token carrying may_act is refused" test -z "$(jq -r '.access_token // empty' <<< "$standard" | tr -d '\r')"
 
-# AC-4: a client the delegate permission doesn't name
+# AC-04: a client the delegate permission doesn't name
 api_token=$(client_token turu-api)
-check "AC-4: turu-api, without the delegate permission, gets no delegated token" \
+check "AC-04: turu-api, without the delegate permission, gets no delegated token" \
   test -z "$(delegated_exchange turu-api "$agent_token" "$api_token" | jq -r '.access_token // empty' | tr -d '\r')"
 
 finish

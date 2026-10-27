@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0007: on a stand-in demo host, `sudo c4-app up` refuses a compose project that leaves the
-# application's isolation, before any container starts (AC-8, REQ-9):
+# application's isolation, before any container starts (AC-08, RQ-09):
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts faito);
 #   - each file of tests/fixtures/0007/hostile/ but valid.yml and name-other-app.yml, sent as

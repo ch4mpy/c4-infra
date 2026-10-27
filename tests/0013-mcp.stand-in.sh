@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0013: an application's MCP server on a stand-in demo host (AC-6, AC-13, REQ-7, REQ-15):
+# 0013: an application's MCP server on a stand-in demo host (AC-06, AC-13, RQ-07, RQ-15):
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts turu);
 #     the probe image (tests/fixtures/0007/probe/: an echo, curl) built in the stand-in's daemon;
@@ -7,7 +7,7 @@
 #     turu whose client verif-mcp may exchange the tokens issued for it), rsynced to ~turu/turu/ with
 #     its key, with examples/routes/turu.routes; registered (sudo c4-app register --realm
 #     turu-realm.json --proxy turu.routes) and started (sudo c4-app up; no pull: the probe is local);
-#   - AC-6: its site names its MCP origin, turu-mcp.c4-soft.com, which Caddy serves (HTTP to HTTPS)
+#   - AC-06: its site names its MCP origin, turu-mcp.c4-soft.com, which Caddy serves (HTTP to HTTPS)
 #     and from which it reaches turu.mcp:9080;
 #   - AC-13: from turu.mcp, through http://keycloak:8080/auth, a token issued for the public issuer
 #     (https://infra.c4-soft.com/auth/realms/turu) is exchanged for another, of the same issuer.
@@ -86,17 +86,17 @@ as up.log turu "sudo c4-app up"
 check "Turu starts (sudo c4-app up)" exited_0 up.log
 check "turu.mcp runs" running turu.mcp
 
-# AC-6
-check "AC-6: Turu's site names its MCP origin, turu-mcp.c4-soft.com" site_names 'turu-mcp.c4-soft.com {'
-check "AC-6: which reaches http://turu.mcp:9080" site_names $'\t\t\treverse_proxy http://turu.mcp:9080'
-check "AC-6: Caddy serves turu-mcp.c4-soft.com (HTTP to HTTPS)" \
+# AC-06
+check "AC-06: Turu's site names its MCP origin, turu-mcp.c4-soft.com" site_names 'turu-mcp.c4-soft.com {'
+check "AC-06: which reaches http://turu.mcp:9080" site_names $'\t\t\treverse_proxy http://turu.mcp:9080'
+check "AC-06: Caddy serves turu-mcp.c4-soft.com (HTTP to HTTPS)" \
   stand_in_exec sh -c 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -H "Host: turu-mcp.c4-soft.com" http://127.0.0.1/mcp | grep -qx "308 https://turu-mcp.c4-soft.com/mcp"'
 caddy_reaches_mcp() {
   local answer
   answer=$(stand_in_exec docker exec c4-infra.reverse-proxy wget -qO- http://turu.mcp:9080/mcp | tr -d '\r')
   [ "$answer" = turu.mcp ] || { echo "answer: ${answer:-none}"; return 1; }
 }
-check "AC-6: Caddy reaches turu.mcp:9080 (its answer)" caddy_reaches_mcp
+check "AC-06: Caddy reaches turu.mcp:9080 (its answer)" caddy_reaches_mcp
 
 # AC-13
 printf 'grant_type=client_credentials&client_id=verif-subject&client_secret=secret' | token_from_mcp > "$work/subject.json"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# 0003: an application's routes file, turned into its Caddy site by routes.sh (REQ-4), without
-# Docker: the host names and upstreams of each environment (AC-4), the three applications' routes
-# (AC-9), a project without i18n (AC-11), and the files refused, a host or a port first (0004's AC-2).
+# 0003: an application's routes file, turned into its Caddy site by routes.sh (RQ-04), without
+# Docker: the host names and upstreams of each environment (AC-04), the three applications' routes
+# (AC-09), a project without i18n (AC-11), and the files refused, a host or a port first (0004's AC-02).
 #
 #   bash tests/0003-routes.sh
 set -uo pipefail
@@ -105,7 +105,7 @@ refused() { # <fixture> <line> <text>
   check "refused $1: prints no site" test ! -s "$work/out"
 }
 
-# --- Faito (AC-4, AC-9) ---
+# --- Faito (AC-04, AC-09) ---
 generate "" examples/routes/faito.routes faito dev
 check "faito dev: exits 0" exited 0
 check "faito dev: says it is generated, for INFRA_ENV=dev" \
@@ -137,7 +137,7 @@ check "faito demo: /en/* reaches http://faito.frontend:80" spa '/en/*' http://fa
 check "faito demo: nothing of dev's" lacks host.docker.internal
 check "faito demo: no local CA" lacks tls_trust_pool
 
-# --- Hurura'a (AC-9) ---
+# --- Hurura'a (AC-09) ---
 generate "" examples/routes/hururaa.routes hururaa dev
 check "hururaa dev: exits 0" exited 0
 check "hururaa dev: on hururaa.dev.localhost" holds 'hururaa.dev.localhost {'
@@ -154,7 +154,7 @@ check "hururaa demo: /assets/* is prefixed with /fr" block_holds '/assets/*' 're
 check "hururaa demo: /gateway/* reaches http://hururaa.gateway:7080" \
   block_holds '/gateway/*' 'reverse_proxy http://hururaa.gateway:7080'
 
-# --- Turu (AC-9) ---
+# --- Turu (AC-09) ---
 generate "" examples/routes/turu.routes turu dev
 check "turu dev: exits 0" exited 0
 check "turu dev: Turu's site, on turu.dev.localhost" site turu.dev.localhost
@@ -197,7 +197,7 @@ generate "$FIXTURES/registry.txt" "$FIXTURES/verif-ui.routes" verif-ui demo
 check "verif-ui demo: /ui/* reaches http://verif-ui.frontend:80" spa '/ui/*' http://verif-ui.frontend:80
 
 # --- the files refused ---
-# host or port (0004's AC-2: Faito's routes file naming host.docker.internal:12080)
+# host or port (0004's AC-02: Faito's routes file naming host.docker.internal:12080)
 refused host-port 3 "routes name neither a host nor a port: 'host.docker.internal:12080'"
 refused other-app-host 3 "routes name neither a host nor a port: 'hururaa.c4-soft.com'"
 refused service-port 3 "routes name neither a host nor a port: 'keycloak:8080'"

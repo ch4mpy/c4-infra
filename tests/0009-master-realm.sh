@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0009: the master realm Keycloak creates in dev (AC-1, AC-3, AC-9, AC-10), in throwaway containers
+# 0009: the master realm Keycloak creates in dev (AC-01, AC-03, AC-09, AC-10), in throwaway containers
 # of the stack's image on a file database (a throwaway volume, no published port): since 0012, as the
 # stack does it, the one-shot `import --override false` given what the dev model gives
 # keycloak-import (its variables, never KC_DB_*, and keycloak-import/), then a Keycloak given none of
@@ -93,28 +93,28 @@ check "it imported the master realm" grep -qF "Realm 'master' imported" "$work/i
 check "a throwaway Keycloak starts on that database, given none of the import's variables" serve
 check "it is ready" ready
 
-# AC-1
-check "AC-1: the administrator logs in with the admin CLI (verifyEmail on)" admin get realms/master --fields realm
-check "AC-1: SMTP host.docker.internal:1025, STARTTLS, Mailpit's user" master_is \
+# AC-01
+check "AC-01: the administrator logs in with the admin CLI (verifyEmail on)" admin get realms/master --fields realm
+check "AC-01: SMTP host.docker.internal:1025, STARTTLS, Mailpit's user" master_is \
   '.smtpServer | [.host, .port, .starttls, .ssl, .auth, .user, .from]' \
   "[\"host.docker.internal\",\"1025\",\"true\",\"false\",\"true\",\"mailpit\",\"noreply@$INFRA_HOST\"]"
-check "AC-1: its password stored (masked by Keycloak)" master_is .smtpServer.password '"**********"'
-check "AC-1: verifyEmail on" master_is .verifyEmail true
-check "AC-1: as created by Keycloak itself: displayName Keycloak, accessTokenLifespan 60" master_is \
+check "AC-01: its password stored (masked by Keycloak)" master_is .smtpServer.password '"**********"'
+check "AC-01: verifyEmail on" master_is .verifyEmail true
+check "AC-01: as created by Keycloak itself: displayName Keycloak, accessTokenLifespan 60" master_is \
   '[.displayName, .accessTokenLifespan]' '["Keycloak",60]'
 address() {
   [ "$(admin get users -q "username=$ADMIN" 2> /dev/null | jq -c '.[0] | [.email, .emailVerified, .requiredActions]')" \
     = "[\"admin@$INFRA_HOST\",true,[]]" ]
 }
-check "AC-1: the administrator's address is admin@$INFRA_HOST, verified" address
+check "AC-01: the administrator's address is admin@$INFRA_HOST, verified" address
 
 mailpit_count() { curl -fsS "$MAILPIT_API/search?query=to:admin@$INFRA_HOST" | jq -r .messages_count; }
 before=$(mailpit_count)
-check "AC-1: this workstation's Mailpit answers ($before mail(s) to admin@$INFRA_HOST)" test -n "$before"
+check "AC-01: this workstation's Mailpit answers ($before mail(s) to admin@$INFRA_HOST)" test -n "$before"
 test_connection() {
   admin get realms/master 2> /dev/null | jq -c .smtpServer | admin_in create testSMTPConnection -f -
 }
-check "AC-1: the master realm's Test connection succeeds (Keycloak's stored password)" test_connection
+check "AC-01: the master realm's Test connection succeeds (Keycloak's stored password)" test_connection
 delivered() {
   local waited=0
   until [ "$(mailpit_count)" -gt "$before" ]; do
@@ -123,12 +123,12 @@ delivered() {
     waited=$((waited + 1))
   done
 }
-check "AC-1: its mail is in Mailpit" delivered
+check "AC-01: its mail is in Mailpit" delivered
 # the test's mails removed: those to the throwaway's own address
 curl -fsS -X DELETE "$MAILPIT_API/search?query=to:admin@$INFRA_HOST" > /dev/null
 
-# AC-9 (dev)
-check "AC-9: Forgot password on" master_is .resetPasswordAllowed true
+# AC-09 (dev)
+check "AC-09: Forgot password on" master_is .resetPasswordAllowed true
 login_page() {
   local url="$SERVER/realms/master/protocol/openid-connect/auth?client_id=security-admin-console&response_type=code&scope=openid"
   url+="&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fauth%2Fadmin%2Fmaster%2Fconsole%2F"
@@ -136,7 +136,7 @@ login_page() {
   url+="&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
   docker run --rm --network "container:$NAME" alpine:3 wget -q -O - "$url"
 }
-check "AC-9: the master realm's login page links reset-credentials" grep -qF login-actions/reset-credentials <(login_page)
+check "AC-09: the master realm's login page links reset-credentials" grep -qF login-actions/reset-credentials <(login_page)
 
 # AC-10 (the admin CLI side)
 create_unverified() {
@@ -156,19 +156,19 @@ refused() {
 }
 check "AC-10: its admin CLI login is refused (Account is not fully set up)" refused
 
-# AC-3: a master realm that exists keeps its settings
-check "AC-3: the master realm's SMTP host changed by an administrator" admin update realms/master -s smtpServer.host=other.example
+# AC-03: a master realm that exists keeps its settings
+check "AC-03: the master realm's SMTP host changed by an administrator" admin update realms/master -s smtpServer.host=other.example
 # since 0012 the import runs at each start of the stack: run it again, Keycloak stopped first, its
 # file database closed (a killed Keycloak loses its last writes there)
 docker stop -t 60 "$NAME" > /dev/null 2>&1
 docker rm "$NAME" > /dev/null 2>&1
-check "AC-3: the one-shot import runs again" import_master import-2.log
-check "AC-3: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" "$work/import-2.log"
-check "AC-3: Keycloak started again" serve
-check "AC-3: it is ready" ready
-check "AC-3: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
+check "AC-03: the one-shot import runs again" import_master import-2.log
+check "AC-03: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" "$work/import-2.log"
+check "AC-03: Keycloak started again" serve
+check "AC-03: it is ready" ready
+check "AC-03: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
 
-# REQ-6: the file holds names, not values
+# RQ-06: the file holds names, not values
 no_value() {
   local name value
   for name in C4_MASTER_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
@@ -178,7 +178,7 @@ no_value() {
   done
   grep -qF '"${MAILPIT_SMTP_PASSWORD}"' keycloak-import/master-realm.json
 }
-check "REQ-6: keycloak-import/master-realm.json holds the passwords' names, not their values" no_value
+check "RQ-06: keycloak-import/master-realm.json holds the passwords' names, not their values" no_value
 
 # demo/write-env.sh (the demo host's .env) refuses what the import can't take, naming it
 write_env() { # <NAME=value>…: the demo environment's settings with dummy values, overridden

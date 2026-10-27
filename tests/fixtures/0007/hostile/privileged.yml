@@ -1,4 +1,4 @@
-# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with privileged: true (AC-8),
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with privileged: true (AC-08),
 # which sudo c4-app up refuses before any container starts
 services:
   gateway:
