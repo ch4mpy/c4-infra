@@ -6,8 +6,9 @@
 #     allows the http scheme (true, and each form Keycloak reads as true: "true", "TRUE", 1), or
 #     permits the domain * or *. (which matches every host written with a final dot, Keycloak
 #     26.8.1: tests/0013-keycloak-facts.sh): Keycloak would fetch any URL an unauthenticated client
-#     names, other applications' containers included; its twins, http off (false, "false") with
-#     *.example.org and a named domain, pass the check (docker is called);
+#     names, other applications' containers included; a realm attribute client-policies.*, where
+#     Keycloak stores the profiles and policies, out of that check; its twins, http off (false,
+#     "false") with *.example.org and a named domain, pass the check (docker is called);
 #   - AC-08: a --proxy file that is an nginx server block (.conf): refused by the routes notation,
 #     as any file that isn't a routes file, since the transition is gone.
 #
@@ -52,7 +53,7 @@ refused_before_docker() { # <label> <text the refusal holds>
 
 # A realm export of verif-delegation's entry: <realm> <the CIMD executor's configuration, JSON>
 cimd_realm() {
-  printf '{"realm":"%s","enabled":true,"clientProfiles":{"profiles":[{"name":"mcp-clients","executors":[{"executor":"client-id-metadata-document","configuration":%s}]}]}}\n' \
+  printf '{"realm":"%s","enabled":true,"attributes":{"frontendUrl":"","clientSessionIdleTimeout":"0"},"clientProfiles":{"profiles":[{"name":"mcp-clients","executors":[{"executor":"client-id-metadata-document","configuration":%s}]}]}}\n' \
     "$1" "$2" > "$work/$1-realm.json"
   echo "$work/$1-realm.json"
 }
@@ -68,6 +69,11 @@ register --app verif-delegation --realm "$(cimd_realm verif-cimd-any '{"cimd-all
 refused_before_docker "AC-15: the domain * alone" 'client profile mcp-clients: its client-id-metadata-document executor permits the domain "*"'
 register --app verif-delegation --realm "$(cimd_realm verif-cimd-any '{"cimd-allow-permitted-domains":["claude.ai","*."]}')"
 refused_before_docker "AC-15: the domain *. (every host written with a final dot)" 'permits the domain "*."'
+printf '%s\n' '{"realm":"verif-cimd-any","attributes":{"frontendUrl":"","client-policies.profiles":"{\"profiles\":[{\"name\":\"mcp-clients\",\"executors\":[{\"executor\":\"client-id-metadata-document\",\"configuration\":{\"cimd-allow-permitted-domains\":[\"*\"]}}]}]}"}}' \
+  > "$work/verif-cimd-any-realm.json"
+register --app verif-delegation --realm "$work/verif-cimd-any-realm.json"
+refused_before_docker "AC-15: the profiles in a realm attribute" \
+  "realm attribute client-policies.profiles: Keycloak stores the client profiles and policies there"
 printf 'not JSON\n' > "$work/verif-cimd-ok-realm.json"
 register --app verif-delegation --realm "$work/verif-cimd-ok-realm.json"
 refused_before_docker "a realm export that isn't JSON" "not JSON that jq can read"
