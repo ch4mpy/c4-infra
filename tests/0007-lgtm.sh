@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0007: Grafana LGTM's internal ports on its container's loopback, its components still working
-# together (REQ-11, AC-12).
+# together (RQ-11, AC-12).
 #
 #   bash tests/0007-lgtm.sh [throwaway|running]...   (every part by default)
 #

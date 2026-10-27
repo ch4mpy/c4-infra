@@ -1,4 +1,4 @@
-# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a device of the host (an escape of REQ-9's kind),
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a device of the host (an escape of RQ-09's kind),
 # which sudo c4-app up refuses before any container starts
 services:
   gateway:

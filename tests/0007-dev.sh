@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0007: on the workstation, each application's network, the dev stack's networks and RabbitMQ's
-# loopback (REQ-5, REQ-8, REQ-10), against the running stack (bash up.sh).
+# loopback (RQ-05, RQ-08, RQ-10), against the running stack (bash up.sh).
 #
 #   bash tests/0007-dev.sh [rabbitmq|networks|tickee|guard|rewrite]...   (every part by default)
 #
@@ -10,7 +10,7 @@
 #             distribution (25672) listen on its loopback only
 #   networks  AC-10 (dev): Faito registered, c4-infra.faito holds the five shared services and not
 #             keycloak-db, which is on c4-infra.keycloak-db only; compose's model has them there too
-#   tickee    AC-7: Tickee registered (its network only), an LDAP stand-in on c4-infra.tickee
+#   tickee    AC-07: Tickee registered (its network only), an LDAP stand-in on c4-infra.tickee
 #             (osixia/openldap:1.5.0, as tickee.ldap-standin): Keycloak connects to it
 #             (testLDAPConnection), a container on c4-infra.faito doesn't, by name nor by address;
 #             the stand-in removed, and Tickee's network when this test created it
@@ -126,7 +126,7 @@ part_rabbitmq() {
     # as /proc/net/tcp{,6} write them: 0100007F is 127.0.0.1, 0…01000000 is ::1 (epmd binds both)
     found=${found//00000000000000000000000001000000/::1}
     found=${found//0100007F/127.0.0.1}
-    check "REQ-10: $port listens on the loopback only (${found:-not listening})" loopback_only "$found"
+    check "RQ-10: $port listens on the loopback only (${found:-not listening})" loopback_only "$found"
   done
 }
 
@@ -166,14 +166,14 @@ part_tickee() {
       sleep 2
     done
   }
-  check "AC-7: Keycloak connects to ldap://$LDAP:389 (testLDAPConnection)" ldap_connects
+  check "AC-07: Keycloak connects to ldap://$LDAP:389 (testLDAPConnection)" ldap_connects
   check "control: from c4-infra.tickee, $LDAP:389 answers" \
     docker run --rm --network c4-infra.tickee alpine:3 nc -z -w 3 "$LDAP" 389
-  check "AC-7: from c4-infra.faito, $LDAP:389 can't be reached by name" \
+  check "AC-07: from c4-infra.faito, $LDAP:389 can't be reached by name" \
     fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$LDAP" 389
   address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$LDAP" | tr -d '\r')
   check "$LDAP has an address (${address:-none})" test -n "$address"
-  check "AC-7: from c4-infra.faito, $address:389 can't be reached" \
+  check "AC-07: from c4-infra.faito, $address:389 can't be reached" \
     fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$address" 389
   docker rm -f "$LDAP" > /dev/null 2>&1
   check "the stand-in is removed" test -z "$(docker ps -aq -f "name=^$LDAP\$")"

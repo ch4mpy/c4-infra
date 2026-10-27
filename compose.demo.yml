@@ -33,7 +33,7 @@ services:
       # SMTP without TLS, inside the Docker networks only
       MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
       # Its web UI and API ask for the demo's credentials themselves, whether reached through Caddy
-      # (/mailpit/) or from an application's container (intent 0007, REQ-4): user demo, the bcrypt
+      # (/mailpit/) or from an application's container (intent 0007, RQ-04): user demo, the bcrypt
       # hash of its password (caddy hash-password). /livez and /readyz stay open, for its healthcheck.
       MP_UI_AUTH: demo:${MAILPIT_UI_PASSWORD_HASH}
 

@@ -1,6 +1,6 @@
 # grafana/otel-lgtm 0.32.0's own /otel-lgtm/tempo-config.yaml, with one line added under server:
 # grpc_listen_address: 127.0.0.1, so that Tempo's gRPC port (9096) listens on the container's
-# loopback only (intent 0007, REQ-11): Tempo has no command-line flag for it. compose.yml mounts this
+# loopback only (intent 0007, RQ-11): Tempo has no command-line flag for it. compose.yml mounts this
 # directory and passes this file as Tempo's second -config.file (TEMPO_EXTRA_ARGS), which wins over
 # the image's. With each image upgrade, regenerate it from the new image's file
 # (MSYS_NO_PATHCONV=1 docker run --rm --entrypoint cat grafana/otel-lgtm:<version>
