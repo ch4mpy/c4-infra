@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0003: the shared Caddy configuration, caddy/, holds in both environments with every example
-# application's site (REQ-1, AC-9): `caddy validate` in throwaway containers of the stack's Caddy
+# application's site (RQ-01, AC-09): `caddy validate` in throwaway containers of the stack's Caddy
 # image, with the sites routes.sh generates in a temporary apps/ directory.
 #
 #   bash tests/0003-caddy-config.sh

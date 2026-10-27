@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# 0006: the registration account on the workstation (AC-2 to AC-6).
+# 0006: the registration account on the workstation (AC-02 to AC-06).
 #
-#   AC-2  it may change neither the master realm nor a realm no registry entry assigns (403);
-#   AC-3  a realm the bootstrap administrator created (verif-granted, made here, in the fixture
+#   AC-02  it may change neither the master realm nor a realm no registry entry assigns (403);
+#   AC-03  a realm the bootstrap administrator created (verif-granted, made here, in the fixture
 #         registry tests/fixtures/0006/registry-granted.txt): up.sh's ensure grants it, and the account
 #         holds every role of verif-granted-realm; Faito's deploy-dev.sh (up.sh, then its
 #         registration) finds realm faito, with no administrator;
-#   AC-4  a realm it may not manage (verif-hidden, created by an administrator, in the fixture registry
+#   AC-04  a realm it may not manage (verif-hidden, created by an administrator, in the fixture registry
 #         tests/fixtures/0006/registry.txt but never granted): the registration exits 1, says so, and
 #         changes nothing, with --reset-realms too;
-#   AC-5  `registration-account.sh rotate`: a registration works with the new secret, a login with the
+#   AC-05  `registration-account.sh rotate`: a registration works with the new secret, a login with the
 #         former one fails;
-#   AC-6  while registrations (and a rotation) run, the secret is neither in the host's process list
+#   AC-06  while registrations (and a rotation) run, the secret is neither in the host's process list
 #         (Windows': Win32_Process; elsewhere `ps -eo args`), nor in `docker top`, nor in
 #         `docker inspect` of Keycloak; no session is left in its /dev/shm.
 #
@@ -92,18 +92,18 @@ check "Keycloak is healthy" kc_wait_healthy 60
 check "Faito's repository is there ($FAITO_DIR)" test -f "$FAITO_DIR/deploy-dev.sh" -a -f "$FAITO_REALM"
 check "the registration account is named in .env ($CLIENT)" test -n "$CLIENT"
 
-# AC-2
-check "AC-2: the account may not change the master realm (403)" \
+# AC-02
+check "AC-02: the account may not change the master realm (403)" \
   refused_with 403 kc_registration update realms/master -s displayName=x
 check "an administrator creates realm verif-unassigned, which no registry entry assigns" \
   kc_admin create realms -s realm=verif-unassigned -s enabled=true
-check "AC-2: the account may not change verif-unassigned (403)" \
+check "AC-02: the account may not change verif-unassigned (403)" \
   refused_with 403 kc_registration update realms/verif-unassigned -s displayName=x
-check "AC-2: nor delete it (403)" refused_with 403 kc_registration delete realms/verif-unassigned
-check "AC-2: verif-unassigned is still there" kc_admin get realms/verif-unassigned --fields realm
+check "AC-02: nor delete it (403)" refused_with 403 kc_registration delete realms/verif-unassigned
+check "AC-02: verif-unassigned is still there" kc_admin get realms/verif-unassigned --fields realm
 kc_admin delete realms/verif-unassigned > /dev/null 2>&1
 
-# AC-3
+# AC-03
 granted() { # <realm>: every role of the master client <realm>-realm is the account's
   local direct available
   direct=$(kc_admin get-roles --uusername "$ACCOUNT" --cclientid "$1-realm" --fields name --format csv --noquotes 2> /dev/null | tr -d '\r')
@@ -119,17 +119,17 @@ granted() { # <realm>: every role of the master client <realm>-realm is the acco
 check "an administrator creates realm verif-granted, which the account may not manage yet" \
   kc_admin create realms -s realm=verif-granted -s enabled=true
 run grant.log env REGISTRY_FILE="$PWD/$FIXTURE/registry-granted.txt" bash registration-account.sh ensure
-check "AC-3: up.sh's ensure exits 0" exited 0 grant.log
-check "AC-3: it grants realm verif-granted to the account" says grant.log "Registration account $CLIENT: realm verif-granted granted"
-check "AC-3: the account holds every role of verif-granted-realm" granted verif-granted
+check "AC-03: up.sh's ensure exits 0" exited 0 grant.log
+check "AC-03: it grants realm verif-granted to the account" says grant.log "Registration account $CLIENT: realm verif-granted granted"
+check "AC-03: the account holds every role of verif-granted-realm" granted verif-granted
 kc_admin delete realms/verif-granted > /dev/null 2>&1
 run deploy.log bash "$FAITO_DIR/deploy-dev.sh"
-check "AC-3: Faito's deploy-dev.sh exits 0" exited 0 deploy.log
-check "AC-3: its up.sh finds the account up to date" says deploy.log "Registration account $CLIENT: up to date"
-check "AC-3: with no administrator" never_says deploy.log "Logged in as"
-check "AC-3: its registration finds realm faito" says deploy.log "Realm faito: already in Keycloak, left as it is"
+check "AC-03: Faito's deploy-dev.sh exits 0" exited 0 deploy.log
+check "AC-03: its up.sh finds the account up to date" says deploy.log "Registration account $CLIENT: up to date"
+check "AC-03: with no administrator" never_says deploy.log "Logged in as"
+check "AC-03: its registration finds realm faito" says deploy.log "Realm faito: already in Keycloak, left as it is"
 
-# AC-4
+# AC-04
 check "an administrator creates realm verif-hidden (displayName before), never granted to the account" \
   kc_admin create realms -s realm=verif-hidden -s enabled=true -s displayName=before
 hidden_id=$(realm_field verif-hidden id)
@@ -141,7 +141,7 @@ register_hidden() { # <log> [--reset-realms]
 }
 for variant in "" --reset-realms; do
   register_hidden hidden.log $variant
-  label="AC-4${variant:+ ($variant)}"
+  label="AC-04${variant:+ ($variant)}"
   check "$label: the registration of verif-hidden exits 1" exited 1 hidden.log
   check "$label: it says the account may not manage realm verif-hidden" \
     says hidden.log "Realm verif-hidden is in Keycloak, but the registration account $CLIENT may not manage it"
@@ -153,26 +153,26 @@ for variant in "" --reset-realms; do
 done
 kc_admin delete realms/verif-hidden > /dev/null 2>&1
 
-# AC-5
+# AC-05
 old_secret=$(kc_secret_file) && mv "$old_secret" "$work/old-secret"
 run rotate.log bash registration-account.sh rotate
-check "AC-5: registration-account.sh rotate exits 0" exited 0 rotate.log
-check "AC-5: it sets the account's secret to .env's new one" says rotate.log "Registration account $CLIENT: its secret set to .env's"
+check "AC-05: registration-account.sh rotate exits 0" exited 0 rotate.log
+check "AC-05: it sets the account's secret to .env's new one" says rotate.log "Registration account $CLIENT: its secret set to .env's"
 new_secret=$(kc_secret_file) && mv "$new_secret" "$work/new-secret"
-check "AC-5: .env holds a new secret" bash -c '! cmp -s "$1" "$2"' sh "$work/old-secret" "$work/new-secret"
+check "AC-05: .env holds a new secret" bash -c '! cmp -s "$1" "$2"' sh "$work/old-secret" "$work/new-secret"
 run after-rotate.log bash register-app.sh --app faito --realm "$FAITO_REALM"
-check "AC-5: a registration works after the rotation" exited 0 after-rotate.log
-check "AC-5: it finds realm faito" says after-rotate.log "Realm faito: already in Keycloak, left as it is"
+check "AC-05: a registration works after the rotation" exited 0 after-rotate.log
+check "AC-05: it finds realm faito" says after-rotate.log "Realm faito: already in Keycloak, left as it is"
 login_with_old() {
   KC_CLI_CLIENT_SECRET=$(cat "$work/old-secret") MSYS_NO_PATHCONV=1 docker exec -e KC_CLI_CLIENT_SECRET "$KC_CONTAINER" sh -c '
     trap "rm -f /dev/shm/c4-registration-old-$$.kcadm" EXIT
     /opt/keycloak/bin/kcadm.sh config credentials --config /dev/shm/c4-registration-old-$$.kcadm \
       --server http://localhost:8080/auth --realm master --client "$1"' sh "$CLIENT" < /dev/null
 }
-check "AC-5: a login with the former secret fails (Invalid client credentials)" \
+check "AC-05: a login with the former secret fails (Invalid client credentials)" \
   refused_with "Invalid client credentials" login_with_old
 
-# AC-6: the samplers, until $work/sample.stop exists. Each source is piped to leaks_into: grep -F -f
+# AC-06: the samplers, until $work/sample.stop exists. Each source is piped to leaks_into: grep -F -f
 # reads it all (no -q: the source is never cut short) and prints nothing; a match is recorded by the
 # source's name only, whatever the source's own exit status
 cat "$work/new-secret" > "$work/secrets"
@@ -226,7 +226,7 @@ replace_secret() {
 }
 # the detector's own check: the secrets, fed to it, are caught
 leaks_into control < "$work/secrets"
-check "AC-6: the detector catches the secret when it is there" grep -qx control "$work/leaks"
+check "AC-06: the detector catches the secret when it is there" grep -qx control "$work/leaks"
 rm -f "$work/leaks"
 sample_host &
 samplers+=($!)
@@ -235,26 +235,26 @@ samplers+=($!)
 sleep 2
 for i in 1 2 3 4 5; do
   run "register-$i.log" bash register-app.sh --app faito --realm "$FAITO_REALM"
-  check "AC-6: registration $i works" exited 0 "register-$i.log"
+  check "AC-06: registration $i works" exited 0 "register-$i.log"
 done
 replace_secret
 run ensure-6.log bash registration-account.sh ensure
-check "AC-6: a new secret in .env, then ensure, sets it in Keycloak" says ensure-6.log "Registration account $CLIENT: its secret set to .env's"
+check "AC-06: a new secret in .env, then ensure, sets it in Keycloak" says ensure-6.log "Registration account $CLIENT: its secret set to .env's"
 run register-6.log bash register-app.sh --app faito --realm "$FAITO_REALM"
-check "AC-6: a registration with the new secret works" exited 0 register-6.log
+check "AC-06: a registration with the new secret works" exited 0 register-6.log
 sleep 2
 touch "$work/sample.stop"
 wait "${samplers[@]}"
 samplers=()
 read -r host_samples host_caught < "$work/host.samples"
 read -r kc_samples kc_caught < "$work/keycloak.samples"
-check "AC-6: the host's process list caught the registrations at work ($host_caught of $host_samples samples)" \
+check "AC-06: the host's process list caught the registrations at work ($host_caught of $host_samples samples)" \
   test "${host_caught:-0}" -ge 1
-check "AC-6: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
+check "AC-06: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
 no_leak() {
   [ ! -s "$work/leaks" ] || { echo "the secret appears in:"; sort "$work/leaks" | uniq -c; return 1; }
 }
-check "AC-6: the secret appears in no process list nor in docker inspect" no_leak
-check "AC-6: no session is left in Keycloak's /dev/shm" \
+check "AC-06: the secret appears in no process list nor in docker inspect" no_leak
+check "AC-06: no session is left in Keycloak's /dev/shm" \
   bash -c '! MSYS_NO_PATHCONV=1 docker exec "$1" ls -A /dev/shm | grep -q c4-registration' sh "$KC_CONTAINER"
 finish

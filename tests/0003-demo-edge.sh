@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 0003: the demo host's edge, from the one shared configuration (REQ-1, REQ-2): a throwaway Caddy
+# 0003: the demo host's edge, from the one shared configuration (RQ-01, RQ-02): a throwaway Caddy
 # running caddy/ with INFRA_ENV=demo (wrapped with local_certs, no Let's Encrypt) in front of echo
 # stand-ins of the shared services, and of Mailpit itself with the demo's MP_UI_AUTH (since 0007,
 # Mailpit asks for its credentials, not Caddy). /mailpit/ asks for them and RabbitMQ has no route
-# (AC-3), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-6).
+# (AC-03), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-06).
 #
 #   bash tests/0003-demo-edge.sh
 set -uo pipefail
@@ -98,7 +98,7 @@ until fetch /auth/ && [ "$(cat "$work/code")" = 200 ] && fetch /mailpit/readyz &
   waited=$((waited + 1))
 done
 
-# AC-3
+# AC-03
 fetch /mailpit/
 check "/mailpit/ without credentials: 401" answered 401
 fetch /mailpit/ -u "demo:wrong"
@@ -124,7 +124,7 @@ check "no single-page-app CSP on the shared host" no_header Content-Security-Pol
 fetch /grafana/
 check "/grafana/: answered by Grafana" body_holds 'upstream=grafana-lgtm '
 
-# AC-6
+# AC-06
 fetch /.well-known/openid-configuration/auth/realms/faito
 check "realm discovery (openid-configuration): 200" answered 200
 check "realm discovery (openid-configuration): rewritten for Keycloak" \

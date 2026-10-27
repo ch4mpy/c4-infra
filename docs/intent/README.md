@@ -24,6 +24,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 - Policies: none yet
 - Tech lead: Jérôme Wacongne
 - Spec template: [_spec-template.md](_spec-template.md)
+- Identifiers: requirements as list items `**RQ-01:**`, acceptance criteria `**AC-01:**`, invariants `**IV-01:**`, points of attention as headings `### PA-01: <title>`; the plain identifier in the first cell of a table row, and plain `RQ-01` wherever an element is cited; numbers run from `01` to `99` in order of appearance and are never reassigned by a later version of the spec (a spec that needs more than 99 of a kind is too big: split the intent); a new kind of element takes a new two-letter prefix, declared on this line
 - Plan template: [_plan-template.md](_plan-template.md)
 - Risk rules: a spec is high-risk if it touches authentication, authorization or secrets, the isolation between applications, what a host exposes to the network, or personal data; standard otherwise
 - Status vocabulary:

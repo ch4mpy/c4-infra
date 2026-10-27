@@ -32,7 +32,7 @@ networks:
     # services but keycloak-db to it (networks.sh), compose.apps.yml (COMPOSE_FILE) keeps them there.
     name: c4-infra
   keycloak-db:
-    # Keycloak's database, which only Keycloak and its one-shot import reach (intents 0007, REQ-3, and
+    # Keycloak's database, which only Keycloak and its one-shot import reach (intents 0007, RQ-03, and
     # 0012); no way out of it
     name: c4-infra.keycloak-db
     internal: true
@@ -211,7 +211,7 @@ services:
       # busy-waits on every core
       RABBITMQ_CTL_ERL_ARGS: '+S 1'
       # epmd (4369) and the Erlang distribution (25672) on the container's loopback only (intent
-      # 0007, REQ-10): behind its cookie, the distribution runs code in RabbitMQ; its tools run inside
+      # 0007, RQ-10): behind its cookie, the distribution runs code in RabbitMQ; its tools run inside
       # the container. AMQP (5672) and the Prometheus metrics (15692) stay on every interface.
       ERL_EPMD_ADDRESS: 127.0.0.1
       RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '-kernel inet_dist_use_interface {127,0,0,1}'
@@ -236,7 +236,7 @@ services:
     environment:
       GF_SERVER_ROOT_URL: https://${INFRA_HOST}/grafana
       GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
-      # Its components' internal ports on the container's loopback only (intent 0007, REQ-11):
+      # Its components' internal ports on the container's loopback only (intent 0007, RQ-11):
       # Loki's gRPC (9095), Tempo's (9096), Pyroscope's (9097) and its memberlist (7946), the
       # collector's health check (13133). Every component's start script appends its *_EXTRA_ARGS,
       # split on spaces (no value may hold one). Pyroscope's components dial each other at their

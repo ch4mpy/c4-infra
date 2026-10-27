@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0009: the Keycloak behaviours the master realm's pre-configuration relies on (REQ-1 to REQ-4),
+# 0009: the Keycloak behaviours the master realm's pre-configuration relies on (RQ-01 to RQ-04),
 # checked in throwaway Keycloaks of the stack's image (start-dev on a file database, no published
 # port, their values in --env-files of a temporary directory):
 #
