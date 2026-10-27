@@ -1,0 +1,55 @@
+# Plan: The registry test requires exactly four applications, so registering a new one fails the verification
+
+- Spec: none, the [intent](intent.md) (bug, spec needed: no)
+- Status: approved
+- Branch: 0018-registry-test-pins-four-entries
+- Approved: 2026-10-27, Jérôme Wacongne (engineer; standard risk)
+
+## Starting point
+
+`registry.txt`'s header tells a new application to add its line before it registers. `tests/0004-registry.sh` checks the real registry and requires exactly four entries (`check "entries: four entries" test "$(entries | wc -l)" -eq 4`, line 82). Since `0cf541c` (immo, block 5), `main` fails that check, so `bash tests/run.sh` is red on `main`, and every intent after it (0017, 0011, 0015, 0016) would start its verification red. Outcome: a valid entry added as the header says leaves the verification green. The test keeps checking that the real registry passes `registry.sh check` and still holds the four applications of 0004, each with one entry of seven fields.
+
+Facts read:
+- the `registry` part of `tests/0004-registry.sh` (`entries`, `has_entry`) reads `registry.txt` relative to the repository root (`cd "$(dirname "$0")/.."`). `registry.sh` reads `registry.txt` and `.env` next to itself. A missing `.env` reads as empty, and the part passes in a scratch copy without one: measured, only the `scripts` part needs `.env`;
+- the part also asserts that `verif` is **not** in the real registry (`entry verif` exits 1, `upstream verif …` exits 1), so the added entry must not be named `verif`;
+- no other test counts the registry's entries: `0006-registration-without-bootstrap-password.sh` and `0007-dev.sh` copy `registry.txt` as data, and the rest use fixtures;
+- the scratch-copy idiom already exists: `cp … "$work/"` in `tests/0006-registration-without-bootstrap-password.sh:24`, `tests/0007-dev.sh:194`. Assertions use `check` and `finish` (`tests/lib/assert.sh`).
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `tests/0018-registry-grows.sh` | new: copies `registry.sh`, `registry.txt`, `tests/0004-registry.sh`, `tests/lib/` and `tests/fixtures/0004/` into a scratch directory, appends one valid entry numbered by `bash registry.sh next` (`<n> extra extra - - extra.dev.localhost extra.c4-soft.com`), then checks that `registry.sh check` passes there and that `tests/0004-registry.sh registry` run there passes | success criterion "one more valid line" |
+| `tests/0004-registry.sh` | modified: the `entries: four entries` check removed; the header's "the four entries (AC-06)" becomes "the four applications' entries (AC-06)". No other line changes | success criterion "main with immo's line", "no other check changes" |
+| `docs/intent/0018-registry-test-pins-four-entries/plan.md` | new: this plan, then its `## Verification` | bookkeeping |
+| `docs/intent/0018-registry-test-pins-four-entries/intent.md` | status `planned` (here), `delivered` (`sdlc-ship`) | bookkeeping |
+| `docs/intent/README.md` | 0018's index row follows the status | bookkeeping |
+
+## Order of work
+
+0. **Setup**: on `0018-registry-test-pins-four-entries` (`main` at `b70f166` plus the intent), `bash up.sh` so that the dev stack runs `main`'s code, 0013 included. **The dev Keycloak goes to 26.8.1 for good, and the stack poc-immo-pf uses restarts.** — skill: none — check: `bash tests/run.sh` → its `FAILED:` list holds `tests/0004-registry.sh` alone, failing on `entries: four entries` alone (the baseline on this workstation; any other failure is a deviation, recorded before step 1).
+1. **Failing test**: `tests/0018-registry-grows.sh`. — skill: none — check: `bash tests/0018-registry-grows.sh` exits 1, its one `KO` being the `tests/0004-registry.sh` check, whose output shows `KO - entries: four entries` and no other `KO`. Commit `test(0018): one more registry entry fails tests/0004-registry.sh`, then freeze it (`.claude/frozen-tests.local`).
+2. **Fix**: `tests/0004-registry.sh` as in *Files*. — skill: none — check: `bash tests/0018-registry-grows.sh && bash tests/0004-registry.sh` → `every check passed` twice; `git diff HEAD~1 -- tests/0004-registry.sh` shows the count line and the header word only. Commit `fix(0018): tests/0004-registry.sh no longer pins the number of entries`.
+3. **Verification**: `bash tests/run.sh` → `verification passed`; mutation check: `tests/0004-registry.sh` of `main`, put back in the working tree → `bash tests/0018-registry-grows.sh` exits 1 on `entries: four entries`, then restored; `/sdlc-verify 0018` (bootstrap mode: one round, the bugs pass; standard risk, so no security pass); its evidence block goes into `## Verification`, commit `plan: verification of 0018`, push. Next: `/sdlc-ship 0018`.
+
+## Risks
+
+- Another test fails on this workstation (immo's line, the new machine, the stack at 26.8.1) → step 0's baseline shows it before any change; recorded as a deviation, and as a bug intent when it is not 0018's.
+- `bash up.sh` upgrades the dev Keycloak's database to 26.8.1 with no way back, and restarts the stack poc-immo-pf uses → said at approval (this plan); `main` is at 26.8.1 since 0013 anyway.
+- The scratch copy lacks a file the `registry` part needs, and the test fails for the wrong reason → step 1 requires `entries: four entries` to be the only `KO` of 0004's output.
+- Dropping a check weakens 0004 → only the count goes. `check passes`, the four `has_entry`, Tickee's line and every `entry`, `next` and `upstream` check stay, and `tests/0018-registry-grows.sh` keeps the growth case covered.
+- 0017 adds a `# covers:` line to every test → 0017's step 0 (after merging `main`) gives `tests/0018-registry-grows.sh` one (`registry.txt`, `registry.sh`, `tests/0004-registry.sh`). 0016 also edits `tests/0004-registry.sh`, on other lines.
+- The delivery push to `main` changes `tests/`, which `deploy-demo.yml` doesn't ignore, so the demo host is redeployed with unchanged images → expected, followed by `sdlc-ship`.
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| `main` with immo's line passes | automated test | `bash tests/0004-registry.sh` → `every check passed` (step 2) and within `bash tests/run.sh` (step 3) |
+| One more valid line passes | automated test + mutation check | `bash tests/0018-registry-grows.sh` → `every check passed`; with `main`'s `tests/0004-registry.sh` → exit 1 on `entries: four entries` (step 3) |
+| The real registry still passes `check` and holds the four applications of 0004 | review + automated test | `git diff main -- tests/0004-registry.sh`: the count line and one header word only; `has_entry` for turu, hururaa, tickee, faito passes |
+| The full verification is green | command | `bash tests/run.sh` → `verification passed` |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
