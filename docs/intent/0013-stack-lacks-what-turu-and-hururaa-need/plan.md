@@ -164,4 +164,7 @@ Next: the round-4 details above (optional), then `/sdlc-review 0013`; delivery o
 
 - AC-14 on `infra.c4-soft.com`: 11 anonymous registrations of realm master within the minute → `403 403 403 403 403 403 403 403 403 403 429`; master's discovery afterwards → `200`.
 - RFC 8414: `/.well-known/oauth-authorization-server/auth/realms/master` → `issuer` `https://infra.c4-soft.com/auth/realms/master`, `client_id_metadata_document_supported: true`.
-- On the host, by the product owner: Keycloak's start line (26.8.1, the features), master's settings unchanged, the dump in `~c4-infra/backups`: not done yet.
+- On the host, by the product owner (2026-10-27):
+  - `docker logs c4-infra.keycloak 2>&1 | grep -E 'Keycloak 26\.8\.1 on JVM|(Preview|Experimental) features enabled'` → `Preview features enabled: parameterized-scopes:v1, token-exchange-delegation:v1`, `Experimental features enabled: cimd:v1`, `Keycloak 26.8.1 on JVM (powered by Quarkus 3.40.1) started in 9.409s` (AC-01, demo side: OK);
+  - `ls -l ~/backups/c4-infra-keycloak-before-upgrade-*.dump` → `c4-infra-keycloak-before-upgrade-20261027-183828.dump`, 231949 bytes (AC-07, demo side: OK); Keycloak's log reads 08:39 for its start, 10 hours from the host's 18:38, a time zone of the container's;
+  - the admin console (`https://infra.c4-soft.com/auth/admin/`): the permanent administrator logs in (OK); master's settings (SMTP, Verify email, Forgot password, no brute-force detection) not checked one by one.
