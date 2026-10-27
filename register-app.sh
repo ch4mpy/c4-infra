@@ -254,20 +254,39 @@ not_assigned=()
 # Keycloak reads the http setting as Jackson does ("True", "TRUE", " true" and 1 are true): only
 # false is accepted. It permits a host equal to a domain, or ending with what follows "*." (Keycloak
 # 26.8.1, tests/0013-keycloak-facts.sh): "*." matches every host written with a final dot; "*" is
-# refused as well (PA-07). It refuses a domain list that isn't a list, and a realm attribute
-# client-policies.*: Keycloak stores the client profiles and policies there, out of this check's reach.
+# refused as well (PA-07). So is a domain that names no public host (PA-08), which Keycloak resolves
+# on those networks: an IP address, a single label (keycloak), a last label outside the IANA root
+# zone (*.mcp, faito.gateway, host.docker.internal: tlds-alpha-by-domain.txt), or two labels whose
+# first is a registered application's name or c4-infra (a container: c4-infra.rabbitmq), after a
+# leading "*.", case ignored, a final dot removed (*.xn--p1ai, every host of a top-level domain, is
+# public). It reads the name, not what it resolves to: a public name pointed at an internal address
+# passes. It refuses a domain list that isn't a list, and a realm attribute client-policies.*:
+# Keycloak stores the client profiles and policies there, out of this check's reach.
 realm_problems=()
 cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its stdin: jq may be a Windows
   # program, which MSYS_NO_PATHCONV leaves with a path of Git Bash)
   jq -r --arg fetch "Keycloak would fetch any URL, other applications' containers included" \
     --arg unread "Keycloak stores the client profiles and policies there, which the clientProfiles check doesn't read" \
-    '(.clientProfiles.profiles[]? | .name as $profile | .executors[]?
+    --arg tlds "$tlds" --arg internal "$internal_names" \
+    'def no_public_host($tlds; $internal): # why a permitted domain names no public host, nothing otherwise
+      (tostring | ascii_downcase | rtrimstr(".")) as $domain | ($domain | ltrimstr("*.")) as $host
+      | ($host | split(".")) as $labels
+      | if $host | test("^[0-9]+(\\.[0-9]+){3}$|[\\[:]") then "an IP address"
+        elif ($labels | length) == 1 and $domain == $host then "a single label"
+        elif $tlds[$labels[-1]] | not then "its last label, \($labels[-1]), is no top-level domain of the IANA root zone"
+        elif ($labels | length) == 2 and ($internal | any(. == $labels[0])) then "\($labels[0]) is a registered application or c4-infra: one of its containers"
+        else empty end;
+    ($tlds | ascii_downcase | split("\n") | map(rtrimstr("\r") | select(test("^[a-z0-9-]+$")) | {(.): true}) | add) as $tlds
+    | ($internal | split("\n") | map(rtrimstr("\r") | select(. != ""))) as $internal
+    | (.clientProfiles.profiles[]? | .name as $profile | .executors[]?
       | select(.executor == "client-id-metadata-document") | (.configuration // {}) as $c
       | (($c["cimd-allow-http-scheme"] // false) as $http
           | if $http == false or $http == "false" then empty
             else "client profile \($profile): its client-id-metadata-document executor allows the http scheme (cimd-allow-http-scheme: \($http | tojson); false only)" end),
-        ($c["cimd-allow-permitted-domains"] // [] | arrays | .[] | select(. == "*" or . == "*.")
-          | "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\"")
+        ($c["cimd-allow-permitted-domains"] // [] | arrays | .[]
+          | if . == "*" or . == "*." then "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\""
+            else no_public_host($tlds; $internal) as $why
+              | "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\", which names no public host (\($why))" end)
       | "\(.): \($fetch)"),
     (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
       | "realm attribute \(.): \($unread)")' < "$1"
@@ -276,6 +295,15 @@ if [ ${#realms[@]} -gt 0 ] && ! command -v jq > /dev/null; then
   echo "register-app.sh needs jq to read a realm export (README.md, \"Development\"); nothing was registered." >&2
   exit 1
 fi
+# The top-level domains of the IANA root zone (https://data.iana.org/TLD/tlds-alpha-by-domain.txt,
+# its first line the list's version), and the names whose <name>.<x> is a container on the host
+tlds_file=$INFRA_DIR/tlds-alpha-by-domain.txt
+if [ ${#realms[@]} -gt 0 ] && [ ! -r "$tlds_file" ]; then
+  echo "$tlds_file is missing: a realm's CIMD domains are checked against it; nothing was registered." >&2
+  exit 1
+fi
+tlds=$(cat "$tlds_file" 2> /dev/null) || true
+internal_names=$(printf 'c4-infra\n'; registry_lines | while read -r _ _ name _; do printf '%s\n' "$name"; done)
 for file in "${realms[@]}"; do
   name=$(basename "$file")
   realm=${name%-realm.json}
