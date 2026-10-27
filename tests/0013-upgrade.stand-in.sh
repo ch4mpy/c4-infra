@@ -115,11 +115,11 @@ check "Keycloak runs c4-infra/keycloak:before" test "$(keycloak_image)" = c4-inf
 
 # A realm, its user and a session
 password=$(openssl rand -hex 16)
-jq -n --arg realm "$REALM" --arg client "$CLIENT" --arg password "$password" '{
+VERIF_PASSWORD=$password jq -n --arg realm "$REALM" --arg client "$CLIENT" '{
   realm: $realm, enabled: true,
   clients: [ { clientId: $client, publicClient: true, directAccessGrantsEnabled: true, standardFlowEnabled: false } ],
   users: [ { username: "verif.user", enabled: true, email: "verif.user@example.org", emailVerified: true, firstName: "Verif", lastName: "User",
-             credentials: [ { type: "password", value: $password, temporary: false } ] } ]
+             credentials: [ { type: "password", value: $ENV.VERIF_PASSWORD, temporary: false } ] } ]
 }' > "$work/realm.json"
 check "a realm with a user is created" kc_admin -i create realms -f - < "$work/realm.json"
 printf 'grant_type=password&client_id=%s&username=verif.user&password=%s&scope=openid' "$CLIENT" "$password" | token > "$work/login.json"

@@ -74,7 +74,7 @@ agent_login() { # <user> <scope>
     action=$(absolute "$action")
     local data=()
     if grep -q 'id="kc-form-login"' "$page"; then
-      data=(--data-urlencode "username=$1" --data-urlencode "password=$SECRET")
+      data=(--data-urlencode "username=$1" --data-urlencode "password@-") # the password: printf below
     elif grep -q 'name="kc.org"' "$page"; then
       data=(--data-urlencode "kc.org=uri")
     elif grep -q 'name="accept"' "$page"; then
@@ -82,7 +82,7 @@ agent_login() { # <user> <scope>
     else
       break
     fi
-    curl_ca -c "$jar" -b "$jar" -D "$headers" -o "$page" "${data[@]}" "$action"
+    printf '%s' "$SECRET" | curl_ca -c "$jar" -b "$jar" -D "$headers" -o "$page" "${data[@]}" "$action"
     location=$(grep -i '^location:' "$headers" | tr -d '\r' | sed 's/^[Ll]ocation: //')
     if [ -n "$location" ]; then
       case "$location" in "$REDIRECT"*) break ;; esac
@@ -95,13 +95,16 @@ agent_login() { # <user> <scope>
   curl_ca -d grant_type=authorization_code -d "client_id=$AGENT" -d "code=$code" -d "redirect_uri=$REDIRECT" \
     -d "code_verifier=$verifier" "$OIDC/token"
 }
+# A POST to the realm's token endpoint, the form (secret included) on stdin: the response
+token_request() {
+  curl_ca -d @- "$OIDC/token"
+}
 client_token() { # <client>
-  curl_ca -d grant_type=client_credentials -d "client_id=$1" -d "client_secret=$SECRET" "$OIDC/token" | jq -r .access_token | tr -d '\r'
+  printf 'grant_type=client_credentials&client_id=%s&client_secret=%s' "$1" "$SECRET" | token_request | jq -r .access_token | tr -d '\r'
 }
 delegated_exchange() { # <client> <subject token> <actor token>
-  curl_ca -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange -d "client_id=$1" -d "client_secret=$SECRET" \
-    -d "subject_token=$2" -d subject_token_type=urn:ietf:params:oauth:token-type:access_token \
-    -d "actor_token=$3" -d actor_token_type=urn:ietf:params:oauth:token-type:access_token "$OIDC/token"
+  printf 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=%s&client_secret=%s&subject_token=%s&subject_token_type=urn:ietf:params:oauth:token-type:access_token&actor_token=%s&actor_token_type=urn:ietf:params:oauth:token-type:access_token' \
+    "$1" "$SECRET" "$2" "$3" | token_request
 }
 
 register() {
@@ -136,8 +139,8 @@ check "AC-03: its subject is the user's" \
 check "AC-03: no refresh token" test -z "$(jq -r '.refresh_token // empty' <<< "$exchanged" | tr -d '\r')"
 
 # 4
-standard=$(curl_ca -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange -d "client_id=$ACTOR" -d "client_secret=$SECRET" \
-  -d "subject_token=$agent_token" -d subject_token_type=urn:ietf:params:oauth:token-type:access_token -d audience=turu-api "$OIDC/token")
+standard=$(printf 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange&client_id=%s&client_secret=%s&subject_token=%s&subject_token_type=urn:ietf:params:oauth:token-type:access_token&audience=turu-api' \
+  "$ACTOR" "$SECRET" "$agent_token" | token_request)
 check "4: a standard exchange of a token carrying may_act is refused" test -z "$(jq -r '.access_token // empty' <<< "$standard" | tr -d '\r')"
 
 # AC-04: 1 and 3's requests again, once the realm holds no delegate permission. Keycloak checks it at
