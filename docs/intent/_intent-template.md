@@ -8,6 +8,7 @@
 - Opened: YYYY-MM-DD
 - Decided: —
 - Supersedes: —         <!-- NNNN of an earlier intent, if any -->
+- Mode: normal          <!-- bootstrap | normal: the mode the intent started in (the project context's Mode line), never changed -->
 
 ## Problem
 
