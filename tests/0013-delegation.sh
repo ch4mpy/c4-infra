@@ -11,8 +11,8 @@
 #   3. the actor's delegated exchange gives an access token whose act names the actor (AC-03);
 #   4. a standard exchange of a token carrying may_act is refused;
 #
-# and AC-04: a client without the delegate permission (turu-api, a service account the realm's FGAP v2
-# permission doesn't name) gets no delegated token.
+# and AC-04: once the realm's FGAP v2 delegate permission is removed, the request of 3 (a new login
+# asking the same scope, its may_act naming the actor) gets no delegated token.
 #
 #   bash tests/0013-delegation.sh
 #
@@ -140,9 +140,26 @@ standard=$(curl_ca -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange
   -d "subject_token=$agent_token" -d subject_token_type=urn:ietf:params:oauth:token-type:access_token -d audience=turu-api "$OIDC/token")
 check "4: a standard exchange of a token carrying may_act is refused" test -z "$(jq -r '.access_token // empty' <<< "$standard" | tr -d '\r')"
 
-# AC-04: a client the delegate permission doesn't name
-api_token=$(client_token turu-api)
-check "AC-04: turu-api, without the delegate permission, gets no delegated token" \
-  test -z "$(delegated_exchange turu-api "$agent_token" "$api_token" | jq -r '.access_token // empty' | tr -d '\r')"
+# AC-04: 1 and 3's requests again, once the realm holds no delegate permission. Keycloak checks it at
+# the login (measured on 26.8.1): the token then carries neither the delegation scope nor may_act.
+remove_delegate_permission() {
+  local permissions id
+  permissions=clients/$(kc_registration get clients -r verif-delegation -q clientId=admin-permissions --fields id \
+    | jq -r '.[0].id')/authz/resource-server/permission
+  id=$(kc_registration get "$permissions" -r verif-delegation | jq -r '.[] | select(.name == "agents-delegate") | .id')
+  [ -n "$id" ] || { echo "no permission agents-delegate"; return 1; }
+  kc_registration delete "$permissions/$id" -r verif-delegation
+}
+check "AC-04: the realm's delegate permission (agents-delegate) is removed" remove_delegate_permission
+agent_token=$(agent_login uri.accountant "openid delegation:client:$ACTOR" | jq -r '.access_token // empty' | tr -d '\r')
+agent_claims=$(claims "$agent_token")
+check "AC-04: the agent's login, asking delegation:client:$ACTOR, gives a token" test -n "$agent_token"
+check "AC-04: without delegation:client:$ACTOR among its scopes ($(jq -r .scope <<< "$agent_claims" | tr -d '\r'))" \
+  jq -e --arg scope "delegation:client:$ACTOR" '.scope | split(" ") | index($scope) == null' <<< "$agent_claims"
+check "AC-04: nor may_act" test -z "$(jq -r '.may_act // empty' <<< "$agent_claims" | tr -d '\r')"
+actor_token=$(client_token "$ACTOR")
+exchanged=$(delegated_exchange "$ACTOR" "$agent_token" "$actor_token")
+check "AC-04: the actor's delegated exchange is refused ($(jq -c '.error_description // "granted"' <<< "$exchanged"))" \
+  test -z "$(jq -r '.access_token // empty' <<< "$exchanged" | tr -d '\r')"
 
 finish
