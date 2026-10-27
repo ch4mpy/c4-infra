@@ -53,3 +53,5 @@ Facts read:
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-27 — step 0's baseline (`bash tests/run.sh`, 957 s, stack at 26.8.1): 11 tests fail, not one. (1) Docker Desktop on this workstation doesn't share `/tmp`: the five tests that bind-mount their `mktemp` directory (`0003-caddy-config`, `0003-demo-edge`, `0007-dev`, `0007-listeners`, `0009-master-import-facts`) pass with `TMPDIR=$HOME/.cache/c4-infra-tests`, which the verification uses from here on. (2) `../faito` is not Faito's repository here (a repository without a commit) and realm `faito` isn't in the dev Keycloak: `0003-dev-routes`, `0005-themes`, `0006-account`, `0006-keycloak-facts` and `0006-registration-without-bootstrap-password` fail on that alone; none of them covers a file 0018 changes. (3) `0004-registry.sh`: the bug, `entries: four entries` its only `KO`. Impact on proof: "the full verification is green" needs Faito on the workstation (product owner's decision).
