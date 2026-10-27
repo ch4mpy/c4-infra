@@ -8,6 +8,7 @@
 - Opened: 2026-10-27
 - Decided: 2026-10-27
 - Supersedes: —
+- Mode: bootstrap (normal until its plan, switched by the product owner on 2026-10-27)
 
 ## Problem
 
