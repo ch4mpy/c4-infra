@@ -256,12 +256,13 @@ not_assigned=()
 # 26.8.1, tests/0013-keycloak-facts.sh): "*." matches every host written with a final dot; "*" is
 # refused as well (PA-07). So is a domain that names no public host (PA-08), which Keycloak resolves
 # on those networks: an IP address, a single label (keycloak), a last label outside the IANA root
-# zone (*.mcp, faito.gateway, host.docker.internal: tlds-alpha-by-domain.txt), or two labels whose
-# first is a registered application's name or c4-infra (a container: c4-infra.rabbitmq), after a
-# leading "*.", case ignored, a final dot removed (*.xn--p1ai, every host of a top-level domain, is
-# public). It reads the name, not what it resolves to: a public name pointed at an internal address
-# passes. It refuses a domain list that isn't a list, and a realm attribute client-policies.*:
-# Keycloak stores the client profiles and policies there, out of this check's reach.
+# zone (*.mcp, faito.gateway, host.docker.internal: tlds-alpha-by-domain.txt), a wildcard over a
+# whole top-level domain (*.com, *.xn--p1ai: every domain of it), or two labels whose first is a
+# registered application's name or c4-infra (a container: c4-infra.rabbitmq), after a leading "*.",
+# case ignored, a final dot removed; *.mcp is named for its last label, the clearer cause. It reads
+# the name, not what it resolves to: a public name pointed at an internal address passes. It
+# refuses a domain list that isn't a list, and a realm attribute client-policies.*: Keycloak stores
+# the client profiles and policies there, out of this check's reach.
 realm_problems=()
 cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its stdin: jq may be a Windows
   # program, which MSYS_NO_PATHCONV leaves with a path of Git Bash)
@@ -274,6 +275,7 @@ cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its 
       | if $host | test("^[0-9]+(\\.[0-9]+){3}$|[\\[:]") then "an IP address"
         elif ($labels | length) == 1 and $domain == $host then "a single label"
         elif $tlds[$labels[-1]] | not then "its last label, \($labels[-1]), is no top-level domain of the IANA root zone"
+        elif ($labels | length) == 1 then "a wildcard over a whole top-level domain"
         elif ($labels | length) == 2 and ($internal | any(. == $labels[0])) then "\($labels[0]) is a registered application or c4-infra: one of its containers"
         else empty end;
     ($tlds | ascii_downcase | split("\n") | map(rtrimstr("\r") | select(test("^[a-z0-9-]+$")) | {(.): true}) | add) as $tlds
