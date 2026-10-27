@@ -1,11 +1,11 @@
 # Spec: The verification runs every test every time, and says nothing of where its time goes
 
 - Intent: [0017](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: standard (no risk rule applies: the change touches the verification only, no authentication, secret, isolation, exposure or personal data)
 - Policies applied: none yet; standing constraints: CLAUDE.md "Verification" (`bash tests/run.sh` with the dev stack running; `--all` before a change to the demo host), `sdlc-verify` (the full run is the proof of a change)
-- Approved: —
+- Approved: 2026-10-27, Jérôme Wacongne (product owner)
 
 ## Summary
 
@@ -65,7 +65,7 @@ None.
 - Options: A) each test declares the paths it covers in a comment line, RQ-04 refusing a script no test covers / B) derived from what each test sources and runs (grep of script names): no declaration, but a test that runs a script through another (`up.sh` calling `registry.sh`) is missed / C) by the intent number in the file's history: a file changed by several intents runs their tests, a new file runs none.
 - Recommendation: A: explicit, reviewed with the test, and RQ-03 and RQ-04 bound its errors (an undeclared file runs everything, an uncovered script fails the run).
 - Decides: tech lead
-- Decision: to decide
+- Decision: A, a `# covers:` line per test (tech lead, Jérôme Wacongne, 2026-10-27)
 
 ### PA-02: When the facts tests run
 
@@ -73,7 +73,7 @@ None.
 - Options: A) with `--all` only, and with `--changed` when a file they cover changes (the Keycloak or proxy image's version among them) / B) as today, every plain run / C) only when a version changes.
 - Recommendation: A: the proof before review still measures them; an intermediate check measures them when what they guard changes. C would leave a facts test unrun when its own code changes.
 - Decides: tech lead
-- Decision: to decide
+- Decision: A, with `--all`, and with `--changed` when a file they cover changes; no longer in the plain run (tech lead, Jérôme Wacongne, 2026-10-27)
 
 ### PA-03: A target duration
 
@@ -81,7 +81,7 @@ None.
 - Options: A) no target in this spec; the durations RQ-01 prints after delivery feed a later intent if one is needed / B) a target now (e.g. an intermediate check of a one-script change under 5 minutes), measured at delivery.
 - Recommendation: A: a target set before any measurement is a guess.
 - Decides: PO
-- Decision: to decide
+- Decision: A, no target (PO, Jérôme Wacongne, 2026-10-27)
 
 ## Acceptance criteria
 
@@ -103,3 +103,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-27 — first version; the PO decided at draft that a second run waits and that a plain run stays unchanged
+- v1 — 2026-10-27 — approved: PA-01 A, PA-02 A, PA-03 A
