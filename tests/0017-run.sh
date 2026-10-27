@@ -2,8 +2,8 @@
 # 0017: tests/run.sh's durations, selection, coverage check and lock (AC-01 to AC-06, AC-08, PA-02),
 # on a throwaway git repository: a copy of tests/run.sh and tests/lib/, the scripts a.sh, b.sh, c.sh
 # and dir/d.sh, and four fake tests that log their start and end and sleep a little: 0001-alpha
-# (covers a.sh, 0.4 s), 0002-beta (b.sh dir/, 0.2 s), 0003-gamma-facts (c.sh, 0.3 s),
-# 0004-delta.stand-in (a.sh, 0.1 s). Their runs take a lock of their own (SUITE_LOCK_NAME).
+# (covers a.sh, 0.9 s), 0002-beta (b.sh dir/, 0.3 s), 0003-gamma-facts (c.sh glob/*.conf, 0.6 s),
+# 0004-delta.stand-in (a.sh, 0.05 s). Their runs take a lock of their own (SUITE_LOCK_NAME).
 #
 #   bash tests/0017-run.sh
 #
@@ -21,10 +21,9 @@ work=$(mktemp -d)
 repo=$work/repo
 other=$work/other
 export SUITE_LOCK_NAME=c4-infra.suite-lock-0017-$$
-cleanup() { # the tests of the runs killed or interrupted below, still sleeping
+cleanup() { # the tests of the runs killed or interrupted below, and their sleep
   local pid
   for pid in $(cat "$work"/pid-kill-9-* "$work"/pid-interrupted-* 2> /dev/null); do
-    pkill -P "$pid" 2> /dev/null
     kill "$pid" 2> /dev/null
   done
   docker rm -f "$SUITE_LOCK_NAME" > /dev/null 2>&1
@@ -36,7 +35,8 @@ git_() {
   git -C "$repo" -c user.name=0017 -c user.email=0017@verif.test "$@"
 }
 
-# <name> <seconds> <covers…>; $work/sleep-<run>-<name> changes its sleep, $work/fail-<name> fails it
+# <name> <seconds> <covers…>; $work/sleep-<run>-<name> changes its sleep, $work/fail-<name> fails it.
+# Its pid and its sleep's go to $work/pid-<run>-<name>
 fake_test() {
   local name=$1 seconds=$2
   shift 2
@@ -46,7 +46,9 @@ fake_test() {
 # covers: $*
 echo \$\$ > "$work/pid-\${RUN_ID:-run}-$name"
 echo "\${RUN_ID:-run} $name start \$EPOCHREALTIME" >> "$work/order.log"
-sleep "\$(cat "$work/sleep-\${RUN_ID:-run}-$name" 2> /dev/null || echo $seconds)"
+sleep "\$(cat "$work/sleep-\${RUN_ID:-run}-$name" 2> /dev/null || echo $seconds)" &
+echo \$! >> "$work/pid-\${RUN_ID:-run}-$name"
+wait \$!
 echo "\${RUN_ID:-run} $name end \$EPOCHREALTIME" >> "$work/order.log"
 [ ! -e "$work/fail-$name" ]
 EOF
@@ -55,13 +57,15 @@ EOF
 mkdir -p "$repo/tests/lib" "$repo/dir"
 cp tests/run.sh "$repo/tests/"
 cp tests/lib/*.sh "$repo/tests/lib/"
-fake_test 0001-alpha 0.4 a.sh
-fake_test 0002-beta 0.2 b.sh dir/
-fake_test 0003-gamma-facts 0.3 c.sh
-fake_test 0004-delta.stand-in 0.1 a.sh
+fake_test 0001-alpha 0.9 a.sh
+fake_test 0002-beta 0.3 b.sh dir/
+fake_test 0003-gamma-facts 0.6 c.sh 'glob/*.conf'
+fake_test 0004-delta.stand-in 0.05 a.sh
 for script in a.sh b.sh c.sh dir/d.sh; do
   echo true > "$repo/$script"
 done
+mkdir -p "$repo/glob"
+echo a > "$repo/glob/a.conf"
 git_ init -q -b main
 git_ add -A
 git_ commit -q -m base
@@ -163,7 +167,20 @@ rm "$repo/dir/new.sh"
 echo '# changed' >> "$repo/c.sh"
 suite facts.log --changed
 check "PA-02: c.sh changed: its facts test runs" ran_exactly facts.log "0003-gamma-facts"
+echo notes > "$repo/notes.txt"
+suite facts-every.log --changed
+check "PA-02: with every test running (notes.txt), the facts test c.sh concerns too" \
+  ran_exactly facts-every.log "0001-alpha 0002-beta 0003-gamma-facts"
+rm "$repo/notes.txt"
 git_ checkout -q c.sh
+
+# a glob is matched as a pattern, never expanded against the working tree (where glob/*.conf is
+# glob/a.conf only)
+mkdir -p "$repo/glob/sub"
+echo b > "$repo/glob/sub/new.conf"
+suite glob.log --changed
+check "a covers glob (glob/*.conf) matches glob/sub/new.conf" ran_exactly glob.log "0003-gamma-facts"
+rm -r "$repo/glob/sub"
 
 # AC-03: the suite's own files, and a file no test declares
 echo '# changed' >> "$repo/tests/lib/assert.sh"

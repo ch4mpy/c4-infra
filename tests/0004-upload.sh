@@ -6,6 +6,7 @@
 #   bash tests/0004-upload.sh
 #
 # covers: .github/workflows/ demo/deploy-files.txt registry.sh registry.txt register-app.sh
+# covers: routes.sh networks.sh registration-account.sh tlds-alpha-by-domain.txt
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -13,7 +13,7 @@
 #
 # covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
 # covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt caddy/ keycloak/
-# covers: keycloak-import/ reverse-proxy/ examples/routes/ tests/fixtures/0003/
+# covers: keycloak-import/ reverse-proxy/ examples/routes/ tests/fixtures/0003/ tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

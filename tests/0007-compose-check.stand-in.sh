@@ -21,7 +21,7 @@
 # As tests/0002-accounts.stand-in.sh: the Keycloak image is the one up.sh builds here, loaded into
 # the stand-in; the fixtures' image is the stand-in's caddy (the shared reverse proxy's).
 #
-# covers: demo/ compose.yml compose.demo.yml tests/fixtures/0007/
+# covers: demo/ compose.yml compose.demo.yml tests/fixtures/0007/ tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

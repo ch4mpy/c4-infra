@@ -8,6 +8,7 @@
 # Needs the dev stack running and jq. The fixture realm and its network are removed whatever happens.
 # covers: export-realm.sh up.sh env.sh compose.yml compose.dev.yml keycloak/ register-app.sh
 # covers: registry.sh networks.sh registration-account.sh routes.sh tests/fixtures/0010/
+# covers: registry.txt tlds-alpha-by-domain.txt caddy/ keycloak-import/ reverse-proxy/ certs/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

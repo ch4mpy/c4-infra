@@ -6,6 +6,7 @@
 #   bash tests/0003-routes.sh
 #
 # covers: routes.sh registry.sh registry.txt register-app.sh examples/routes/ tests/fixtures/0003/
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

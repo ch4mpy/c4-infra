@@ -42,7 +42,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+shopt -s nullglob
 tests=(tests/[0-9][0-9][0-9][0-9]-*.sh)
+shopt -u nullglob
 declare -A covers=()
 for test in "${tests[@]}"; do
   covers[$test]="$test $(sed -n 's/^# covers: //p' "$test" | tr '\n' ' ')"
@@ -56,8 +58,9 @@ matches() { # <file> <pattern>
 }
 
 concerns() { # <file> <test>: the test declares the file
-  local pattern
-  for pattern in ${covers[$2]}; do
+  local pattern patterns
+  read -ra patterns <<< "${covers[$2]}"
+  for pattern in "${patterns[@]}"; do
     matches "$1" "$pattern" && return 0
   done
   return 1
@@ -89,6 +92,7 @@ while IFS= read -r script; do
 done < <(git ls-files --cached --others --exclude-standard -- '*.sh')
 
 every=true
+files=
 if $changed; then
   if [ -z "$base" ]; then
     base=origin/main
@@ -114,21 +118,27 @@ if $changed; then
   done <<< "$files"
 fi
 
-# Why <test> doesn't run in this run: prints it, or nothing when it runs. The facts tests run with
-# --all, and with --changed when a file they declare changes (spec PA-02)
-skipped() { # <test>
+concerned() { # <test>: a changed file concerns it
   local file
+  while IFS= read -r file; do
+    [ -n "$file" ] && concerns "$file" "$1" && return 0
+  done <<< "$files"
+  return 1
+}
+
+# Why <test> doesn't run in this run: prints it, or nothing when it runs. The facts tests run with
+# --all, and with --changed when a file they declare changes (spec PA-02), every test running or not
+skipped() { # <test>
   if [[ $1 == *.stand-in.sh ]] && ! $all; then
     echo "--all runs it"
-  elif $every; then
-    if [[ $1 == *-facts.sh ]] && ! $all; then
+  elif $every && { $all || [[ $1 != *-facts.sh ]]; }; then
+    return
+  elif ! concerned "$1"; then
+    if $every; then
       echo "--all runs it"
+    else
+      echo "not concerned by the change"
     fi
-  else
-    while IFS= read -r file; do
-      [ -n "$file" ] && concerns "$file" "$1" && return
-    done <<< "$files"
-    echo "not concerned by the change"
   fi
 }
 

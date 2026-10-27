@@ -1,15 +1,7 @@
-# The suite's lock (0017, RQ-06): one run of tests/run.sh at a time per Docker, whatever the clone or
-# worktree it runs from. Source it, then:
-#
-#   suite_lock_take    waits until the lock is this run's, saying once per holder which run holds
-#                      it (its worktree and start time); the lock is released when this run ends.
-#                      Returns 1, with docker's message, when docker fails for another reason
-#
-# The lock is a container, SUITE_LOCK_NAME (default c4-infra.suite-lock), whose stdin is a pipe from
-# the run: however the run ends (exit, failure, Ctrl-C, kill -9), the pipe closes, the container's
-# cat ends and --rm removes it (measured in 0017's step 1); a second `docker run --name` of it fails
-# while it lives. SUITE_LOCK_FD is the pipe's end: close it for every command that may outlive the
-# run (`{SUITE_LOCK_FD}>&-`), or that command holds the lock after the run's end.
+# The suite's lock (0017, RQ-06): one run of tests/run.sh at a time per Docker. suite_lock_take waits,
+# naming the holder's worktree and start time, until this run holds SUITE_LOCK_NAME: a container fed
+# by a pipe from the run, gone when the run ends however it ends (tests/0017-run.sh); it returns 1 when
+# docker fails otherwise. A command that may outlive the run gets `{SUITE_LOCK_FD}>&-`.
 SUITE_LOCK_NAME=${SUITE_LOCK_NAME:-c4-infra.suite-lock}
 SUITE_LOCK_FD=
 
