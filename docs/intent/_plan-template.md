@@ -9,7 +9,7 @@
 
 | File | Change | For |
 | --- | --- | --- |
-| <path> | new / modified / deleted: <what> | REQ-1, AC-2 |
+| <path> | new / modified / deleted: <what> | RQ-01, AC-02 |
 
 ## Order of work
 
@@ -23,7 +23,7 @@
 
 | Criterion | How | Test, command or check |
 | --- | --- | --- |
-| AC-1 | automated test / command / manual check | <test name, command, or precise steps> |
+| AC-01 | automated test / command / manual check | <test name, command, or precise steps> |
 
 ## Deviations
 

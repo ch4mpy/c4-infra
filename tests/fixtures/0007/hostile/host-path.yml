@@ -1,4 +1,4 @@
-# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a host path outside Faito's directory mounted, Hurura'a's (AC-8),
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a host path outside Faito's directory mounted, Hurura'a's (AC-08),
 # which sudo c4-app up refuses before any container starts
 services:
   gateway:

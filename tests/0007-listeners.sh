@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0007: the ports each shared service listens on, on its container's every interface, as the demo
-# host configures it (AC-9, REQ-10, REQ-11): what an application's network can reach of it.
+# host configures it (AC-09, RQ-10, RQ-11): what an application's network can reach of it.
 #
 #   bash tests/0007-listeners.sh
 #
@@ -26,7 +26,7 @@ PREFIX=c4probe
 NETWORK=$PREFIX-net
 CADDY_IMAGE=caddy:2.11.4-alpine
 SERVICES=(keycloak-db keycloak mailpit rabbitmq grafana-lgtm reverse-proxy)
-# AC-9's sets: what answers from an application's network
+# AC-09's sets: what answers from an application's network
 declare -A EXPECTED=(
   [keycloak]='8080 9000'
   [mailpit]='1025 8025'
@@ -173,7 +173,7 @@ done
 sleep 5
 for service in keycloak mailpit rabbitmq grafana-lgtm reverse-proxy; do
   found=$(public_ports "$PREFIX-$service")
-  check "AC-9: $service listens outside its loopback on exactly ${EXPECTED[$service]} (${found:-nothing})" \
+  check "AC-09: $service listens outside its loopback on exactly ${EXPECTED[$service]} (${found:-nothing})" \
     test "$found" = "${EXPECTED[$service]}"
 done
 finish

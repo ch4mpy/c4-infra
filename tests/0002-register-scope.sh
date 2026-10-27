@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 0002: a registration touches only what the application's registry entry assigns to it (REQ-3,
-# AC-3), on the workstation. register-app.sh runs with a fake docker (tests/lib/stubs.sh), which
+# 0002: a registration touches only what the application's registry entry assigns to it (RQ-03,
+# AC-03), on the workstation. register-app.sh runs with a fake docker (tests/lib/stubs.sh), which
 # logs each call: as Faito, each of these is refused, saying why, before any docker call:
 #
 #   - Hurura'a's realm file (public-facing) with --reset-realms, and a realm file not named

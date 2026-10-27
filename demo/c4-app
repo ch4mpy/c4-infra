@@ -34,7 +34,7 @@
 # which wins over a top-level name: of the application's file.
 #
 # `up`, `down` and `pull` all check that model first, before root's compose touches it (intent 0007,
-# REQ-9): compose runs a provider's and a hook's executables, so an unchecked model must never reach
+# RQ-09): compose runs a provider's and a hook's executables, so an unchecked model must never reach
 # it. The check is an allowlist — the top-level keys, the service keys, and the sub-keys/values of
 # the nested objects that can escape (build, deploy, security_opt, volumes and networks entries) that
 # an application may use; anything else is refused, naming the service (or network/volume) and the

@@ -35,7 +35,7 @@ The settings are c4-infra's, for every realm: an application's realm gets them w
 ## Constraints
 
 - Never a permanent lockout.
-- The registration account keeps no right to change the master realm (0006, REQ-2).
+- The registration account keeps no right to change the master realm (0006, RQ-02).
 - No password on a command line.
 
 ## Open questions

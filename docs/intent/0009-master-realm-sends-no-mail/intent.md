@@ -35,7 +35,7 @@ The settings are written once, when the master realm has none: they don't follow
 
 ## Constraints
 
-- The registration account keeps no right on the master realm (0006, REQ-2).
+- The registration account keeps no right on the master realm (0006, RQ-02).
 - Mailpit's SMTP password stays off command lines and out of the repository.
 - The applications' realms are unchanged: each still renders its own SMTP settings.
 - Each environment's Mailpit is reached as it is today: STARTTLS with the local CA in dev (`compose.dev.yml`), plain SMTP inside the Docker networks on the demo host (`compose.demo.yml`).

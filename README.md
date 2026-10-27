@@ -330,7 +330,7 @@ lock the account for a minute, whatever their count.
 - An administrator unlocks an application's account in the console, on the user's page. Whoever
   knows an account's user name can keep it locked for as long as they keep failing its logins (each
   lock at most 15 minutes): on the demo host, the shared demo accounts (their passwords are public)
-  included. Accepted (PA-2).
+  included. Accepted (PA-02).
 
 ### Routes file
 
@@ -504,26 +504,26 @@ management UI (15672) and Mailpit without credentials.
 
 | Service | Port | What answers | Why |
 | --- | --- | --- | --- |
-| `reverse-proxy`, `infra.c4-soft.com` | 80, 443 | Caddy: the issuer, every application's site | the issuer's name inside the network (REQ-2) |
-| `keycloak` | 8080 | Keycloak over plain HTTP: the token endpoint, the admin API | the applications' calls, and back-channel logout from it (REQ-2) |
-| `keycloak` | 9000 | its management port: health and metrics, without authentication | recorded, no personal data (PA-3, decided 2026-10-21) |
-| `mailpit` | 1025 | SMTP, with Mailpit's SMTP credentials | the realms' mails (REQ-2) |
-| `mailpit` | 8025 | its UI and API: `401` without the demo's credentials (`/livez`, `/readyz` open) | Mailpit asks for them itself (REQ-4) |
-| `rabbitmq` | 5672 | AMQP: each application's own user, on its own virtual host | events (REQ-2) |
-| `rabbitmq` | 15692 | Prometheus metrics, without authentication | recorded, no personal data (PA-3) |
-| `grafana-lgtm` | 4317, 4318 | the OTLP receivers (gRPC, HTTP): any telemetry, so an application can write under another's name | Grafana LGTM attached as it is (PA-2, decided 2026-10-21) |
-| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read | Grafana LGTM attached as it is (PA-2) |
-| `grafana-lgtm` | 3000 | Grafana, behind its login on the demo host | the dashboards (REQ-2) |
+| `reverse-proxy`, `infra.c4-soft.com` | 80, 443 | Caddy: the issuer, every application's site | the issuer's name inside the network (RQ-02) |
+| `keycloak` | 8080 | Keycloak over plain HTTP: the token endpoint, the admin API | the applications' calls, and back-channel logout from it (RQ-02) |
+| `keycloak` | 9000 | its management port: health and metrics, without authentication | recorded, no personal data (PA-03, decided 2026-10-21) |
+| `mailpit` | 1025 | SMTP, with Mailpit's SMTP credentials | the realms' mails (RQ-02) |
+| `mailpit` | 8025 | its UI and API: `401` without the demo's credentials (`/livez`, `/readyz` open) | Mailpit asks for them itself (RQ-04) |
+| `rabbitmq` | 5672 | AMQP: each application's own user, on its own virtual host | events (RQ-02) |
+| `rabbitmq` | 15692 | Prometheus metrics, without authentication | recorded, no personal data (PA-03) |
+| `grafana-lgtm` | 4317, 4318 | the OTLP receivers (gRPC, HTTP): any telemetry, so an application can write under another's name | Grafana LGTM attached as it is (PA-02, decided 2026-10-21) |
+| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read | Grafana LGTM attached as it is (PA-02) |
+| `grafana-lgtm` | 3000 | Grafana, behind its login on the demo host | the dashboards (RQ-02) |
 
 Kept on the containers' loopback, unreachable from any network:
 
 - RabbitMQ's epmd (4369) and Erlang distribution (25672): behind its cookie, the distribution runs
   code in RabbitMQ, and its tools (`rabbitmqctl`, the healthcheck, the registration) run inside the
-  container (PA-3, REQ-10: `ERL_EPMD_ADDRESS` and `inet_dist_use_interface` in
+  container (PA-03, RQ-10: `ERL_EPMD_ADDRESS` and `inet_dist_use_interface` in
   [`compose.yml`](compose.yml));
 - Grafana LGTM's memberlist (7946), Loki's, Tempo's and Pyroscope's gRPC ports (9095, 9096, 9097)
-  and its collector's health check (13133): its components' own (PA-4, decided 2026-10-22,
-  REQ-11: the `*_EXTRA_ARGS` of [`compose.yml`](compose.yml) and
+  and its collector's health check (13133): its components' own (PA-04, decided 2026-10-22,
+  RQ-11: the `*_EXTRA_ARGS` of [`compose.yml`](compose.yml) and
   [`grafana-lgtm/tempo-config.yaml`](grafana-lgtm/tempo-config.yaml), a copy of the image's file
   to regenerate with each image upgrade: `tests/0007-lgtm.sh` fails until it is).
 

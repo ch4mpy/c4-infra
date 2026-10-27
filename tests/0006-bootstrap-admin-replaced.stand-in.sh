@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# 0006: on a stand-in demo host, registrations survive the bootstrap administrator (AC-1, AC-5 and
-# AC-6 on a Linux host):
+# 0006: on a stand-in demo host, registrations survive the bootstrap administrator (AC-01, AC-05 and
+# AC-06 on a Linux host):
 #
 #   - demo/deploy.sh creates the registration account, with the bootstrap administrator of .env;
 #     Faito's realm registers;
 #   - as the console invites to: a permanent administrator, ops, replaces the bootstrap one, which
 #     ops deletes; Faito's registration with --reset-realms still deletes and imports its realm
-#     (AC-1), and the next deployment needs no administrator;
-#   - a rotation the workflow's way (AC-5): .env rewritten by demo/write-env.sh with a new
+#     (AC-01), and the next deployment needs no administrator;
+#   - a rotation the workflow's way (AC-05): .env rewritten by demo/write-env.sh with a new
 #     KC_REGISTRATION_CLIENT_SECRET; deploy.sh without KC_SETUP_ADMIN_* fails saying so, with them
 #     (ops) it sets the new secret; a registration works, a login with the former secret fails;
 #   - while that rotation and registrations run, neither secret appears in the host's `ps -eo args`,
-#     `docker top` nor `docker inspect` of Keycloak (AC-6).
+#     `docker top` nor `docker inspect` of Keycloak (AC-06).
 #
 #   bash tests/0006-bootstrap-admin-replaced.stand-in.sh      (bash tests/run.sh --all runs it)
 #
@@ -153,25 +153,25 @@ check "ops deletes the bootstrap administrator" kc_as ops delete "users/$admin_i
 check "the bootstrap administrator is gone" test -z "$(user_id ops admin)"
 check "and doesn't log in any more" fails kc_as bootstrap get realms/master --fields realm < /dev/null
 
-# AC-1
+# AC-01
 in_stack reset.log bash ./register-app.sh --app faito --realm "$APPS/faito-realm.json" --reset-realms
-check "AC-1: Faito's registration with --reset-realms exits 0" exited 0 reset.log
-check "AC-1: it deletes realm faito" says reset.log "Deleting realm faito"
-check "AC-1: and imports it" says reset.log "Importing realm faito"
-check "AC-1: realm faito is there" kc_as ops get realms/faito --fields realm < /dev/null
+check "AC-01: Faito's registration with --reset-realms exits 0" exited 0 reset.log
+check "AC-01: it deletes realm faito" says reset.log "Deleting realm faito"
+check "AC-01: and imports it" says reset.log "Importing realm faito"
+check "AC-01: realm faito is there" kc_as ops get realms/faito --fields realm < /dev/null
 in_stack deploy-2.log bash ./demo/deploy.sh
 check "the next deployment exits 0" exited 0 deploy-2.log
 check "it finds the account up to date" says deploy-2.log "Registration account $CLIENT: up to date"
 check "with no administrator" never_says deploy-2.log "Logged in as"
 
-# AC-5 and AC-6: the rotation the workflow's way, while the samplers look for both secrets
+# AC-05 and AC-06: the rotation the workflow's way, while the samplers look for both secrets
 cat "$work/old-secret" > "$work/secrets"
 printf '%s\n' "$NEXT_SECRET" >> "$work/secrets"
 leaks_into() { # <source name>: grep reads it all and prints nothing; a match recorded by name only
   if grep -F -f "$work/secrets" > /dev/null; then echo "$1" >> "$work/leaks"; fi
 }
 leaks_into control < "$work/secrets"
-check "AC-6: the detector catches the secrets when they are there" grep -qx control "$work/leaks"
+check "AC-06: the detector catches the secrets when they are there" grep -qx control "$work/leaks"
 rm -f "$work/leaks"
 sample_host() {
   local count=0 caught=0 list
@@ -217,27 +217,27 @@ rewrite_env() {
     rm -f /tmp/write-env.sh
     sed -i "s/^COMPOSE_FILE=.*/&:compose.no-acme.yml/" .env' sh "$DIR"
 }
-check "AC-5: .env is rewritten by write-env.sh with a new secret" rewrite_env
+check "AC-05: .env is rewritten by write-env.sh with a new secret" rewrite_env
 holds_next_secret() { # compared in files: neither secret on a command line
   secret_into "$work/new-secret" || return 1
   printf '%s\n' "$NEXT_SECRET" > "$work/next-secret"
   cmp -s "$work/new-secret" "$work/next-secret" || { echo ".env doesn't hold the new secret"; return 1; }
 }
-check "AC-5: .env holds it" holds_next_secret
+check "AC-05: .env holds it" holds_next_secret
 in_stack deploy-3.log bash ./demo/deploy.sh
-check "AC-5: without KC_SETUP_ADMIN_*, deploy.sh fails" exited 1 deploy-3.log
-check "AC-5: saying to set KC_SETUP_ADMIN_USERNAME and KC_SETUP_ADMIN_PASSWORD" \
+check "AC-05: without KC_SETUP_ADMIN_*, deploy.sh fails" exited 1 deploy-3.log
+check "AC-05: saying to set KC_SETUP_ADMIN_USERNAME and KC_SETUP_ADMIN_PASSWORD" \
   says deploy-3.log "set the KC_SETUP_ADMIN_USERNAME and KC_SETUP_ADMIN_PASSWORD secrets of the demo environment"
 export KC_SETUP_ADMIN_USERNAME=ops KC_SETUP_ADMIN_PASSWORD=$OPS_PASSWORD
 in_stack deploy-4.log bash ./demo/deploy.sh
 unset KC_SETUP_ADMIN_USERNAME KC_SETUP_ADMIN_PASSWORD
-check "AC-5: with KC_SETUP_ADMIN_* (ops), deploy.sh exits 0" exited 0 deploy-4.log
-check "AC-5: it logs in as ops" says deploy-4.log "Logged in as ops (KC_SETUP_ADMIN_USERNAME)"
-check "AC-5: and sets the account's secret to .env's" says deploy-4.log "Registration account $CLIENT: its secret set to .env's"
+check "AC-05: with KC_SETUP_ADMIN_* (ops), deploy.sh exits 0" exited 0 deploy-4.log
+check "AC-05: it logs in as ops" says deploy-4.log "Logged in as ops (KC_SETUP_ADMIN_USERNAME)"
+check "AC-05: and sets the account's secret to .env's" says deploy-4.log "Registration account $CLIENT: its secret set to .env's"
 for i in 1 2 3; do
   in_stack "register-r$i.log" bash ./register-app.sh --app faito --realm "$APPS/faito-realm.json"
-  check "AC-5: registration $i after the rotation works" exited 0 "register-r$i.log"
-  check "AC-5: it finds realm faito" says "register-r$i.log" "Realm faito: already in Keycloak, left as it is"
+  check "AC-05: registration $i after the rotation works" exited 0 "register-r$i.log"
+  check "AC-05: it finds realm faito" says "register-r$i.log" "Realm faito: already in Keycloak, left as it is"
 done
 login_with_old() {
   OLD_SECRET=$(cat "$work/old-secret") MSYS_NO_PATHCONV=1 docker exec -e OLD_SECRET "$STAND_IN_NAME" bash -c '
@@ -246,7 +246,7 @@ login_with_old() {
       /opt/keycloak/bin/kcadm.sh config credentials --config /dev/shm/c4-registration-old.kcadm \
         --server http://localhost:8080/auth --realm master --client $1"' sh "$CLIENT" < /dev/null
 }
-check "AC-5: a login with the former secret fails (Invalid client credentials)" \
+check "AC-05: a login with the former secret fails (Invalid client credentials)" \
   refused_with "Invalid client credentials" login_with_old
 
 sleep 2
@@ -255,16 +255,16 @@ wait "${samplers[@]}"
 samplers=()
 read -r host_samples host_caught < "$work/host.samples"
 read -r kc_samples kc_caught < "$work/keycloak.samples"
-check "AC-6: ps -eo args caught the registration at work ($host_caught of $host_samples samples)" test "${host_caught:-0}" -ge 1
-check "AC-6: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
+check "AC-06: ps -eo args caught the registration at work ($host_caught of $host_samples samples)" test "${host_caught:-0}" -ge 1
+check "AC-06: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
 no_leak() {
   [ ! -s "$work/leaks" ] || { echo "a secret appears in:"; sort "$work/leaks" | uniq -c; return 1; }
 }
-check "AC-6: neither secret appears in ps -eo args, docker top nor docker inspect" no_leak
+check "AC-06: neither secret appears in ps -eo args, docker top nor docker inspect" no_leak
 no_session_left() {
   local left
   left=$(stand_in_exec docker exec c4-infra.keycloak ls -A /dev/shm) || return 1
   ! grep -q c4-registration <<< "$left" || { echo "$left"; return 1; }
 }
-check "AC-6: no session is left in Keycloak's /dev/shm" no_session_left
+check "AC-06: no session is left in Keycloak's /dev/shm" no_session_left
 finish

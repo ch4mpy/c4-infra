@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0004: the demo deployment sends the registry next to register-app.sh (REQ-6, AC-5). Runs the
+# 0004: the demo deployment sends the registry next to register-app.sh (RQ-06, AC-05). Runs the
 # workflow's own upload command (its "Upload the deployment files" step), with a scratch directory
 # of an alpine container instead of the demo host, then lists what arrived.
 #

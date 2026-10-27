@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 0006: a registration doesn't depend on the bootstrap administrator's password (REQ-1, REQ-5; AC-1's
+# 0006: a registration doesn't depend on the bootstrap administrator's password (RQ-01, RQ-05; AC-01's
 # "password changed" variant). With a KC_BOOTSTRAP_ADMIN_PASSWORD in .env that is no longer the one
 # Keycloak holds, as after "change the password" in the admin console, Faito's registration still
 # finds its realm.

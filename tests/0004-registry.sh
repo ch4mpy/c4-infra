@@ -4,14 +4,14 @@
 #   bash tests/0004-registry.sh [registry|scripts|docs]...   (every part by default)
 #
 #   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
-#              entries (AC-6), the duplicates and the malformed lines `check` refuses (AC-3), `next`
-#              (AC-4), `entry` and `upstream` as their output contract says (plan, REQ-3)
+#              entries (AC-06), the duplicates and the malformed lines `check` refuses (AC-03), `next`
+#              (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
 #   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
-#              both (AC-3, REQ-4), an application missing from it is refused (AC-1), before any
+#              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
 #              docker call
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
-#              numbers (AC-7); docs/migration.md states the registry's contract
+#              numbers (AC-07); docs/migration.md states the registry's contract
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -75,7 +75,7 @@ upstream_is() { # <role> <env> <url>
 }
 
 part_registry() {
-  # AC-6
+  # AC-06
   run_with "" bash registry.sh check
   check "entries: check passes on registry.txt" exited 0
   check "entries: check prints nothing" prints_nothing
@@ -93,7 +93,7 @@ part_registry() {
   check "entry tickee: dev_host=tickee.dev.localhost" grep -qx 'dev_host=tickee.dev.localhost' "$work/out"
   check "entry tickee: demo_host=tickee.c4-soft.com" grep -qx 'demo_host=tickee.c4-soft.com' "$work/out"
 
-  # AC-3, at the source: check names both entries of a duplicate
+  # AC-03, at the source: check names both entries of a duplicate
   refused duplicate-number.txt 'number 4: faito (line 5) and verif (line 6)'
   refused duplicate-realm.txt 'realm public-facing: hururaa (line 3) and verif (line 6)'
   refused duplicate-theme.txt 'theme tickee: tickee (line 4) and verif (line 6)'
@@ -102,7 +102,7 @@ part_registry() {
     "bad-fields.txt:4: host name 'verif2.dev.localhost:14080' is not a host name"
   refused reserved-name.txt 'reserved-name.txt:6: keycloak-db is reserved for the shared stack'
 
-  # AC-4
+  # AC-04
   run_with "$FIXTURES/taken-1-4.txt" bash registry.sh next
   check "next, 1 to 4 taken: prints 5" prints 5
   check "next, 1 to 4 taken: exits 0" exited 0
@@ -125,7 +125,7 @@ part_registry() {
   check "entry faito, two entries numbered 4: prints nothing on stdout" prints_nothing
   check "entry faito, two entries numbered 4: says why" says 'number 4: faito (line 5) and verif (line 6)'
 
-  # upstream (REQ-3): the derivation table
+  # upstream (RQ-03): the derivation table
   upstream_is gateway dev https://host.docker.internal:14080
   upstream_is mcp dev https://host.docker.internal:14280
   upstream_is fr dev http://host.docker.internal:14200
@@ -173,7 +173,7 @@ stopped() { # <label> <both entries>: the last run exited ≠ 0, naming both ent
 part_scripts() {
   stub_path "$work/stubs" docker getent powershell.exe
 
-  # AC-3
+  # AC-03
   run_stubbed "$FIXTURES/duplicate-number.txt" bash ./up.sh
   stopped "duplicate number, up.sh" 'number 4: faito (line 5) and verif (line 6)'
   run_stubbed "$FIXTURES/duplicate-realm.txt" bash ./up.sh
@@ -181,11 +181,11 @@ part_scripts() {
   run_stubbed "$FIXTURES/duplicate-theme.txt" bash ./up.sh
   stopped "duplicate theme, up.sh" 'theme tickee: tickee (line 4) and verif (line 6)'
 
-  # REQ-4: register-app.sh as well, for an application of the registry
+  # RQ-04: register-app.sh as well, for an application of the registry
   run_stubbed "$FIXTURES/duplicate-realm.txt" bash ./register-app.sh --app faito
   stopped "duplicate realm, register-app.sh --app faito" 'realm public-facing: hururaa (line 3) and verif (line 6)'
 
-  # AC-1
+  # AC-01
   run_stubbed "" bash ./register-app.sh --app verif
   check "unknown app: register-app.sh --app verif exits non-zero" exited_non_zero
   check "unknown app: its message names registry.txt" says registry.txt

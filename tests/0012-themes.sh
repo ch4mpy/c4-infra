@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# 0012: a registered theme can't bring the shared Keycloak's environment into a page (REQ-1 to
-# REQ-4), on the workstation:
+# 0012: a registered theme can't bring the shared Keycloak's environment into a page (RQ-01 to
+# RQ-04), on the workstation:
 #
-#   - AC-1, AC-2: with a fake docker (tests/lib/stubs.sh), register-app.sh refuses, before any docker
+#   - AC-01, AC-02: with a fake docker (tests/lib/stubs.sh), register-app.sh refuses, before any docker
 #     call and naming the file and its line, a theme whose theme.properties holds `${` once read as
 #     Java reads it: ${env.KC_DB_PASSWORD}; \u0024{…}; \$\{…}; `$` and `{` joined by a continuation
 #     line; the same in a CRLF file; ${java.version} in an email theme; a file named
 #     Theme.Properties. None of them is installed in keycloak/themes/.
-#   - AC-5: on the dev stack, the fixture application verif-themes (tests/fixtures/0012/registry.txt)
+#   - AC-05: on the dev stack, the fixture application verif-themes (tests/fixtures/0012/registry.txt)
 #     registers its realm and two themes that pass: verif-ok (a commented ${…}, a comment ending
 #     with a backslash, an even number of backslashes before a line's end, ${msg(…)} and {0} in its
 #     template and its messages) and verif-tickee (Tickee's theme, without its images): both
 #     installed as they are, and the realm's login page shows verif-ok's message.
 #
-# A theme's links (AC-3) are tested on the stand-in host (tests/0012-themes.stand-in.sh): Git Bash
+# A theme's links (AC-03) are tested on the stand-in host (tests/0012-themes.stand-in.sh): Git Bash
 # doesn't make them here. The realm, the themes and the network this test creates are removed by a
 # trap, whatever happens.
 #
@@ -88,24 +88,24 @@ refused_theme() { # <label> <name> <type> <file name> <content> <line>
   check "$1: $2 isn't installed" not_installed "$2"
 }
 
-# AC-1
-refused_theme 'AC-1: ${env.KC_DB_PASSWORD}' verif-env login theme.properties \
+# AC-01
+refused_theme 'AC-01: ${env.KC_DB_PASSWORD}' verif-env login theme.properties \
   'parent=keycloak\nkcHtmlClass=login-pf ${env.KC_DB_PASSWORD}\n' 2
-# AC-2: what Java's Properties decodes, or joins, into ${
-refused_theme 'AC-2: \u0024{…}' verif-unicode login theme.properties \
+# AC-02: what Java's Properties decodes, or joins, into ${
+refused_theme 'AC-02: \u0024{…}' verif-unicode login theme.properties \
   'parent=keycloak\nkcHtmlClass=\\u0024{env.KC_DB_PASSWORD}\n' 2
-refused_theme 'AC-2: \$\{…}' verif-escape login theme.properties \
+refused_theme 'AC-02: \$\{…}' verif-escape login theme.properties \
   'parent=keycloak\nkcHtmlClass=\\$\\{env.KC_DB_PASSWORD}\n' 2
-refused_theme 'AC-2: $ and { joined by a continuation' verif-continued login theme.properties \
+refused_theme 'AC-02: $ and { joined by a continuation' verif-continued login theme.properties \
   'parent=keycloak\nkcHtmlClass=login-pf $\\\n    {env.KC_DB_PASSWORD}\n' 2
-refused_theme 'AC-2: the same, CRLF' verif-crlf login theme.properties \
+refused_theme 'AC-02: the same, CRLF' verif-crlf login theme.properties \
   'parent=keycloak\r\nkcHtmlClass=login-pf $\\\r\n    {env.KC_DB_PASSWORD}\r\n' 2
-refused_theme 'AC-2: ${java.version} in an email theme' verif-sysprop email theme.properties \
+refused_theme 'AC-02: ${java.version} in an email theme' verif-sysprop email theme.properties \
   'parent=base\nsubject=${java.version}\n' 2
-refused_theme 'AC-2: Theme.Properties' verif-case login Theme.Properties \
+refused_theme 'AC-02: Theme.Properties' verif-case login Theme.Properties \
   'parent=keycloak\nkcHtmlClass=${env.KC_DB_PASSWORD}\n' 2
 
-# AC-5: the themes that pass, on the dev stack
+# AC-05: the themes that pass, on the dev stack
 bash register-app.sh --app verif-themes --realm "$FIXTURE/verif-themes-realm.json" \
   --themes "$FIXTURE/themes" > "$work/register.out" 2>&1 < /dev/null
 status=$?
@@ -115,14 +115,14 @@ registered() {
 installed_as_is() { # <theme>
   diff -r "$FIXTURE/themes/$1" "$INSTALLED/$1"
 }
-check "AC-5: verif-themes registers its realm, verif-ok and verif-tickee" registered
-check "AC-5: verif-ok is installed as it is" installed_as_is verif-ok
-check "AC-5: verif-tickee (Tickee's theme) is installed as it is" installed_as_is verif-tickee
+check "AC-05: verif-themes registers its realm, verif-ok and verif-tickee" registered
+check "AC-05: verif-ok is installed as it is" installed_as_is verif-ok
+check "AC-05: verif-tickee (Tickee's theme) is installed as it is" installed_as_is verif-tickee
 shows_message() {
   local page
   page=$(curl --ssl-no-revoke --cacert certs/ca.crt -s "$LOGIN_PAGE")
   grep -qF 'Theme verif-ok, argument 0012' <<< "$page" || { echo "the login page:"; head -c 600 <<< "$page"; return 1; }
 }
-check "AC-5: the realm's login page shows verif-ok's message" shows_message
+check "AC-05: the realm's login page shows verif-ok's message" shows_message
 
 finish

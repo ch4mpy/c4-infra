@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 0012: the forms of a theme.properties that bash and Java read differently (sdlc-verify's review,
-# round 1, 2026-10-23), refused before any docker call as AC-1's (REQ-1, REQ-3), with a fake docker:
+# round 1, 2026-10-23), refused before any docker call as AC-01's (RQ-01, RQ-03), with a fake docker:
 #
 #   - a NUL byte before # (bash drops it and saw a comment; Java reads the key "\u0000#k" and
 #     resolves its value);
