@@ -1,6 +1,6 @@
 # Plan: The verification runs every test every time, and says nothing of where its time goes
 
-- Spec: [v1](spec.md)
+- Spec: [v2](spec.md)
 - Status: approved
 - Branch: 0017-suite-runs-every-test-every-time
 - Approved: 2026-10-27, Jérôme Wacongne (engineer), in plan mode
@@ -62,6 +62,7 @@ Decided by Jérôme Wacongne (engineer) on 2026-10-27:
 | AC-05 | automated test + command | `tests/0017-run.sh`: plain and `--all` sets; step 5: `--all` runs every `tests/[0-9][0-9][0-9][0-9]-*.sh`, the plain run step 0's set minus the facts tests |
 | AC-06 | automated test + command | `tests/0017-run.sh`: the second run waits, names the first, starts after it; `kill -9`, interrupted and failed runs don't hold the next; step 5: two real runs in two worktrees |
 | AC-07 | command + review | `grep -n -- '--changed\|# covers:' CLAUDE.md`; "Verification" reread against RQ-07 |
+| AC-08 | automated test | `tests/0017-run.sh`: changes under `docs/intent/` only run no test, each skipped with the reason; with a `routes.sh` change too, the declaring tests only (spec v2) |
 
 ## Deviations
 
@@ -70,3 +71,4 @@ Decided by Jérôme Wacongne (engineer) on 2026-10-27:
 - 2026-10-27 — step 0, on another workstation (bootstrap mode since 2026-10-27): `origin/main` merged (0013 and 0018 delivered; the index's conflict resolved by keeping every row). Its baseline is not rerun: the merged tree's code is the same as 0018's verified head (`git diff --stat e49e53c HEAD -- . ':!docs' ':!CLAUDE.md'` empty), whose `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh` → `verification passed` (2026-10-27, 20:06–20:28 UTC). Step 0's set, for AC-05: that run's 32 tests, the 9 stand-in tests skipped. On this workstation every run needs `TMPDIR` (Docker Desktop, CLAUDE.md). Impact: none on files; the new tests of 0018 (`tests/0018-registry-grows.sh`) get a covers line at step 2.
 - 2026-10-27 — step 1, measured on Linux (Docker Desktop) only: `docker run --rm -i --name <lock> --label … alpine:3 sh -c 'echo held; exec cat >/dev/null'` as a bash coprocess, the holder reading `held`: the container is removed within a second when the holder exits 0, exits 1, gets SIGINT (its process group), is killed with `kill -9` with its child, and killed alone while its child lives on (the coprocess's pipe isn't inherited by the child); a second `docker run --name <lock>` while it lives exits 125, `Conflict. The container name … is already in use`; its labels are read back. A holder started with `&` from a non-interactive shell ignores SIGINT (no job control), so the measure starts it with SIGINT at its default, as a terminal does. Git Bash can't be measured on this workstation: kept as not verifiable here, with the product owner's go (2026-10-27); CLAUDE.md says how to free a stuck lock. Impact: AC-06's Windows half not verifiable here.
 - 2026-10-27 — step 2: 41 tests given their covers lines (`0013`'s and `0018`'s included), every tracked script covered (checked with the matching `run.sh` uses: a trailing `/` a directory, else a glob or the exact path). `tests/0017-export-realm.sh` registers 0010's fixture realm (`verif-lockout`, one user) rather than a fixture of its own. Its check's full `bash tests/run.sh` is folded into step 3's: step 2 changes comments only, besides the two new tests, run here (`every check passed` each), and `bash -n` of every test passes. Impact: none on proof (step 3 and step 5 run the full suite).
+- 2026-10-27 — step 3, spec v2 (product owner, in this session): RQ-03 as written made `--changed` run every test on any intent's branch, whose `plan.md`, `intent.md` and index row differ from the base; the intent home's files (`docs/intent/`) now concern no test, AC-08 proves it (Proof). Impact: `tests/run.sh` and `tests/0017-run.sh` as in *Files*, one more criterion.
