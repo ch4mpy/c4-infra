@@ -489,6 +489,17 @@ if [ -n "$proxy" ]; then
     echo "$1" >&2
     exit 1
   }
+  # PROXY_IMAGE when the running proxy was started from another image than the one it names here
+  proxy_image_not_running() {
+    local image running expected
+    image=$(dotenv_value "$INFRA_DIR/.env" PROXY_IMAGE 2> /dev/null) && [ -n "$image" ] || return 1
+    running=$(docker inspect -f '{{.Image}}' "$REVERSE_PROXY" 2> /dev/null) || return 1
+    expected=$(docker image inspect -f '{{.Id}}' "$image" 2> /dev/null) || return 1
+    running=${running%$'\r'}
+    expected=${expected%$'\r'}
+    [ -n "$running" ] && [ -n "$expected" ] && [ "$running" != "$expected" ] || return 1
+    printf '%s' "$image"
+  }
   if [ -f "$target" ] && printf '%s\n' "$site" | cmp -s - "$target"; then
     echo "Reverse proxy: $app site unchanged"
   else
@@ -500,8 +511,12 @@ if [ -n "$proxy" ]; then
     fi
     printf '%s\n' "$site" > "$target"
     own "$target"
-    output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1) \
-      || restore_site "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration"
+    if ! output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1); then
+      if image=$(proxy_image_not_running); then
+        restore_site "The shared reverse proxy runs an older image than $image (PROXY_IMAGE, .env), which the site may need: run up.sh first (on the demo host: the deployment); the reverse proxy keeps its previous configuration"
+      fi
+      restore_site "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration"
+    fi
     output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1) \
       || restore_site "The reverse proxy could not reload: the site of $proxy is not installed"
     rm -f "$backup"
