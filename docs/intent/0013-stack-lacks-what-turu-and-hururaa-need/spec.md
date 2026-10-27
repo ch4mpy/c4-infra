@@ -2,10 +2,10 @@
 
 - Intent: [0013](intent.md)
 - Status: approved
-- Version: 3
+- Version: 4
 - Risk: high (rules: authentication, Keycloak's version and features shared by every application, one of them experimental; what a host exposes, a new origin per MCP server; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design, 0003 (routes files, dev and demo alike), 0004 (the registry), 0007 (one network per application), 0009 and 0010 (the master realm's settings), Turu's decision 0011 (agent delegation), the agents' access spec (Jérôme Wacongne, 2026-10-23: MCP server and token exchange, which the applications follow)
-- Approved: 2026-10-23, Jérôme Wacongne (product owner, and tech lead for the high risk)
+- Approved: 2026-10-23, Jérôme Wacongne (product owner, and tech lead for the high risk); v4: 2026-10-27, the same
 
 ## Summary
 
@@ -29,7 +29,7 @@ The shared Keycloak moves to 26.8.1 with the two preview features Turu's agent d
 - **RQ-14:** An MCP client finds on the shared host what MCP's authorization asks of the authorization server: each realm's RFC 8414 and OpenID discovery at the issuer host's root, PKCE `S256`, `iss` in the authorization response, the standard token exchange, CIMD for the realms whose client policies opt in (PA-05); a `resource` parameter is ignored without error; resource indicators stay off. (agents' spec RQ-01, § 13)
 - **RQ-15:** On the demo host, an application's container exchanges, through `http://keycloak:8080/auth`, a token issued for `https://<infra host>/auth/realms/<realm>`. (agents' spec phase 5)
 - **RQ-16:** The proxy limits, per client address, the requests to a realm's client registration endpoint (`/auth/realms/<realm>/clients-registrations/…`) to 10 a minute, in dev and on the demo host, answering `429` beyond; no other path is limited (PA-06). (agents' spec § 7.4, § 10)
-- **RQ-17:** The registration refuses, in dev and on the demo host, a realm whose client profiles hold a `client-id-metadata-document` executor that allows the `http` scheme (`cimd-allow-http-scheme`) or permits the domain `*` alone, naming the realm file and the profile; nothing is registered (PA-07). (agents' spec phase 2; 0007)
+- **RQ-17:** The registration refuses, in dev and on the demo host, a realm whose client profiles hold a `client-id-metadata-document` executor that allows the `http` scheme (`cimd-allow-http-scheme`) or permits the domain `*` alone, `*.`, or a domain that names no public host: an IP address, a single label (`keycloak`, `localhost`), a last label that is no top-level domain of the IANA root zone (`*.mcp`, `faito.gateway`, `host.docker.internal`), or two labels whose first is a registered application's name or `c4-infra` (a container: `faito.rest-api-db`, `c4-infra.rabbitmq`), naming the realm file and the profile; nothing is registered (PA-07, PA-08). (agents' spec phase 2; 0007)
 
 ## Out of scope
 
@@ -75,7 +75,7 @@ The shared Keycloak moves to 26.8.1 with the two preview features Turu's agent d
 - Image: Keycloak `26.8.1` (the tag, which a rebuild refreshes with its base image's fixes; alternative, a digest: reproducible, but no fix without an edit), `KC_FEATURES=token-exchange-delegation,parameterized-scopes,cimd`.
 - Proxy: a Caddy image with a rate-limit module (the stock image has none), in dev and on the demo host.
 - Routes file: unchanged notation; the lines whose target is `mcp` form the MCP origin's site, `<app>-mcp.<domain of the registry's host>`. Demo upstreams: `gateway` `http://<app>.gateway:7080`, `mcp` `http://<app>.mcp:9080`, `fr`/`en`/`ui` `http://<app>.frontend:80`.
-- Registration refusal (RQ-17): `<realm file>: client profile '<name>': the client-id-metadata-document executor allows http (or the domain '*'): Keycloak would fetch any URL, other applications' containers included: refused`.
+- Registration refusal (RQ-17): `<realm file>: client profile '<name>': the client-id-metadata-document executor allows http (or the domain '*'), or permits a domain that names no public host): Keycloak would fetch any URL, other applications' containers included: refused`.
 
 ### User interface
 
@@ -96,7 +96,7 @@ Keycloak's database, migrated in place to 26.8; its dump before the first start 
 | 0009, 0010: the master realm's settings | RQ-03; it gains PA-01's two scopes |
 | Turu 0011: delegation in preview, checked at each Keycloak upgrade | RQ-05 |
 | Agents' access spec: IV-05 (bearer-only, distinct origin), RQ-01 (MCP authorization), phase 2 (CIMD), phase 5 (exchange), § 7.4 and § 10 (registration, its rate) | RQ-07, RQ-14, RQ-15, RQ-16, RQ-17 |
-| 0007: an application reaches none of the others | RQ-17: Keycloak, on every application's network, fetches no URL an application's realm opens to `http` or to any domain |
+| 0007: an application reaches none of the others | RQ-17: Keycloak, on every application's network, fetches no URL an application's realm opens to `http`, to any domain, or to a name of an internal host (PA-08: a check of the name, not of what it resolves to) |
 
 ## Points of attention
 
@@ -156,6 +156,14 @@ Keycloak's database, migrated in place to 26.8; its dump before the first start 
 - Decides: product owner and tech lead
 - Decision: A; RQ-17 (Jérôme Wacongne, product owner and tech lead, 2026-10-23)
 
+### PA-08: Which other permitted domains name an internal host (v4)
+
+- Issue: on the demo host, Keycloak is on every application's network, where it resolves `<app>.gateway`, `<app>.frontend`, `<app>.mcp`, `host.docker.internal`, `keycloak`, the `c4-infra.*` containers and each application's own `<app>.<service>`: a realm permitting one of them would let an unauthenticated client make Keycloak fetch from another application's container. A check of the domain's text catches a realm author's mistake, not an author who points a public name of theirs at an internal address: only filtering Keycloak's outbound connections after resolution would.
+- Options: A refuse an IP address, a single label, a last label outside the IANA root zone (a pinned list), and two labels whose first is a registered application's name or `c4-infra` / B an egress proxy for Keycloak refusing private addresses after resolution / C refuse IP addresses, single labels and the known suffixes only (`gateway`, `frontend`, `mcp`, `internal`, `local`, `localhost`)
+- Recommendation: A, with B as an intent of its own.
+- Decides: product owner and tech lead
+- Decision: A; RQ-17, AC-15 (Jérôme Wacongne, product owner and tech lead, 2026-10-27)
+
 ## Acceptance criteria
 
 - **AC-01:** Given the dev stack rebuilt, and the stand-in demo host deployed, when Keycloak has started, then its log names 26.8.1, exactly the two preview features and, as experimental, `cimd` alone. (RQ-01, RQ-02)
@@ -172,7 +180,7 @@ Keycloak's database, migrated in place to 26.8; its dump before the first start 
 - **AC-12:** Given a realm on the shared Keycloak, when a client reads `https://<infra host>/.well-known/oauth-authorization-server/auth/realms/<realm>`, then the realm's metadata answers, with `S256`, `authorization_response_iss_parameter_supported` and `client_id_metadata_document_supported`; an authorization request with `resource=` shows the login page. (RQ-14)
 - **AC-13:** Given the stand-in demo host, when a container on `c4-infra.<app>` exchanges, through `http://keycloak:8080/auth`, a token issued for the public issuer, then it gets the exchanged token. (RQ-15)
 - **AC-14:** Given the stack, in dev and on the stand-in demo host, when one address sends more than 10 requests in a minute to a realm's client registration endpoint through the proxy, then the excess gets `429`, while another address, and that address's other requests to Keycloak, are answered. (RQ-16)
-- **AC-15:** Given a realm export whose client profile holds a `client-id-metadata-document` executor with `cimd-allow-http-scheme` on, or with `*` among its permitted domains, when its application registers, then refused naming the file and the profile, nothing registered; with https and `*.example.org`, registered. (RQ-17)
+- **AC-15:** Given a realm export whose client profile holds a `client-id-metadata-document` executor with `cimd-allow-http-scheme` on, or with `*` among its permitted domains, `*.`, `10.0.0.1`, `[::1]`, `keycloak`, `*.mcp`, `faito.gateway`, `host.docker.internal`, `faito.rest-api-db` or `c4-infra.rabbitmq`, when its application registers, then refused naming the file and the profile, nothing registered; with https and `*.example.org`, `turu.c4-soft.com` or `*.xn--p1ai`, registered. (RQ-17)
 - **AC-16:** Given the test of AC-15 or AC-05, run on the code before this change, then it fails: the tests guard the change. (RQ-07, RQ-17)
 
 ## Intent questions
@@ -187,3 +195,4 @@ Keycloak's database, migrated in place to 26.8; its dump before the first start 
 - v1 — 2026-10-23 — first version
 - v2 — 2026-10-23 — PA-01, PA-02 and PA-03 decided (A, B, A); from the agents' access spec (Jérôme Wacongne, 2026-10-23): the MCP server's own origin (RQ-07 rewritten, RQ-12, RQ-13), what the shared host offers an MCP client (RQ-14, RQ-15), PA-04 to PA-06
 - v3 — 2026-10-23 — PA-04 A, PA-05 B, PA-06 B decided; CIMD measured (opt-in per realm, its executor's options), hence PA-07, decided A; RQ-02, RQ-07, RQ-14 amended; RQ-16, RQ-17, AC-14 to AC-16 added; approved
+- v4 — 2026-10-27 — found at verification (bug review): RQ-17 refused only `*` and `*.`, while a realm could permit a container's name; PA-08 added and decided A: RQ-17 also refuses IP addresses, single labels, last labels outside the IANA root zone and `<app or c4-infra>.<x>`; AC-15 extended; approved (Jérôme Wacongne, product owner and tech lead, 2026-10-27); an egress filter for Keycloak (PA-08 B) left to an intent of its own
