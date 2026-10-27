@@ -66,3 +66,5 @@ Decided by Jérôme Wacongne (engineer) on 2026-10-27:
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-27 — step 0, on another workstation (bootstrap mode since 2026-10-27): `origin/main` merged (0013 and 0018 delivered; the index's conflict resolved by keeping every row). Its baseline is not rerun: the merged tree's code is the same as 0018's verified head (`git diff --stat e49e53c HEAD -- . ':!docs' ':!CLAUDE.md'` empty), whose `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh` → `verification passed` (2026-10-27, 20:06–20:28 UTC). Step 0's set, for AC-05: that run's 32 tests, the 9 stand-in tests skipped. On this workstation every run needs `TMPDIR` (Docker Desktop, CLAUDE.md). Impact: none on files; the new tests of 0018 (`tests/0018-registry-grows.sh`) get a covers line at step 2.
