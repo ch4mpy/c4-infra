@@ -61,4 +61,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0010 | [No realm of the shared Keycloak protects its accounts against password guessing](0010-no-brute-force-protection/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
 | 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | proposed | 2026-10-23 | — |
 | 0012 | [An application's Keycloak theme may read the shared Keycloak's environment](0012-themes-read-keycloak-environment/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
-| 0017 | [The verification runs every test every time, and says nothing of where its time goes](0017-suite-runs-every-test-every-time/intent.md) | change | proposed | 2026-10-27 | — |
+| 0017 | [The verification runs every test every time, and says nothing of where its time goes](0017-suite-runs-every-test-every-time/intent.md) | change | accepted | 2026-10-27 | 2026-10-27 |

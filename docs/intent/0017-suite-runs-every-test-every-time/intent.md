@@ -4,9 +4,9 @@
 - Kind: change
 - Source: conversation (verification of 0013, 2026-10-27)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-27
-- Decided: —
+- Decided: 2026-10-27
 - Supersedes: —
 
 ## Problem
