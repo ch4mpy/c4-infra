@@ -2,10 +2,10 @@
 
 - Intent: [0017](intent.md)
 - Status: approved
-- Version: 1
+- Version: 2
 - Risk: standard (no risk rule applies: the change touches the verification only, no authentication, secret, isolation, exposure or personal data)
 - Policies applied: none yet; standing constraints: CLAUDE.md "Verification" (`bash tests/run.sh` with the dev stack running; `--all` before a change to the demo host), `sdlc-verify` (the full run is the proof of a change)
-- Approved: 2026-10-27, Jérôme Wacongne (product owner)
+- Approved: 2026-10-27, Jérôme Wacongne (product owner); v2 the same day, in the implementation session
 
 ## Summary
 
@@ -15,7 +15,7 @@
 
 - **RQ-01:** Every run prints, after each test, its duration, and at its end the total and the slowest tests, in the order of their durations. (intent: success criterion, "the duration of each test is printed")
 - **RQ-02:** A run asked for the changed files (an option) runs the tests those files concern, in the suite's order, and prints each other test as skipped with the reason. The changed files are those of the working tree (committed since the base branch, staged, unstaged and untracked); a run may also be given a base. (intent: outcome, an intermediate check)
-- **RQ-03:** A test is concerned by a file it declares it covers (PA-01). A change to the suite's own machinery (`tests/run.sh`, `tests/lib/`) or to a file no test declares runs every test the run would run without the option. (intent: outcome, "never runs fewer tests" for what it can't place)
+- **RQ-03:** A test is concerned by a file it declares it covers (PA-01). A change to the suite's own machinery (`tests/run.sh`, `tests/lib/`) or to a file no test declares runs every test the run would run without the option, except the files of the intent home (`docs/intent/`), which concern no test. (intent: outcome, "never runs fewer tests" for what it can't place; v2: an intent's own documents change on every intent's branch)
 - **RQ-04:** The suite refuses, before running any test, a tracked script (`*.sh`, `demo/c4-app`) that no test declares it covers, naming it. (intent: outcome, no silent gap)
 - **RQ-05:** A plain run runs the tests it runs today, and `--all` every test of `tests/`, the stand-in ones included; the facts tests as PA-02 decides. Neither ever runs fewer tests than today apart from PA-02's facts tests. (intent: constraint, the full run keeps every test; PO, 2026-10-27, the plain run unchanged)
 - **RQ-06:** While a run of the suite uses the dev stack, a second run started on the same Docker (another session, another worktree of the repository) prints which run holds it (its worktree and start time), waits for its end, then runs. A run that ends in any way (passed, failed, interrupted, killed) releases the stack; a hold whose run no longer exists doesn't block the next one. (intent: success criterion; PO, 2026-10-27: it waits)
@@ -92,6 +92,7 @@ None.
 - **AC-05:** Given the repository, then a plain run runs the same tests as before this change (PA-02's facts tests aside), and `--all` runs every `tests/[0-9][0-9][0-9][0-9]-*.sh`. (RQ-05)
 - **AC-06:** Given a run in progress in one worktree, when a run starts in another worktree on the same Docker, then the second prints the first's worktree and start time, starts no test until the first ends, then runs. Given a run killed (`kill -9`), the next run doesn't wait for it. Given a run interrupted (Ctrl-C) or failed, the next one doesn't wait either. (RQ-06)
 - **AC-07:** Given CLAUDE.md, then "Verification" names `--changed`, says `--all` stays the proof before review, and shows a test's covers line. (RQ-07)
+- **AC-08:** Given changes to files of `docs/intent/` only, when `--changed` runs, then it runs no test and prints each one as skipped, "not concerned by the change"; given the same changes and one to `routes.sh`, it runs the tests declaring `routes.sh` only. (RQ-03, v2)
 
 ## Intent questions
 
@@ -104,3 +105,4 @@ None.
 
 - v1 — 2026-10-27 — first version; the PO decided at draft that a second run waits and that a plain run stays unchanged
 - v1 — 2026-10-27 — approved: PA-01 A, PA-02 A, PA-03 A
+- v2 — 2026-10-27 — found while implementing: on an intent's branch, its `plan.md`, `intent.md` and index row always differ from the base, so RQ-03 as written made `--changed` run everything; RQ-03 now excepts the intent home's files, AC-08 added; approved by Jérôme Wacongne (product owner)
