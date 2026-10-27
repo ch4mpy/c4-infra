@@ -7,9 +7,11 @@
 #     allows the http scheme (true, and each form Keycloak reads as true: "true", "TRUE", 1), or
 #     permits the domain * or *. (which matches every host written with a final dot, Keycloak
 #     26.8.1: tests/0013-keycloak-facts.sh): Keycloak would fetch any URL an unauthenticated client
-#     names, other applications' containers included; a realm attribute client-policies.*, where
-#     Keycloak stores the profiles and policies, out of that check; its twins, http off (false,
-#     "false") with *.example.org and a named domain, pass the check (docker is called);
+#     names, other applications' containers included; or a domain that names no public host (PA-08:
+#     an IP address, a single label, a last label outside the IANA root zone, <app or c4-infra>.<x>);
+#     a realm attribute client-policies.*, where Keycloak stores the profiles and policies, out of
+#     that check; its twins, http off (false, "false") with *.example.org and a named domain, and
+#     the public hosts turu.c4-soft.com and *.xn--p1ai, pass the check (docker is called);
 #   - AC-08: a --proxy file that is an nginx server block (.conf): refused by the routes notation,
 #     as any file that isn't a routes file, since the transition is gone;
 #   - a site Caddy refuses (here, a proxy image without rate_limit): names both causes, the routes
@@ -81,10 +83,22 @@ printf 'not JSON\n' > "$work/verif-cimd-ok-realm.json"
 register --app verif-delegation --realm "$work/verif-cimd-ok-realm.json"
 refused_before_docker "a realm export that isn't JSON" "not JSON that jq can read"
 
+# faito.app: a container named after a service app, whose last label is a top-level domain
+for domain in 10.0.0.1 '[::1]' keycloak '*.mcp' faito.gateway host.docker.internal faito.rest-api-db c4-infra.rabbitmq faito.app; do
+  register --app verif-delegation --realm "$(cimd_realm verif-cimd-any '{"cimd-allow-permitted-domains":["claude.ai","'"$domain"'"]}')"
+  refused_before_docker "AC-15: the domain $domain (no public host)" \
+    "client profile mcp-clients: its client-id-metadata-document executor permits the domain \"$domain\", which names no public host"
+done
+
 for value in false '"false"'; do
   register --app verif-delegation --realm "$(cimd_realm verif-cimd-ok '{"cimd-allow-http-scheme":'"$value"',"cimd-allow-permitted-domains":["*.example.org","claude.ai"]}')"
   check "AC-15's twin: http off ($value), *.example.org and a named domain pass the check" never_says "client-id-metadata-document"
   check "AC-15's twin: the registration goes on (docker is called)" test -s "$work/docker.log"
+done
+for domain in turu.c4-soft.com '*.xn--p1ai' '*.example.org'; do
+  register --app verif-delegation --realm "$(cimd_realm verif-cimd-ok '{"cimd-allow-http-scheme":false,"cimd-allow-permitted-domains":["'"$domain"'"]}')"
+  check "AC-15's twin: the domain $domain (a public host) passes the check" never_says "client-id-metadata-document"
+  check "AC-15's twin: the domain $domain, the registration goes on (docker is called)" test -s "$work/docker.log"
 done
 
 # AC-08: the .conf transition is gone
