@@ -12,6 +12,10 @@ c4-infra: the infrastructure the c4-soft applications share on one machine (deve
 
 ## Verification
 
-`bash tests/run.sh`, with the dev stack running (`bash up.sh`) and `jq` installed; `bash tests/run.sh --all` before a change to the demo host: it also runs the `*.stand-in.sh` tests, on a stand-in demo host (`tests/lib/stand-in-host.sh`: a privileged Ubuntu container running its own Docker, whose volume keeps the pulled images).
+`bash tests/run.sh --all` is the proof of a change before review, with the dev stack running (`bash up.sh`) and `jq` installed: every test of `tests/`, the `*-facts.sh` ones (Keycloak's and Caddy's behaviour, in throwaway containers) and the `*.stand-in.sh` ones (a stand-in demo host, `tests/lib/stand-in-host.sh`: a privileged Ubuntu container running its own Docker, whose volume keeps the pulled images) included. `bash tests/run.sh` runs the others. For an intermediate check, `bash tests/run.sh --changed [<base>]` runs only the tests the changes concern: committed since `<base>` (`origin/main` by default; `HEAD` for a step not committed yet), staged, unstaged and untracked; never a proof. Each test's duration follows it, the slowest are listed at the end.
+
+Each test declares what it covers in its header, e.g. `# covers: routes.sh registry.sh examples/routes/ tests/fixtures/0003/` (paths, a trailing `/` for a directory, globs; several lines allowed); a test covers its own file. A change to `tests/run.sh`, `tests/lib/` or a file no test declares runs every test; `docs/intent/` concerns none. A run refuses a tracked script no test declares (`uncovered: <script>`) before any test: a new script comes with a test that covers it.
+
+One run at a time per Docker: a second run waits, naming the first one's worktree and start time (`waiting for the run of …`). A run frees the stack however it ends; `docker rm -f c4-infra.suite-lock` frees it from a run that hangs.
 
 Prerequisites beyond the stack: Faito registered from `../faito` (its `deploy-dev.sh`), which several tests use as the sample application; with Docker Desktop, a `TMPDIR` it shares (e.g. `mkdir -p ~/.cache/c4-infra-tests && TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh`), since the tests bind-mount their `mktemp` directories and `/tmp` isn't shared by default.
