@@ -4,9 +4,9 @@
 - Kind: change
 - Source: conversation (immo's plan 0001, step 11, and spec 0001, PA-07, 2026-10-26)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-26
-- Decided: —
+- Decided: 2026-10-27
 - Supersedes: —
 
 ## Problem
@@ -18,6 +18,8 @@ immo (the immobilier.pf rewrite, about to register with the stack) needs what th
 ## Proposed outcome
 
 An application's routes file may state, route by route, that a front end's Content-Security-Policy, X-Frame-Options and Permissions-Policy are the application's own. The browser then receives on that route exactly the headers the application sends, once each, while the headers every site gets (`common-headers`: `X-Content-Type-Options`, `Referrer-Policy`, no `Server`, HSTS on the demo host) stay. A route that doesn't state it keeps today's headers. The same in dev and on the demo host.
+
+On such a route, a response without one of these headers (a static asset, an error page, the proxy's own 413 or 502) gets the shared value, as a default only: the proxy fails closed (product owner, 2026-10-27). An application that sends only `Content-Security-Policy-Report-Only` while it settles its policy therefore gets the shared policy enforced as well.
 
 Success criterion: on such a route, a response carries a single Content-Security-Policy, the application's, unchanged; a route to the gateway, the MCP server or a redirect can't take the option, and a registration with it there is refused before anything changes.
 
@@ -36,6 +38,5 @@ Success criterion: on such a route, a response carries a single Content-Security
 ## Open questions
 
 - Notation and hook? Suggested by immo's plan 0001: an option `headers=app` on a route line, accepted on `fr`, `en` and `ui`, refused on `gateway`, `mcp` and `redirect`. Today's code: options are parsed in `routes_generate`'s `case "$option"` (`routes.sh:145-175`, beside `to=`, `max-body=` and `prefix=`, the unknown-option message at `:172` naming them), each kept in a per-route array (`bodies`, `prefixes`); the line `import spa-headers` (`:258-260`) is the one to skip for such a route. `common-headers` comes from the `site` snippet every site imports first (`caddy/Caddyfile:31-35`), so it stays without any change. On 0013's branch the same arrays are read by `_routes_site` (bash's dynamic scoping). — the spec
-- On such a route, what does a response the application sends without these headers get (a static asset, an error page, Caddy's own 413 or 502)? A: nothing, the application owns them; B: the shared values as defaults only, with Caddy's `?<field>` (measured on 2.11.4: an upstream's header is kept as it is, a missing one gets the shared value). B fails closed, but it would add an enforced policy where the application sends only `Content-Security-Policy-Report-Only` while it settles its own. — product owner, tech lead
 - `common-headers` replaces the application's `Referrer-Policy` (measured: the stand-in's `unsafe-url` came out `strict-origin-when-cross-origin`): does it stay the stack's on such a route? — the spec
 - Risk: no rule of the project names a page's security headers. Does the protection of the visitors of an application's own origin make the spec high-risk? — tech lead
