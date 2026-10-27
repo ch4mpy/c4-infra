@@ -1,0 +1,86 @@
+# Plan: The shared Keycloak offers no simulated Google, Facebook or Apple provider to try a social login
+
+- Spec: [v1](spec.md)
+- Status: approved
+- Branch: 0016-no-simulated-google-and-apple-realms
+- Approved: 2026-10-27, Jérôme Wacongne (engineer, and tech lead for the high risk), in plan mode
+- Builds on: the delivery order 0013 → 0011 → 0015 → 0016 (decided 2026-10-27): `origin/main` once 0013, 0011 and 0015 are delivered, otherwise their branches merged in that order, at step 0 (0013 brings Keycloak 26.8.1, `keycloak-import` migrating, `register-app.sh` with jq)
+
+## Starting point
+
+- `keycloak-import` (`compose.yml`, on 0013's branch) runs `import --dir /opt/keycloak/data/import --override false` at each start, from `./keycloak-import/` mounted read-only, with `INFRA_HOST` in its environment. Measured on 2026-10-27 (throwaway 26.8.1, file database): two `*-realm.json` files in that directory are both imported, and a second run logs `Realm '…' already exists. Import skipped` for each. On the demo host, only the files of `demo/deploy-files.txt` are sent (`keycloak-import/master-realm.json` is listed by name).
+- `keycloak/themes/` is git-ignored and mounted read-only, whole, at `/opt/keycloak/themes` (`compose.yml`). Measured: a second bind mount of a stack theme under it (`/opt/keycloak/themes/simulated-google`) fails, because Docker can't create the mountpoint in a read-only mount (`mkdirat … read-only file system`). The image's `java` has `jdk.jartool`. A theme JAR (`META-INF/keycloak-themes.json`, `theme/<name>/login/…`) built in the Dockerfile with `java -m jdk.jartool/sun.tools.jar.Main` and placed in `/opt/keycloak/providers/` before `kc.sh build` serves its login theme (the banner message shown, `resources/…/login/simulated-google/css/simulated.css` linked). An application's folder theme beside it is **not measured**: step 1 measures it.
+- Measured: a client whose `redirectUris` is `https://infra.test/auth/realms/*` accepts `https://infra.test/auth/realms/someapp/broker/google/endpoint` (`200`, the login page) and refuses, with `400 Invalid parameter: redirect_uri`, `https://evil.test/…`, `https://infra.test/other`, `http://infra.test/auth/realms/…`, and `https://infra.test/auth/realms/../../other`. The discovery document's `issuer` is `https://<KC_HOSTNAME host>/auth/realms/<name>`.
+- `registry.sh`: `REGISTRY_RESERVED` (service names), `REGISTRY_KEYCLOAK_THEMES` (built-in themes), `realm master` refused in `registry_check`. The registration account holds `create-realm` and the roles of the registry's realms only (`registration-account.sh:189-203`): a realm the stack imports is never granted to it.
+- `register-app.sh`'s theme checks (0012: `${` once read as Java reads it, links, bytes outside printable ASCII) run only on a registered theme directory. `tests/0012-themes.sh` runs them with a fake docker and a fixture registry.
+
+## Technical choices
+
+Settled with the engineer, Jérôme Wacongne, on 2026-10-27:
+
+- The stack's themes are a theme JAR built into the image from `keycloak/stack-themes/` (measured above). A stack theme change rebuilds the image and restarts Keycloak once. Rejected: tracked folders in `keycloak/themes/` (they change `keycloak/`'s tree, so the image tag and a restart anyway, and mix with what registrations write on the demo host); a bind mount per theme (measured to fail).
+- The shared client's secret and the seeded accounts' passwords are written in clear in the realm files and published by the README: they are public by design (PA-02 C, RQ-04). No `.env` or `demo/write-env.sh` change.
+- AC-03's browser flow is driven by curl (forms posted, cookies kept), as `tests/0009-master-realm.sh` does: no new test dependency.
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `keycloak-import/simulated-google-realm.json`, `simulated-facebook-realm.json`, `simulated-apple-realm.json` | new: realm `simulated-<provider>`, `loginTheme: simulated-<provider>`; `registrationAllowed`, `resetPasswordAllowed`, `bruteForceProtected` false; one confidential client `any-application`, secret `simulated-<provider>-public-secret`, `standardFlowEnabled` only, `redirectUris: ["https://${INFRA_HOST}/auth/realms/*"]`, no web origins; client scopes and mappers giving PA-03 A's claims (Google: `email`, `email_verified`, `name`, `given_name`, `family_name`, `picture`; Facebook: `name`, `email` when set; Apple: `email`, `email_verified`, `is_private_email`, no `profile`); the user profile declaring `picture` and `is_private_email`; PA-05 A's users (two verified `*.test` accounts per realm, plus an Apple account on a private-relay `*.test` address and a Facebook account without an address), passwords in clear (public) | RQ-01, RQ-02, RQ-04, RQ-05, RQ-06, RQ-08 |
+| `demo/deploy-files.txt` | modified: the three realm files | RQ-01 |
+| `keycloak/stack-themes/META-INF/keycloak-themes.json`, `keycloak/stack-themes/theme/simulated-{google,facebook,apple}/login/**` | new: three login themes (parent `keycloak.v2`): colours, layout and type that recall each provider, no logo, no trademark, no image; the banner on every page (`template.ftl` override or a message in the header), "Simulated <provider> — c4-infra test provider. Never type your real <provider> password."; no `${` in `theme.properties`, no link | RQ-03 |
+| `keycloak/Dockerfile` | modified: `COPY stack-themes`, then the JAR `/opt/keycloak/providers/c4-infra-stack-themes.jar` built with `jdk.jartool`, before `kc.sh build` | RQ-03 |
+| `registry.sh` | modified: `REGISTRY_STACK_REALMS=(master simulated-google simulated-facebook simulated-apple)` replaces the `realm master` test; `REGISTRY_STACK_THEMES=(simulated-google simulated-facebook simulated-apple)` refused as the built-in themes are, each naming the line | RQ-07 |
+| `tests/0016-keycloak-facts.sh` | new (throwaway 26.8.1): the facts of step 1 | step 1 |
+| `tests/0016-realms.sh` | new (dev): the three realms exist after `up.sh`, a second start skips them; their discovery `issuer`; registration and reset off, brute-force off; their users; the shared client and its redirect URIs (in and out of the infra host); the registration account refused (`403`) on each | AC-01, AC-02, AC-04 (refusal), AC-05, AC-07 |
+| `tests/0016-themes.sh` | new: the login page and an error page of each realm show the banner; the stack themes, copied under fixture names, pass `register-app.sh`'s 0012 checks with a fake docker | AC-07 |
+| `tests/0016-broker.sh`, `tests/fixtures/0016/**` | new (dev): a fixture registry entry and two application realms (`verif-social-a`, `verif-social-b`) declaring the three simulated providers as `oidc` (alias `google`, `facebook`, `apple`; the back-channel URLs on `http://keycloak:8080/auth/realms/simulated-*`); registered with `register-app.sh`; a curl-driven browser flow per provider and realm (`kc_idp_hint`, the simulated login form, back to the broker endpoint, the first-broker-login form when the claims lack an address): the brokered user's attributes; each simulated realm exported before and after the registrations, the same | AC-03, AC-04, AC-05 |
+| `tests/0004-registry.sh`, `tests/fixtures/0004/**` | modified: an entry claiming each simulated realm, each stack theme: refused naming the line | AC-06 |
+| `tests/0016-simulated.stand-in.sh` | new: the stand-in deployed from a fixed commit, `git merge-base HEAD origin/main` taken at step 0 and written into the test (as `tests/0013-upgrade.stand-in.sh` pins `e493826`): what the demo host runs before 0016; then from the branch: the three realms exist, the other realms and users unchanged, their `issuer` names the stand-in's infra host; a second deployment changes nothing | AC-01, AC-02 |
+| `tests/0016-no-real-provider.sh` | new: no tracked file outside `docs/intent/` holds `accounts.google.com`, `facebook.com` or `appleid.apple.com` (the pattern built from pieces in the test, so that the test doesn't match itself; nothing else excluded) (the README names the providers, never their hosts) | AC-08 |
+| `README.md` | modified: "Simulated social providers": the three realms, their issuers, the shared client's id and secret, the accounts and passwords; an application realm's `identityProviders` entry (alias, `providerId: oidc`, issuer, authorization URL on the infra host, token, user info and keys on `http://keycloak:8080/auth/…`, `clientAuthMethod: client_secret_post`); what differs from the real providers (PA-03 A: `oidc` instead of `google`/`facebook`, no Apple name, relay addresses, a Facebook account without an address); never trust email for automatic linking with these accounts (PA-06); a change to a simulated realm's file reaches an existing stack only once that realm is deleted; the look-alike pages and the deceptive-site risk accepted (PA-04); the registry's reserved realms and themes | RQ-09 |
+| `CLAUDE.md` | modified: repository layout, `keycloak/stack-themes/` (built into the image) and the realm files of `keycloak-import/` | RQ-09 |
+| `docs/intent/0016-…/plan.md`, `intent.md`, `docs/intent/README.md` | this plan, status planned, index row (every row's status taken from its intent's own `intent.md` after `main` is merged: the branches carry stale rows) | — |
+
+## Order of work
+
+0. **Setup**: `git merge origin/main` once 0013, 0011 and 0015 are delivered, otherwise `origin/0013-…`, `origin/0011-…` and `origin/0015-…`, in that order; `git merge-base HEAD origin/main` recorded for step 6's fixed commit, the dev stack on its Keycloak 26.8.1 (`bash up.sh`). — skill: none — check: `git status --short` empty, `bash tests/run.sh` → `verification passed`.
+1. **Facts**: `tests/0016-keycloak-facts.sh`, on a throwaway 26.8.1 built with the theme JAR: an application's folder theme served beside the JAR theme; a user without an address imported under the default user profile, and its login; `picture` and `is_private_email` in the ID token and user info once declared in the user profile; an Apple-like client with no `profile` scope gives no name claim; a realm brokering another realm of the same Keycloak through `http://keycloak:8080/auth/…` (back channel) and the infra host (front channel), its ID token's `iss` checked; the redirect URI cases of *Starting point*. — skill: none — check: the test passes; a failing fact is a deviation before its step.
+2. **The realms**: the three `keycloak-import/simulated-*-realm.json`, `demo/deploy-files.txt`. — skill: none — check: `bash up.sh` twice, `bash tests/0016-realms.sh && bash tests/0009-master-realm.sh && bash tests/0010-brute-force.sh && bash tests/0006-account.sh`.
+3. **The themes**: `keycloak/stack-themes/**`, `keycloak/Dockerfile`. — skill: none — check: `bash up.sh` (Keycloak rebuilt and restarted once), `bash tests/0016-themes.sh && bash tests/0005-themes.sh && bash tests/0012-themes.sh && bash tests/0012-themes-review.sh`.
+4. **The registry**: `registry.sh`, `tests/0004-registry.sh` and its fixtures. — skill: none — check: `bash tests/0004-registry.sh`.
+5. **The broker flows**: `tests/0016-broker.sh`, `tests/fixtures/0016/**`. — skill: none — check: `bash tests/0016-broker.sh`.
+6. **The demo host**: `tests/0016-simulated.stand-in.sh`. — skill: none — check: `bash tests/0016-simulated.stand-in.sh && bash tests/0003-demo-deploy.stand-in.sh && bash tests/0009-master-realm.stand-in.sh`.
+7. **No real provider**: `tests/0016-no-real-provider.sh`. — skill: none — check: the test passes.
+8. **Docs**: `README.md`, `CLAUDE.md`. — skill: none — check: review against RQ-09's list; `bash tests/0016-no-real-provider.sh` again.
+9. **Verification**: `bash tests/run.sh --all`; mutation checks: a realm file removed from `demo/deploy-files.txt` → `tests/0016-simulated.stand-in.sh` `KO`; `REGISTRY_STACK_REALMS` back to `master` only → `tests/0004-registry.sh`'s new cases `KO`; the redirect URIs widened to `*` → `tests/0016-realms.sh`'s out-of-host case `KO`; then `/sdlc-verify 0016`. — skill: sdlc-verify — check: `verification passed`.
+10. **After the merge** (the human's): the workflow pushes the new Keycloak image (its tag follows `keycloak/`'s tree), the deployment restarts Keycloak once and imports the three realms. — skill: sdlc-ship — check, on `infra.c4-soft.com`: each realm's discovery `issuer`, its login page's banner, `master` and the applications' realms unchanged.
+
+## Risks
+
+- A look-alike page flagged as deceptive blocks `infra.c4-soft.com`, every application's login with it (accepted, PA-04 A) → no logo, trademark or image, the banner on every page, the README names the risk and how to remove the realms' themes (a neutral theme) if a flag appears.
+- The theme JAR is part of the image: a stack theme change rebuilds the image and restarts the Keycloak every application uses, once (what 0005 avoided for the applications' themes), and on the demo host triggers the pre-start dump of the Keycloak database (0013, RQ-04), for this change and for every later change to `keycloak/stack-themes/` → stack themes change rarely; the README says so.
+- An application's folder theme no longer served beside the JAR → step 1 measures it; `tests/0012-themes.sh` (AC-05: the realm's login page shows `verif-ok`'s message) runs at step 3.
+- A registered theme named like a stack theme overriding it → the registry refuses the names (RQ-07), before any copy.
+- Keycloak 26's user profile refusing a user without an address, or dropping undeclared attributes → step 1; the realm files declare `picture` and `is_private_email`.
+- The broker's back channel through `keycloak:8080` from Keycloak itself, or its issuer check, failing → step 1, before any realm file is written; fallback `http://localhost:8080/auth/…` (Keycloak's own listener), the README following.
+- The shared client's public secret lets anyone obtain a token for a seeded account through a realm of the infra host (accepted, PA-02 C, PA-06 A) → `*.test` addresses, the README's warning on automatic linking; the redirect URIs stay on the infra host, `http` and `..` refused (measured).
+- A change to a simulated realm's file doesn't reach an existing stack (`--override false`) → RQ-09: the README says to delete the realm first.
+- 0013, 0011 and 0015 change `registry.sh`, `README.md`, `keycloak/Dockerfile` and `demo/deploy-files.txt` before this change → delivered first (0013 → 0011 → 0015 → 0016); step 0 merges them, and step 9 runs the whole suite on the result.
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| AC-01 | automated test | `tests/0016-realms.sh` (dev: present after `up.sh`, skipped at the second start, other realms unchanged); `tests/0016-simulated.stand-in.sh` (an existing stand-in deployed again from the branch, twice) |
+| AC-02 | automated test | `tests/0016-realms.sh`, `tests/0016-simulated.stand-in.sh`: each realm's discovery `issuer` |
+| AC-03 | automated test | `tests/0016-broker.sh`: a curl-driven browser flow per provider; the brokered user's attributes (no name from Apple, a relay address, a Facebook account without an address) |
+| AC-04 | automated test | `tests/0016-broker.sh` (two realms, each logged in through the same shared client); `tests/0016-realms.sh` (a redirect URI outside the infra host, `http`, `..`: `400`) |
+| AC-05 | automated test | `tests/0016-broker.sh` (each simulated realm exported before and after the registrations: the same); `tests/0016-realms.sh` (the registration account refused, `403`) |
+| AC-06 | automated test | `tests/0004-registry.sh`: each simulated realm and stack theme refused, naming the line |
+| AC-07 | automated test | `tests/0016-realms.sh` (registration, reset and brute-force off; the users of PA-05); `tests/0016-themes.sh` (the banner on the login and error pages; the stack themes pass 0012's checks) |
+| AC-08 | automated test | `tests/0016-no-real-provider.sh` |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
