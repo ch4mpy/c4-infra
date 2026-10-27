@@ -2,6 +2,8 @@
 # 0018: an application added to registry.txt as its header says leaves tests/0004-registry.sh green.
 #
 #   bash tests/0018-registry-grows.sh
+#
+# covers: registry.sh registry.txt tests/0004-registry.sh tests/fixtures/0004/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

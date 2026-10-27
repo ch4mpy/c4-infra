@@ -11,6 +11,11 @@
 #
 # Leaves the stack as it found it: the sites it installed are removed (a site that was there before
 # is put back), Caddy reloaded, the landing page rewritten, the stand-ins removed.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt examples/routes/ rabbitmq/
+# covers: tests/fixtures/0003/ tests/fixtures/stand-in-upstream/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

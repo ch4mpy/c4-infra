@@ -18,6 +18,9 @@
 # Once each one passes its healthcheck (compose's, else its image's) and listens on every port of
 # its set, its listening TCP sockets (/proc/net/tcp, /proc/net/tcp6) outside the loopback are
 # exactly that set. Everything is removed on exit.
+#
+# covers: compose.yml compose.demo.yml caddy/ keycloak/ reverse-proxy/ rabbitmq/ grafana-lgtm/
+# covers: tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

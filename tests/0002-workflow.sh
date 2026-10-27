@@ -12,6 +12,8 @@
 #         before any ssh or rsync, as <project>@ (its own account).
 #
 #   bash tests/0002-workflow.sh
+#
+# covers: .github/workflows/ demo/trust-host-key.sh docs/migration.md
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

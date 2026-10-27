@@ -23,6 +23,8 @@
 #
 # Needs the images c4-infra/keycloak and c4-infra/reverse-proxy (up.sh builds them). The throwaway
 # container is removed whatever happens.
+#
+# covers: keycloak/ reverse-proxy/ registry.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

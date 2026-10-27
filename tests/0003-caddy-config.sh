@@ -4,6 +4,8 @@
 # image, with the sites routes.sh generates in a temporary apps/ directory.
 #
 #   bash tests/0003-caddy-config.sh
+#
+# covers: caddy/ reverse-proxy/ routes.sh registry.sh registry.txt examples/routes/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

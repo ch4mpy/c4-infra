@@ -19,6 +19,10 @@
 #
 # As tests/0007-isolation.stand-in.sh: the images are this machine's, loaded into the stand-in; the
 # fixture's client secrets are dev values ("secret"), sent on stdin.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt caddy/ keycloak/
+# covers: reverse-proxy/ examples/routes/ tests/fixtures/0007/ tests/fixtures/0013/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -22,6 +22,8 @@
 #
 # Needs the image c4-infra/keycloak (up.sh builds it) and Faito's realm export (FAITO_DIR, default
 # ../faito). The throwaway container is removed whatever happens.
+#
+# covers: keycloak/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

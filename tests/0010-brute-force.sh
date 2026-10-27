@@ -13,6 +13,10 @@
 #   bash tests/0010-brute-force.sh
 #
 # Needs the dev stack running and jq. The fixture realm and its network are removed whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0010/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -12,6 +12,9 @@
 #              docker call
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract
+#
+# covers: registry.sh registry.txt register-app.sh up.sh README.md docs/migration.md
+# covers: tests/fixtures/0004/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

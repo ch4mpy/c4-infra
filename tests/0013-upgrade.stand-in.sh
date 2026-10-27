@@ -15,6 +15,8 @@
 #
 # As the other stand-in tests: the images are this machine's, loaded into the stand-in; Let's Encrypt
 # is kept out; passwords travel in files and on stdin.
+#
+# covers: demo/ compose.yml compose.demo.yml keycloak/ keycloak-import/ reverse-proxy/ caddy/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

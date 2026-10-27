@@ -10,6 +10,10 @@
 # login theme is verif-theme, and that theme, its login page printing a stamp each registration
 # changes. The INFRA_ENV=demo part restarts the dev Keycloak once. Never runs up.sh nor docker
 # compose up; .env is put back by a trap, the realm and the theme removed, whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0005/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

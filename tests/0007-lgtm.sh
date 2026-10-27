@@ -19,6 +19,8 @@
 #                (d) grafana-lgtm/tempo-config.yaml, without its leading comment and the added
 #                    grpc_listen_address line, is the image's own /otel-lgtm/tempo-config.yaml
 #   running    (a) and (c) against the running c4-infra.grafana-lgtm (bash up.sh), healthy
+#
+# covers: grafana-lgtm/ compose.yml compose.dev.yml up.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

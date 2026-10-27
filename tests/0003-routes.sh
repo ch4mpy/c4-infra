@@ -4,6 +4,8 @@
 # (AC-09), a project without i18n (AC-11), and the files refused, a host or a port first (0004's AC-02).
 #
 #   bash tests/0003-routes.sh
+#
+# covers: routes.sh registry.sh registry.txt register-app.sh examples/routes/ tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

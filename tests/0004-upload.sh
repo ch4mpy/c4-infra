@@ -4,6 +4,8 @@
 # of an alpine container instead of the demo host, then lists what arrived.
 #
 #   bash tests/0004-upload.sh
+#
+# covers: .github/workflows/ demo/deploy-files.txt registry.sh registry.txt register-app.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -21,6 +21,10 @@
 #
 # As tests/0006-bootstrap-admin-replaced.stand-in.sh: the Keycloak image is the one up.sh builds here,
 # loaded into the stand-in; Let's Encrypt is kept out; passwords travel in environments and on stdin.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt keycloak/ keycloak-import/
+# covers: docs/demo-setup.md
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

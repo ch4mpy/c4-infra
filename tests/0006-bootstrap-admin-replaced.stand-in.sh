@@ -18,6 +18,9 @@
 # As tests/0003-demo-deploy.stand-in.sh: the Keycloak image is the one up.sh builds here, loaded into
 # the stand-in; Let's Encrypt is kept out (tests/stand-in-host/compose.no-acme.yml). The passwords
 # and secrets travel in environments (docker exec -e NAME) and on stdin, never on a command line.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt keycloak/ keycloak-import/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

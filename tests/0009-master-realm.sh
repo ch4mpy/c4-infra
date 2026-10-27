@@ -9,6 +9,9 @@
 #   bash tests/0009-master-realm.sh
 #
 # Needs the dev stack running (Mailpit), the image c4-infra/keycloak (up.sh builds it) and jq.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ demo/write-env.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

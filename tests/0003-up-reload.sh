@@ -7,6 +7,8 @@
 #
 # up.sh runs with fake getent and powershell.exe (tests/lib/stubs.sh, answering 127.0.0.1) and a fake
 # docker of this test's, which logs each call and fails `caddy reload` with an error of Caddy's.
+#
+# covers: up.sh env.sh caddy/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
