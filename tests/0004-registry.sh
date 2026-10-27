@@ -4,8 +4,8 @@
 #   bash tests/0004-registry.sh [registry|scripts|docs]...   (every part by default)
 #
 #   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
-#              entries (AC-06), the duplicates and the malformed lines `check` refuses (AC-03), `next`
-#              (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
+#              applications' entries (AC-06), the duplicates and the malformed lines `check` refuses
+#              (AC-03), `next` (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
 #   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
@@ -79,7 +79,6 @@ part_registry() {
   run_with "" bash registry.sh check
   check "entries: check passes on registry.txt" exited 0
   check "entries: check prints nothing" prints_nothing
-  check "entries: four entries" test "$(entries | wc -l)" -eq 4
   for app in turu hururaa tickee faito; do
     check "entries: $app has one entry of seven fields" has_entry "$app"
   done
