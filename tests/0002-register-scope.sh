@@ -177,7 +177,7 @@ check "dotenv_value: saying compose would interpolate it" says "compose interpol
 # compose.apps.yml (networks.sh compose-file) and out of the attachment to a new network (ensure).
 stack=$work/stack
 mkdir -p "$stack" "$work/fake"
-cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh registry.txt "$stack/"
+cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh registry.txt tlds-alpha-by-domain.txt "$stack/"
 cat > "$work/fake/docker" <<'EOF'
 #!/usr/bin/env bash
 # A running daemon: c4-infra.faito labelled, but missing until created; the shared services running,

@@ -21,7 +21,7 @@ work=$(mktemp -d)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
 
-cp ./*.sh registry.txt "$work/"
+cp ./*.sh registry.txt tlds-alpha-by-domain.txt "$work/"
 # .env, with another bootstrap password (echo is a builtin: the value is on no command line)
 {
   grep -v '^KC_BOOTSTRAP_ADMIN_PASSWORD=' .env

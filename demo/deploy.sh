@@ -26,6 +26,20 @@ chmod -R a+rX keycloak-import
 # compose.apps.yml (COMPOSE_FILE): the shared services stay on each registered application's network
 # when compose recreates them (intent 0007)
 bash ./networks.sh compose-file
+# A new Keycloak image (intent 0013): its first start migrates Keycloak's database, with no way back
+# but a restore. Its database dumped first (demo/backup.sh --before-upgrade), then Keycloak stopped,
+# so that the new version's import and migration never run under the old one. The workflow tags the
+# image with the content of keycloak/: another reference is another version. A first deployment, or
+# the same image, dumps nothing.
+source ./registry.sh
+stack_env_read keycloak_image KC_IMAGE
+running_image=$(docker inspect -f '{{.Config.Image}}' c4-infra.keycloak 2> /dev/null | tr -d '\r' || true)
+if [ -n "$running_image" ] && [ "$running_image" != "$keycloak_image" ]; then
+  echo "Keycloak's image changes ($running_image → $keycloak_image): its database dumped, Keycloak stopped first"
+  docker compose up -d --wait keycloak-db < /dev/null
+  bash ./demo/backup.sh --before-upgrade < /dev/null
+  docker compose stop keycloak < /dev/null
+fi
 # --wait: fails, with the state printed, unless every service with a healthcheck reports healthy
 # within the timeout
 docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker compose ps; exit 1; }

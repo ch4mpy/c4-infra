@@ -1,0 +1,11 @@
+# An echo upstream for tests/0003-demo-edge.sh, over HTTP on $PORT: as tests/fixtures/stand-in-upstream,
+# plus the X-Forwarded-Host and X-Forwarded-Proto it was sent (an MCP server derives its protected
+# resource's URL from them, intent 0013).
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT} {
+	respond "upstream={$STAND_IN_NAME} host={host} uri={uri} x-forwarded-host={header.X-Forwarded-Host} x-forwarded-proto={header.X-Forwarded-Proto}"
+}

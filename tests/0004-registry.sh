@@ -4,8 +4,8 @@
 #   bash tests/0004-registry.sh [registry|scripts|docs]...   (every part by default)
 #
 #   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
-#              entries (AC-06), the duplicates and the malformed lines `check` refuses (AC-03), `next`
-#              (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
+#              applications' entries (AC-06), the duplicates and the malformed lines `check` refuses
+#              (AC-03), `next` (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
 #   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
@@ -79,7 +79,6 @@ part_registry() {
   run_with "" bash registry.sh check
   check "entries: check passes on registry.txt" exited 0
   check "entries: check prints nothing" prints_nothing
-  check "entries: four entries" test "$(entries | wc -l)" -eq 4
   for app in turu hururaa tickee faito; do
     check "entries: $app has one entry of seven fields" has_entry "$app"
   done
@@ -101,6 +100,9 @@ part_registry() {
     "bad-fields.txt:3: number '39' is not between 1 and 38" \
     "bad-fields.txt:4: host name 'verif2.dev.localhost:14080' is not a host name"
   refused reserved-name.txt 'reserved-name.txt:6: keycloak-db is reserved for the shared stack'
+  # 0013: each application's MCP origin, which no other entry may take, as a host or a name
+  refused mcp-origin-host.txt "host name faito-mcp.dev.localhost: faito's MCP origin (line 5) and verif (line 6)"
+  refused mcp-origin-name.txt "application faito-mcp: faito's MCP origin (line 5) and faito-mcp (line 6)"
 
   # AC-04
   run_with "$FIXTURES/taken-1-4.txt" bash registry.sh next
@@ -135,11 +137,8 @@ part_registry() {
   upstream_is fr demo http://faito.frontend:80
   upstream_is ui demo http://faito.frontend:80
   upstream_is en demo http://faito.frontend:80
-  run_with "" bash registry.sh upstream faito mcp demo
-  check "upstream faito mcp demo exits 2" exited 2
-  check "upstream faito mcp demo prints nothing on stdout" prints_nothing
-  check "upstream faito mcp demo names the README section" \
-    says "README.md, 'What an application's deployment does'"
+  # 0013: the MCP server's container port, which the README fixes
+  upstream_is mcp demo http://faito.mcp:9080
   run_with "" bash registry.sh upstream faito admin dev
   check "upstream faito admin dev (unknown role) exits 1" exited 1
   run_with "" bash registry.sh upstream verif gateway dev

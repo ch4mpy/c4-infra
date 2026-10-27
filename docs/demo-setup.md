@@ -24,7 +24,8 @@ Markdown. The applications deploy themselves on top of it afterwards
 1. Order an Ubuntu LTS VPS (8 GB of RAM for the shared stack and a few applications) and note its
    IP address.
 2. DNS: an `A` record pointing at that IP for `infra.c4-soft.com`, and one per application host
-   (`faito.c4-soft.com`, `hururaa.c4-soft.com`…). Caddy needs them to get its Let's Encrypt
+   (`faito.c4-soft.com`, `hururaa.c4-soft.com`…), and one per application with an MCP server for
+   its MCP origin (`turu-mcp.c4-soft.com`: intent 0013). Caddy needs them to get its Let's Encrypt
    certificates.
 3. If OVH's network firewall is enabled for the VPS, open ports 80 and 443 there (SSH, 22, too).
 
@@ -149,8 +150,9 @@ gh workflow run deploy-demo.yml -R ch4mpy/c4-infra   # or push to main
 gh run watch -R ch4mpy/c4-infra
 ```
 
-- The `build` job builds the Keycloak image and pushes it to GHCR, tagged with the content of
-  `keycloak/` (skipped when that tag exists).
+- The `build` job builds the Keycloak image and the reverse proxy's (Caddy with its rate-limit
+  module, intent 0013) and pushes each to GHCR, tagged with the content of `keycloak/` and of
+  `reverse-proxy/` (skipped when that tag exists).
 - The `deploy` job pins the host's key first ([`demo/trust-host-key.sh`](../demo/trust-host-key.sh):
   it fails there without `VPS_KNOWN_HOSTS`), writes the host's `.env` on the runner with
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
@@ -191,7 +193,7 @@ own compose project and registers it with what its registry entry assigns to it,
 
 1. **Its registry entry** in [`registry.txt`](../registry.txt), committed in c4-infra and deployed
    (step 7: the deployment sends the registry): `c4-app` refuses an application missing from it.
-2. **Its DNS record**, `<app>.c4-soft.com` (step 1).
+2. **Its DNS record**, `<app>.c4-soft.com`, and `<app>-mcp.c4-soft.com` for an MCP server (step 1).
 3. **Its key pair**, for its workflow only:
 
    ```bash

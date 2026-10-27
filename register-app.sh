@@ -248,6 +248,64 @@ properties_check() { # <file> <shown name>
 
 theme_problems=()
 not_assigned=()
+# What a realm export may hold (intent 0013): a client profile whose client-id-metadata-document
+# executor allows the http scheme, or permits any domain, would let Keycloak fetch any URL an
+# unauthenticated client names, on every application's network it is attached to (intent 0007).
+# Keycloak reads the http setting as Jackson does ("True", "TRUE", " true" and 1 are true): only
+# false is accepted. It permits a host equal to a domain, or ending with what follows "*." (Keycloak
+# 26.8.1, tests/0013-keycloak-facts.sh): "*." matches every host written with a final dot; "*" is
+# refused as well (PA-07). So is a domain that names no public host (PA-08), which Keycloak resolves
+# on those networks: an IP address, a single label (keycloak), a last label outside the IANA root
+# zone (*.mcp, faito.gateway, host.docker.internal: tlds-alpha-by-domain.txt), a wildcard over a
+# whole top-level domain (*.com, *.xn--p1ai: every domain of it), or two labels whose first is a
+# registered application's name or c4-infra (a container: c4-infra.rabbitmq), after a leading "*.",
+# case ignored, a final dot removed; *.mcp is named for its last label, the clearer cause. It reads
+# the name, not what it resolves to: a public name pointed at an internal address passes. It
+# refuses a domain list that isn't a list, and a realm attribute client-policies.*: Keycloak stores
+# the client profiles and policies there, out of this check's reach.
+realm_problems=()
+cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its stdin: jq may be a Windows
+  # program, which MSYS_NO_PATHCONV leaves with a path of Git Bash)
+  jq -r --arg fetch "Keycloak would fetch any URL, other applications' containers included" \
+    --arg unread "Keycloak stores the client profiles and policies there, which the clientProfiles check doesn't read" \
+    --arg tlds "$tlds" --arg internal "$internal_names" \
+    'def no_public_host($tlds; $internal): # why a permitted domain names no public host, nothing otherwise
+      (tostring | ascii_downcase | rtrimstr(".")) as $domain | ($domain | ltrimstr("*.")) as $host
+      | ($host | split(".")) as $labels
+      | if $host | test("^[0-9]+(\\.[0-9]+){3}$|[\\[:]") then "an IP address"
+        elif ($labels | length) == 1 and $domain == $host then "a single label"
+        elif $tlds[$labels[-1]] | not then "its last label, \($labels[-1]), is no top-level domain of the IANA root zone"
+        elif ($labels | length) == 1 then "a wildcard over a whole top-level domain"
+        elif ($labels | length) == 2 and ($internal | any(. == $labels[0])) then "\($labels[0]) is a registered application or c4-infra: one of its containers"
+        else empty end;
+    ($tlds | ascii_downcase | split("\n") | map(rtrimstr("\r") | select(test("^[a-z0-9-]+$")) | {(.): true}) | add) as $tlds
+    | ($internal | split("\n") | map(rtrimstr("\r") | select(. != ""))) as $internal
+    | (.clientProfiles.profiles[]? | .name as $profile | .executors[]?
+      | select(.executor == "client-id-metadata-document") | (.configuration // {}) as $c
+      | (($c["cimd-allow-http-scheme"] // false) as $http
+          | if $http == false or $http == "false" then empty
+            else "client profile \($profile): its client-id-metadata-document executor allows the http scheme (cimd-allow-http-scheme: \($http | tojson); false only)" end),
+        ($c["cimd-allow-permitted-domains"] // [] | arrays | .[]
+          | if . == "*" or . == "*." then "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\""
+            else no_public_host($tlds; $internal) as $why
+              | "client profile \($profile): its client-id-metadata-document executor permits the domain \"\(.)\", which names no public host (\($why))" end)
+      | "\(.): \($fetch)"),
+    (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
+      | "realm attribute \(.): \($unread)")' < "$1"
+}
+if [ ${#realms[@]} -gt 0 ] && ! command -v jq > /dev/null; then
+  echo "register-app.sh needs jq to read a realm export (README.md, \"Development\"); nothing was registered." >&2
+  exit 1
+fi
+# The top-level domains of the IANA root zone (https://data.iana.org/TLD/tlds-alpha-by-domain.txt,
+# its first line the list's version), and the names whose <name>.<x> is a container on the host
+tlds_file=$INFRA_DIR/tlds-alpha-by-domain.txt
+if [ ${#realms[@]} -gt 0 ] && [ ! -r "$tlds_file" ]; then
+  echo "$tlds_file is missing: a realm's CIMD domains are checked against it; nothing was registered." >&2
+  exit 1
+fi
+tlds=$(cat "$tlds_file" 2> /dev/null) || true
+internal_names=$(printf 'c4-infra\n'; registry_lines | while read -r _ _ name _; do printf '%s\n' "$name"; done)
 for file in "${realms[@]}"; do
   name=$(basename "$file")
   realm=${name%-realm.json}
@@ -255,6 +313,13 @@ for file in "${realms[@]}"; do
     not_assigned+=("--realm $file: a realm export is named <realm>-realm.json, after the realm it holds")
   elif ! in_entry "$realm" "$REG_REALMS"; then
     not_assigned+=("--realm $file: realm $realm is not $app's (its registry entry's realms: ${REG_REALMS:-none})")
+  elif ! found=$(cimd_problems "$file" 2> /dev/null); then
+    realm_problems+=("--realm $file: not JSON that jq can read: refused")
+  else
+    while IFS= read -r problem; do
+      problem=${problem%$'\r'}
+      [ -z "$problem" ] || realm_problems+=("--realm $file: $problem: refused")
+    done <<< "$found"
   fi
 done
 if [ -n "$themes" ]; then
@@ -293,22 +358,15 @@ if [ ${#theme_problems[@]} -gt 0 ]; then
   echo "A theme holds nothing that would show the shared Keycloak's environment on its pages (README.md, \"What an application provides\"); nothing was registered." >&2
   exit 1
 fi
+if [ ${#realm_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${realm_problems[@]}" >&2
+  echo "A realm's client policies fetch client metadata documents over https from named domains only (README.md, \"What an application provides\"); nothing was registered." >&2
+  exit 1
+fi
 
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
 if [ -n "$proxy" ]; then
-  # Transition, until Faito registers with its routes file (Faito 0021): an nginx server block, which
-  # Caddy doesn't read, is replaced by c4-infra's example routes file of that application. To remove
-  # once Faito 0021 is delivered (a follow-up change of c4-infra).
-  if [[ $proxy == *.conf ]]; then
-    if [ -f "$INFRA_DIR/examples/routes/$app.routes" ]; then
-      echo "Warning: $proxy is an nginx server block, which the reverse proxy (Caddy) doesn't read: $app is registered with c4-infra's examples/routes/$app.routes instead. Register with a routes file (c4-infra's README.md, \"Routes file\")." >&2
-      proxy=$INFRA_DIR/examples/routes/$app.routes
-    else
-      echo "$proxy is an nginx server block: the reverse proxy is Caddy, which takes a routes file (c4-infra's README.md, \"Routes file\"); nothing was registered." >&2
-      exit 1
-    fi
-  fi
   if ! site=$(routes_generate "$proxy" "$INFRA_ENV"); then
     echo "The routes file $proxy is refused (above); nothing was registered." >&2
     exit 1
@@ -472,8 +530,11 @@ if [ -n "$proxy" ]; then
     fi
     printf '%s\n' "$site" > "$target"
     own "$target"
-    output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1) \
-      || restore_site "The site generated from $proxy is invalid: the reverse proxy keeps its previous configuration"
+    if ! output=$(docker exec "$REVERSE_PROXY" "${check[@]}" 2>&1); then
+      # the image ids docker reports can't tell an older proxy (with containerd's image store, a
+      # container's image id isn't its tag's): both causes are named
+      restore_site "The site generated from $proxy is invalid, or the shared reverse proxy runs an older image than caddy/ needs (not restarted since a pull or a rebuild: run up.sh first; on the demo host, the deployment): the reverse proxy keeps its previous configuration"
+    fi
     output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1) \
       || restore_site "The reverse proxy could not reload: the site of $proxy is not installed"
     rm -f "$backup"

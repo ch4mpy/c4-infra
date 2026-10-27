@@ -8,8 +8,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 
-# the reverse proxy's image (compose.yml)
-CADDY_IMAGE=caddy:2.11.4-alpine
+# the reverse proxy's image (compose.yml), built by up.sh: Caddy with the rate-limit module the Caddyfile uses (intent 0013)
+CADDY_IMAGE=c4-infra/reverse-proxy
 
 # the docker CLI of Windows wants a Windows path for a bind mount
 host_path() {
@@ -58,10 +58,10 @@ for app in faito hururaa turu; do
 done
 check "dev: valid with Faito's, Hurura'a's and Turu's sites" validate "$work/dev" "${DEV[@]}"
 
-for app in faito hururaa; do
+for app in faito hururaa turu; do
   check "demo: $app's site generates" generated "$work/demo" "$app" demo
 done
-check "demo: valid with Faito's and Hurura'a's sites" validate "$work/demo" "${DEMO[@]}"
+check "demo: valid with Faito's, Hurura'a's and Turu's sites (its MCP origin, intent 0013)" validate "$work/demo" "${DEMO[@]}"
 
 # the sites are read: a broken one makes the configuration invalid
 printf 'broken.dev.localhost {\n\timport no-such-snippet\n}\n' > "$work/broken/broken.caddy"
