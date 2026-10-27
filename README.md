@@ -52,7 +52,9 @@ every time it deploys.
   rebuild never changes its version unannounced. It enables two preview features,
   `token-exchange-delegation` and the `parameterized-scopes` it uses (an agent acts for a user: the
   delegated token's `act` claim names the agent, as Turu's agents need; a realm issues one only
-  where an FGAP v2 `delegate` permission allows it), and one experimental feature, `cimd` (an MCP
+  where an FGAP v2 `delegate` permission allows it. Keycloak checks that permission when it issues
+  a token: removing it stops new delegated tokens, while a token issued before keeps its `may_act`
+  until it expires, the access token's lifespan), and one experimental feature, `cimd` (an MCP
   client registers by the URL of its metadata document; a realm opts in through its client
   policies, which the registration checks: see "What an application provides"); no other. What an
   MCP client finds on the shared host: each realm's RFC 8414 metadata
@@ -204,10 +206,16 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     allows the http scheme (`cimd-allow-http-scheme` other than `false`: Keycloak reads `"true"`,
     `"TRUE"` or `1` as true) or permits the domain `*` or `*.` (which matches every host written
     with a final dot), with which Keycloak, on every application's network, would fetch any URL an
-    unauthenticated client names; and one holding a realm attribute `client-policies.*`, where
-    Keycloak stores the profiles and policies, out of that check. That is all it refuses (PA-07):
-    any other permitted domain is the realm's own choice, and a container's name among them (say
-    `faito.mcp`) would let Keycloak fetch from that container;
+    unauthenticated client names; or a permitted domain that names no public host, which Keycloak
+    resolves on those networks (PA-08): an IP address (`10.0.0.1`, `[::1]`), a single label
+    (`keycloak`), a last label outside the IANA root zone (`*.mcp`, `faito.gateway`,
+    `host.docker.internal`; the list is
+    [`tlds-alpha-by-domain.txt`](tlds-alpha-by-domain.txt)), or two labels whose first is a
+    registered application's name or `c4-infra` (a container: `faito.app`, `c4-infra.rabbitmq`),
+    after a leading `*.`, case ignored and a final dot removed; and one holding a realm attribute
+    `client-policies.*`, where Keycloak stores the profiles and policies, out of that check. The
+    check reads the domain's name, not what it resolves to: a public name pointed at an internal
+    address passes, and would let Keycloak fetch from it;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
