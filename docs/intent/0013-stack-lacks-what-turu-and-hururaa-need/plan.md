@@ -159,3 +159,9 @@ Next: the round-4 details above (optional), then `/sdlc-review 0013`; delivery o
 - No review stage in bootstrap mode: the evidence above stands for `sdlc-verify`'s round. Round 4's four details stay open, none Important.
 - Agent configuration: `CLAUDE.md` gains one layout line; the project has no evals.
 - Not the first production release: the demo host is not production (product owner).
+
+**After deployment** (run 40561234968 on `6e03af8`, `success`, 2026-10-27)
+
+- AC-14 on `infra.c4-soft.com`: 11 anonymous registrations of realm master within the minute → `403 403 403 403 403 403 403 403 403 403 429`; master's discovery afterwards → `200`.
+- RFC 8414: `/.well-known/oauth-authorization-server/auth/realms/master` → `issuer` `https://infra.c4-soft.com/auth/realms/master`, `client_id_metadata_document_supported: true`.
+- On the host, by the product owner: Keycloak's start line (26.8.1, the features), master's settings unchanged, the dump in `~c4-infra/backups`: not done yet.
