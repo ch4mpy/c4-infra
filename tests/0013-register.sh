@@ -12,9 +12,8 @@
 #     "false") with *.example.org and a named domain, pass the check (docker is called);
 #   - AC-08: a --proxy file that is an nginx server block (.conf): refused by the routes notation,
 #     as any file that isn't a routes file, since the transition is gone;
-#   - a site Caddy refuses while the shared proxy runs another image than PROXY_IMAGE's (one without
-#     rate_limit): says to run up.sh first, rather than blaming the routes file; its twin, the same
-#     image, blames the routes file.
+#   - a site Caddy refuses (here, a proxy image without rate_limit): names both causes, the routes
+#     file and a proxy not restarted since a pull or a rebuild (run up.sh first).
 #
 #   bash tests/0013-register.sh
 set -uo pipefail
@@ -94,9 +93,8 @@ register --app faito --proxy "$work/faito.conf"
 refused_before_docker "AC-08: a --proxy nginx block (.conf)" "The routes file $work/faito.conf is refused (above)"
 check "AC-08: no example routes file replaces it" never_says "examples/routes/faito.routes"
 
-# A site Caddy refuses while the shared proxy runs another image than PROXY_IMAGE's: up.sh first,
-# not the routes file. In a scratch stack (its caddy/apps/ written), a fake docker whose Caddy
-# refuses every configuration, the running proxy's image FAKE_RUNNING_IMAGE, PROXY_IMAGE's sha256:new
+# A site Caddy refuses: both causes named. In a scratch stack (its caddy/apps/ written), a fake
+# docker whose Caddy refuses every configuration, as a proxy image without rate_limit does
 stack=$work/stack
 mkdir -p "$stack/caddy/apps" "$work/fake"
 cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh "$stack/"
@@ -106,33 +104,24 @@ cat > "$work/fake/docker" <<'EOF'
 echo "docker $*" >> "${STUB_LOG:?}"
 case " $* " in
   *" caddy validate "*) echo 'Error: adapting config using caddyfile: unrecognized directive: rate_limit' >&2; exit 1 ;;
-  *" inspect -f {{.Image}} c4-infra.reverse-proxy "*) echo "${FAKE_RUNNING_IMAGE:?}" ;;
-  *" image inspect -f {{.Id}} c4-infra/reverse-proxy "*) echo sha256:new ;;
 esac
 exit 0
 EOF
 chmod +x "$work/fake/docker"
-proxy_refuses() { # <the running proxy's image id>: as register(), in the scratch stack
+proxy_refuses() { # as register(), in the scratch stack
   : > "$work/docker.log"
-  FAKE_RUNNING_IMAGE=$1 STUB_LOG="$work/docker.log" PATH="$work/fake:$PATH" \
+  STUB_LOG="$work/docker.log" PATH="$work/fake:$PATH" \
     bash "$stack/register-app.sh" --app faito --proxy examples/routes/faito.routes > "$work/out" 2>&1 < /dev/null
   status=$?
 }
 no_site_left() {
   [ ! -e "$stack/caddy/apps/faito.caddy" ] || { echo "caddy/apps/faito.caddy left"; return 1; }
 }
-proxy_refuses sha256:old
-check "an older proxy image: refused" refused
-check "an older proxy image: says to run up.sh first" \
-  says "The shared reverse proxy runs an older image than c4-infra/reverse-proxy (PROXY_IMAGE, .env), which the site may need: run up.sh first"
-check "an older proxy image: Caddy's error shown" says "unrecognized directive: rate_limit"
-check "an older proxy image: the routes file isn't blamed" never_says "The site generated from"
-check "an older proxy image: no site left" no_site_left
-proxy_refuses sha256:new
-check "PROXY_IMAGE's image running: refused" refused
-check "PROXY_IMAGE's image running: the site generated from the routes file is invalid" \
-  says "The site generated from examples/routes/faito.routes is invalid"
-check "PROXY_IMAGE's image running: no word of up.sh" never_says "run up.sh first"
-check "PROXY_IMAGE's image running: no site left" no_site_left
+proxy_refuses
+check "a site Caddy refuses: refused" refused
+check "a site Caddy refuses: the routes file named" says "The site generated from examples/routes/faito.routes is invalid"
+check "a site Caddy refuses: a proxy not restarted named, up.sh first" says "not restarted since a pull or a rebuild: run up.sh first"
+check "a site Caddy refuses: Caddy's error shown" says "unrecognized directive: rate_limit"
+check "a site Caddy refuses: no site left" no_site_left
 
 finish
