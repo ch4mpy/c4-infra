@@ -137,3 +137,8 @@ Proposed by Claude, to confirm with this plan:
 | AC-07 | OK | Prometheus `2w`, Tempo `336h0m0s` with its flag on the command line, Pyroscope `2w` |
 | AC-08 | OK | `faito` outside `docker`, `sudo -l` lists `c4-app` only, no Docker mount |
 | AC-09 | OK | README "Accounts", "Day to day", "Reachable…", Development; `docs/migration.md` step 3 (read by the verifier) |
+
+### After deployment — deploy-demo run 40755169273 on `main` 4bae619 (2026-10-28, the product owner's push), success
+
+- `c4-app installed (/usr/local/sbin/c4-app)`; `Container c4-infra.grafana-lgtm Recreate`, `Recreated`, `Started`, `Healthy` (`up --wait`: Loki, Prometheus, Tempo and Pyroscope started with their retention flags); `Registration account c4-infra-registration: up to date`.
+- No application on the demo host yet: the bound applies at the first one's `sudo c4-app up`.

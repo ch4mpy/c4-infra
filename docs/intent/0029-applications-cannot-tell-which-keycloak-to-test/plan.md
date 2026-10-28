@@ -185,3 +185,8 @@ Not changed: `keycloak/` (C2), `compose*.yml`, `env.sh`, `demo/deploy.sh`, `demo
 | AC-06 | OK before delivery; the run after it | the deployment keeps the tree's tag (`…:33909cd89858`); the workflow's block run as it is |
 | AC-07 | OK | `(g)` and the README section read against AC-07's list; `docs/migration.md` step 7 |
 | AC-08 | OK | the chain above: reference KO, then `no changelog entry for …` |
+
+### After deployment — deploy-demo run 40755169273 on `main` 4bae619 (2026-10-28, the product owner's push), success
+
+- Step 6: "Compute the images" passed (the description names `ghcr.io/ch4mpy/c4-infra-keycloak:26.8.1-33909cd89858`); "Tag c4-infra-keycloak with its version" ran (the tag was missing; the hash tag's media type an index: no `::error::`), `imagetools create` copied it; "Check the published references": `…:33909cd89858: "sha256:8ff2e5ba3819497c8b4e72a71e9d87807c08f5d3a1c974c8d7122e49fe6456d0"`, `…:26.8.1-33909cd89858:` the same digest. The deploy job kept the hash tag: `Container c4-infra.keycloak Running`, `c4-infra.keycloak-db Running` (no dump, no restart); `Registration account c4-infra-registration: up to date`.
+- Steps 7 to 9 (the product owner's GHCR checks, the package made public, the anonymous checks): waiting.

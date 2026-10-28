@@ -190,3 +190,8 @@ Proposed by Claude, for Jérôme Wacongne (engineer, and tech lead for the high 
 | AC-07 | OK | `waiting for another c4-app command of faito (600 s at most)`; the stamp no earlier than `up`'s end |
 | AC-08 | OK | under the floor (4 GiB tmpfs): refused, named, nothing kept, `faito.files` not stopped, the nightly log `== exit 1`, `restore --yes` refused |
 | AC-09 | OK | `tests/0027-docs.sh` → `every check passed`; README, migration step 7, demo-setup steps 3, 7, 8, 9.7 read against RQ-08 |
+
+### After deployment — deploy-demo run 40755169273 on `main` 4bae619 (2026-10-28, the product owner's push), success
+
+- `c4-app installed (/usr/local/sbin/c4-app)`: `backup`, `restore` and `nightly` on the host.
+- `/etc/cron.d/c4-apps-backup` is written by the next `vps-bootstrap.sh`, the first application's (`docs/demo-setup.md`, step 9); its step 8 then checks the cron file and the first `backup.log`. No application to back up yet.
