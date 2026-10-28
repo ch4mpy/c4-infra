@@ -89,3 +89,7 @@ Deploy-demo run 40636936869 (2026-10-28): `postgres:18.6` republished upstream, 
 | The bug is reproduced | OK | mutation check above: `5 check(s) failed` at 126d101 |
 
 After deployment: the push's deploy-demo run (its log with `Registration account c4-infra-registration: up to date`) is not done: `main` stays local tonight (2026-10-28), pushed once the product owner validates the night's work; the run is checked then.
+
+### After deployment — deploy-demo run 40684696927 on `main` fc47b85 (2026-10-28, the product owner's push), success
+
+- Its log: `Registration account c4-infra-registration: up to date`; Keycloak's image changed in the same deployment (0016): `its database dumped, Keycloak stopped first`, the dump `c4-infra-keycloak-before-upgrade-20261028-120430.dump`. The failed run 40636936869 is superseded.

@@ -112,3 +112,7 @@ Decided by Jérôme Wacongne (engineer) on 2026-10-27:
 | AC-07 | OK | `grep -n 'headers=app' README.md routes.sh`: the options block, the bullet, the usage comment |
 | AC-08 | OK | the gateway's, the stopped ui's and the shared host's `502`, the ui `413`: nosniff, Referrer-Policy, no Server, HSTS on demo only; KO without `handle_errors` |
 
+### After deployment — deploy-demo run 40684696927 on `main` fc47b85 (2026-10-28, the product owner's push), success
+
+- Step 8's check can't run as written: no application is registered on the demo host yet (`faito.c4-soft.com` has no site there: a TLS alert, no certificate; its realm answers 404; the same for every entry of `registry.txt`), as before this deployment.
+- In its place, on the shared host: `curl -sI https://infra.c4-soft.com/auth/realms/master` → `200`, `x-content-type-options: nosniff`, `referrer-policy: strict-origin-when-cross-origin`, HSTS, no `Server`; the proxy's own `429` (the 11th anonymous registration in a minute) → `x-content-type-options: nosniff`, `referrer-policy`, HSTS, `retry-after: 53`, no `Server` (RQ-08 live). Keycloak's own responses carry a second, identical HSTS header (Keycloak's and the demo's): not this change's.

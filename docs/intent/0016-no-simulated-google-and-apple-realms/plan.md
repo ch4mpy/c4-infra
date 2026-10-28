@@ -121,3 +121,9 @@ Settled with the engineer, Jérôme Wacongne, on 2026-10-27:
 | AC-07 | OK | registration, reset, brute-force off; no required action; `kc_action` comes back without a form; the account console's token refused; PA-05's users; the banner on the login and error pages; the stack themes pass 0012's checks |
 | AC-08 | OK | `0016-no-real-provider.sh`: no tracked file outside `docs/intent/` names a real provider's host |
 
+### After deployment — deploy-demo run 40684696927 on `main` fc47b85 (2026-10-28, the product owner's push), success
+
+- The Keycloak image changed (`ghcr.io/ch4mpy/c4-infra-keycloak:5c653a7874f9 → …:33909cd89858`): dumped, stopped, imported, started.
+- Issuers: `https://infra.c4-soft.com/auth/realms/simulated-google`, `-facebook`, `-apple`; the master realm's unchanged (`https://infra.c4-soft.com/auth/realms/master`).
+- The simulated Google's login page (an authorization request of `any-application` to a broker endpoint of the infra host) shows `c4-infra test provider. Never type your real Google password.`
+- No application realm on the demo host yet (Faito's answers 404, as before): "the applications' realms unchanged" holds trivially.
