@@ -219,7 +219,7 @@ check "AC-03: RabbitMQ has no user hururaa-api" \
   stand_in_exec sh -c '! docker exec c4-infra.rabbitmq rabbitmqctl -q list_users | grep -q "^hururaa-api"'
 # Tickee's theme, installed beforehand in the stack's directory
 stand_in_exec sh -c 'mkdir -p "$1/keycloak/themes/tickee/login" && echo "parent=base" > "$1/keycloak/themes/tickee/login/theme.properties" && chown -R c4-infra:c4-infra "$1/keycloak/themes/tickee"' sh "$STACK"
-tickee_theme() { stand_in_exec sh -c 'cd "$1/keycloak/themes/tickee" && find . -type f | sort | xargs cksum | cksum' sh "$STACK" | tr -d '\r'; }
+tickee_theme() { stand_in_exec sh -c 'cd "$1/keycloak/themes/tickee" && find . -type f | LC_ALL=C sort | xargs cksum | cksum' sh "$STACK" | tr -d '\r'; }
 before=$(tickee_theme)
 as themes.log faito "sudo c4-app register --themes themes"
 refused_saying "AC-03: a themes directory holding tickee" themes.log "theme tickee is not faito's"

@@ -94,7 +94,7 @@ upload() { # <app>
 network_containers() { # <network>
   stand_in_exec docker network inspect "$1" > /dev/null 2>&1 || { echo none; return 0; }
   stand_in_exec docker network inspect -f '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' "$1" \
-    | tr -d '\r' | sed '/^$/d' | sort | paste -sd' ' -
+    | tr -d '\r' | sed '/^$/d' | LC_ALL=C sort | paste -sd' ' -
 }
 network_exists() { # <network>
   stand_in_exec docker network inspect "$1" > /dev/null 2>&1 || { echo "no network $1"; return 1; }
@@ -106,7 +106,7 @@ containers_are() { # <network> <expected, sorted, space-separated>
 }
 networks_of() { # <container>: its networks, sorted, on one line
   stand_in_exec docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' "$1" 2> /dev/null \
-    | tr -d '\r' | sed '/^$/d' | sort | paste -sd' ' -
+    | tr -d '\r' | sed '/^$/d' | LC_ALL=C sort | paste -sd' ' -
 }
 addresses_of() { # <container>: its addresses on every network, one per line
   stand_in_exec docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' "$1" 2> /dev/null \
@@ -170,7 +170,7 @@ caddy_reaches_gateway() {
 # AC-09: the TCP ports nmap finds open on <host> from faito.gateway, sorted, on one line
 open_ports() { # <host>
   from_faito nmap -Pn -p- --open -T4 -oG - "$1" | tr -d '\r' | sed -n 's/.*Ports: //p' | tr ',' '\n' \
-    | sed -n 's|^[[:space:]]*\([0-9][0-9]*\)/open/.*|\1|p' | sort -n | paste -sd' ' -
+    | sed -n 's|^[[:space:]]*\([0-9][0-9]*\)/open/.*|\1|p' | LC_ALL=C sort -n | paste -sd' ' -
 }
 open_ports_are() { # <host> <expected>
   local found

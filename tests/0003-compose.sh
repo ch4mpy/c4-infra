@@ -29,7 +29,7 @@ demo_config > "$work/demo.json" 2> "$work/demo.err"
 check "demo: docker compose config succeeds" test -s "$work/demo.json"
 
 images() { # <config file>: "<service> <image>", one per line, sorted
-  jq -r '.services | to_entries[] | "\(.key) \(.value.image)"' "$1" | sort
+  jq -r '.services | to_entries[] | "\(.key) \(.value.image)"' "$1" | LC_ALL=C sort
 }
 
 same_images() {
@@ -65,7 +65,7 @@ all_on_loopback() {
 
 ports_are() { # <config file> <ports, sorted as strings, space-separated>
   local ports
-  ports=$(published "$1" | awk '{ print $1 }' | sort | paste -sd' ' -)
+  ports=$(published "$1" | awk '{ print $1 }' | LC_ALL=C sort | paste -sd' ' -)
   [ "$ports" = "$2" ] || { echo "published: $ports"; return 1; }
 }
 

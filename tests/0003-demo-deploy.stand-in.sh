@@ -37,10 +37,10 @@ check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$
 check ".env is written there by demo/write-env.sh" stand_in_env "$DIR"
 
 # exactly what the deployment sends, and .env (plus the test's compose.no-acme.yml)
-expected=$(printf '%s\n' $(cat demo/deploy-files.txt) .env compose.no-acme.yml | sort)
+expected=$(printf '%s\n' $(cat demo/deploy-files.txt) .env compose.no-acme.yml | LC_ALL=C sort)
 holds_only_sent() {
   local found
-  found=$(stand_in_exec sh -c 'cd "$1" && find . -type f | sed "s|^\./||" | sort' sh "$DIR" | tr -d '\r')
+  found=$(stand_in_exec sh -c 'cd "$1" && find . -type f | sed "s|^\./||" | LC_ALL=C sort' sh "$DIR" | tr -d '\r')
   [ "$found" = "$expected" ] || { echo "found:"; echo "$found"; return 1; }
 }
 check "$DIR holds only what the deployment sends" holds_only_sent

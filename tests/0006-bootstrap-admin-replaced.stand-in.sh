@@ -262,7 +262,7 @@ read -r kc_samples kc_caught < "$work/keycloak.samples"
 check "AC-06: ps -eo args caught the registration at work ($host_caught of $host_samples samples)" test "${host_caught:-0}" -ge 1
 check "AC-06: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
 no_leak() {
-  [ ! -s "$work/leaks" ] || { echo "a secret appears in:"; sort "$work/leaks" | uniq -c; return 1; }
+  [ ! -s "$work/leaks" ] || { echo "a secret appears in:"; LC_ALL=C sort "$work/leaks" | uniq -c; return 1; }
 }
 check "AC-06: neither secret appears in ps -eo args, docker top nor docker inspect" no_leak
 no_session_left() {

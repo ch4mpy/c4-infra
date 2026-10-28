@@ -79,7 +79,7 @@ listeners() { # <container>
 }
 # the ports a container listens on outside the loopback, sorted, on one line
 public_ports() { # <container>
-  listeners "$1" | awk '$1 !~ /^127\./ && $1 != "::1" && $1 !~ /^::ffff:127\./ { print $2 }' | sort -n -u | paste -sd' ' -
+  listeners "$1" | awk '$1 !~ /^127\./ && $1 != "::1" && $1 !~ /^::ffff:127\./ { print $2 }' | LC_ALL=C sort -n -u | paste -sd' ' -
 }
 
 # The demo host's model, with the two values that must start

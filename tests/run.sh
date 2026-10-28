@@ -104,7 +104,7 @@ if $changed; then
     git diff --name-only --cached
     git diff --name-only
     git ls-files --others --exclude-standard
-  } | sed '/^$/d' | sort -u)
+  } | sed '/^$/d' | LC_ALL=C sort -u)
   every=false
   while IFS= read -r file; do
     [ -n "$file" ] || continue
@@ -177,7 +177,7 @@ record_durations() { # the tests that passed: a failure's duration says nothing 
   done
   [ ${#kept[@]} -gt 0 ] || return 0
   { [ -f "$durations_file" ] && cat "$durations_file"; printf '%s\n' "${kept[@]}" | awk '{ print $2, $1 }'; } \
-    | awk '{ took[$1] = $2 } END { for (test in took) print test, took[test] }' | sort > "$durations_file.new" \
+    | awk '{ took[$1] = $2 } END { for (test in took) print test, took[test] }' | LC_ALL=C sort > "$durations_file.new" \
     && mv "$durations_file.new" "$durations_file"
 }
 
@@ -262,7 +262,7 @@ in_lanes() {
     load[k]=$((load[k] + d))
     members[k]+=" $i"
     lane_of[i]="lane $k, stand-in ${lane_names[k]}"
-  done < <(for i in "${stand_ins[@]}"; do d=${recorded_took[i]}; [ "$d" -gt 0 ] || d=$estimate; echo "$d $i"; done | sort -k1,1nr -k2,2n)
+  done < <(for i in "${stand_ins[@]}"; do d=${recorded_took[i]}; [ "$d" -gt 0 ] || d=$estimate; echo "$d $i"; done | LC_ALL=C sort -k1,1nr -k2,2n)
   for i in "${others[@]}"; do
     lane_of[i]="lane 1"
   done
@@ -377,7 +377,7 @@ if [ ${#selected[@]} -gt 0 ]; then
     in_turn
   fi
   echo "total: $(seconds $(($(micros) - run_start))) for ${#selected[@]} test(s); the slowest:"
-  printf '%s\n' "${durations[@]}" | sort -rn | head -n 5 | while read -r took test; do
+  printf '%s\n' "${durations[@]}" | LC_ALL=C sort -rn | head -n 5 | while read -r took test; do
     echo "  $(seconds "$took")  $test"
   done
   record_durations

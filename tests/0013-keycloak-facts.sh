@@ -62,8 +62,8 @@ docker cp "$container:/opt/keycloak/lib/lib/main" "$(host_path "$work/lib")" > /
 docker rm "$container" > /dev/null
 builtin=$(for jar in "$work"/lib/main/*.jar; do
   unzip -p "$jar" META-INF/keycloak-themes.json 2> /dev/null | jq -r '.themes[]?.name' 2> /dev/null
-done | tr -d '\r' | sort -u | paste -sd' ' -)
-reserved=$(printf '%s\n' "${REGISTRY_KEYCLOAK_THEMES[@]}" | sort | paste -sd' ' -)
+done | tr -d '\r' | LC_ALL=C sort -u | paste -sd' ' -)
+reserved=$(printf '%s\n' "${REGISTRY_KEYCLOAK_THEMES[@]}" | LC_ALL=C sort | paste -sd' ' -)
 check "(a) the built-in themes ($builtin) are registry.sh's reserved ones ($reserved)" test "$builtin" = "$reserved"
 
 docker run -d --name "$NAME" --env-file "$(host_path "$work/admin.env")" "$IMAGE" start-dev --db=dev-file > /dev/null

@@ -100,7 +100,7 @@ ran() { # <log>: the tests it printed, in order, by name
 }
 
 ran_set() { # <log> <names, sorted>
-  [ "$(ran "$1" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')" = "$2" ] || { cat "$work/$1"; return 1; }
+  [ "$(ran "$1" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" = "$2" ] || { cat "$work/$1"; return 1; }
 }
 
 passed() { # <log>
