@@ -165,6 +165,34 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
      c4-infra.<project>:
        external: true
    ```
+
+   No `logging:` either, nor the `x-logging` anchor its services reference: `sudo c4-app up` and
+   `pull` refuse it, and the host bounds every container's output itself, to 30 MB, the oldest lines
+   dropped first (c4-infra's README, "Accounts"). That output is a short buffer, which only
+   `c4-infra` reads: for its history, the project exports its logs, traces and metrics by OTLP to
+   Grafana LGTM, `http://grafana-lgtm:4318/v1/logs`, `/v1/traces` and `/v1/metrics` on
+   `c4-infra.<project>` (in dev, `http://host.docker.internal:4318/v1/…`), which keeps them 14 days.
+   Every application's network can read them (c4-infra's README, "Reachable from an application's
+   network"): nothing secret in them. With Spring Boot 4, as Faito's backend does
+   (`spring-boot-starter-opentelemetry`, and OpenTelemetry's Logback appender,
+   `opentelemetry-logback-appender-1.0`, declared in its `logback-spring.xml` and installed by its
+   `OpenTelemetryConfiguration`: Spring Boot ships none), its `application.yml` sets the dev
+   endpoints, and its `demo` profile the demo host's:
+
+   ```yaml
+   management:
+     opentelemetry:
+       tracing.export.otlp.endpoint: http://host.docker.internal:4318/v1/traces
+       logging.export.otlp.endpoint: http://host.docker.internal:4318/v1/logs
+     otlp.metrics.export.url: http://host.docker.internal:4318/v1/metrics
+   ---
+   spring.config.activate.on-profile: demo
+   management:
+     opentelemetry:
+       tracing.export.otlp.endpoint: http://grafana-lgtm:4318/v1/traces
+       logging.export.otlp.endpoint: http://grafana-lgtm:4318/v1/logs
+     otlp.metrics.export.url: http://grafana-lgtm:4318/v1/metrics
+   ```
 4. Its realm rendering (`deploy/keycloak/render-realms.sh`), into `deploy/<realm>-realm.json` (the
    file's name is the realm it is imported as, one of its registry entry's): no
    `org.keycloak.keys.KeyProvider` components (the dev keys are in the repository), issuer host

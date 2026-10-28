@@ -10,7 +10,8 @@
 name: c4-infra
 
 # The default json-file driver never rotates: on a host that runs for months this is the most
-# likely way for the demo to fall over. Every service below references this anchor.
+# likely way for the demo to fall over. Every service below references this anchor; on the demo host,
+# `sudo c4-app up` gives every application's service the same value (demo/c4-app's LOG_BOUND).
 x-logging: &default-logging
   driver: json-file
   options:
