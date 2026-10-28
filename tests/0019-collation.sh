@@ -17,9 +17,11 @@ name+=rt
 # a command's position: a line's start, after | ; & ( { ! $( ` or a quote opening a command line
 # (sh -c, eval), or after a keyword or wrapper; any assignments in front
 position="(^[^:]*:[0-9]+:|[|;&({!\`'\"]|\\\$\\(|(do|then|else|if|elif|while|until|xargs|env|time|command|nohup)[[:space:]])"
-bare_pattern="$position[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*$name([[:space:]]|[)'\"\`]|\$)"
+bare_pattern="$position[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*$name([^[:alnum:]_./-]|\$)"
 bare() {
   local found
+  # a grep that reads nothing would pass: the tests hold LC_ALL=C sorts
+  git grep -q --untracked "LC_ALL=C $name" -- 'tests/*.sh' || { echo "no LC_ALL=C $name found: nothing was read"; return 1; }
   found=$(git grep -n --untracked -w "$name" -- 'tests/*.sh' 'tests/lib/*' \
     | sed -E "s/^([^:]*:[0-9]+:)[[:space:]]*#.*/\\1/; s/jq( +-[-[:alnum:]]+)* +'[^']*'/jq/g; s/LC_ALL=C +$name/LC_ALL_C_$name/g" \
     | grep -E "$bare_pattern" | cut -d: -f1,2)
