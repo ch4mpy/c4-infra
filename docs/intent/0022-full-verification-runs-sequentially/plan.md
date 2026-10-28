@@ -98,3 +98,5 @@ Facts read (2026-10-28):
 | AC-06 | OK | `tests/0022-lanes.sh`: two hosts, their own names and volumes, `no stand-in host left` after a run that passed, failed, was interrupted, hung up; the run above: `no stand-in left` |
 | AC-07 | OK | CLAUDE.md:19 (the lanes, the two hosts, the durations file, the start lines, Ctrl-C, the 10 GiB), :15 (half an hour) |
 
+
+**After deployment** (run 40626500662 on `58fe0b0`, `success`, 2026-10-28): tests and docs only, the images unchanged; no proof deferred to it, no smoke test declared; master's discovery on `infra.c4-soft.com` → `200`.
