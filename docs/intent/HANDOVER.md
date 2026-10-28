@@ -10,7 +10,7 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 ## Next
 
 - **0025** — a refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them (0011's verifier). Accepted, no spec. Next: `/sdlc-plan draft 0025`, in plan mode.
-- **0019** — the stand-in deployment test fails on a workstation whose locale isn't C: being delivered (2026-10-28).
+- **0019** delivered (2026-10-28): the proofs run without `LC_ALL=C`.
 
 ## The workstation
 
