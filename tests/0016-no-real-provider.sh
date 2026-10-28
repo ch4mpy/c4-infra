@@ -6,7 +6,7 @@
 #   bash tests/0016-no-real-provider.sh
 #
 # covers: keycloak/ keycloak-import/ caddy/ examples/ compose.yml compose.dev.yml compose.demo.yml
-# covers: README.md CLAUDE.md docs/migration.md
+# covers: README.md CLAUDE.md docs/ tests/fixtures/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

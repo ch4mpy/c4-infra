@@ -406,7 +406,9 @@ next start of a stack without them; one that exists is never imported again). Th
   application's login there: accepted (PA-04). Should it happen, set these realms' login theme to
   `keycloak.v2` in the console.
 - **Their accounts**, the same in both environments; the passwords are public (no registration, no
-  password reset, no brute-force protection: a lockout would only let anyone lock them):
+  password reset, no brute-force protection: a lockout would only let anyone lock them; no required
+  action, so that no visitor signed in as one changes its password or adds a second factor, for
+  everyone):
 
   | Realm | User | Password | Address | Particularity |
   | --- | --- | --- | --- | --- |
@@ -425,15 +427,15 @@ next start of a stack without them; one that exists is never imported again). Th
   as a generic OpenID Connect provider (`providerId: oidc`), where it declares the real ones as
   `google` or `facebook`, with their own client and secret (and Apple through an extension). The
   claims: Google's `email`, `email_verified`, the names and `picture`; Facebook's names and `email`
-  when the account has one; Apple's `email`, `email_verified` and `is_private_email`, no name (the
+  when the account has one (and `email_verified`, which the real one doesn't send); Apple's `email`, `email_verified` and `is_private_email`, no name (the
   real Apple posts it once, at the first authorization, outside the token). Request
   `openid profile email` from the simulated Google and Facebook, `openid email` from the simulated
   Apple (it has no `profile` scope).
 - **Never let these accounts link to a local account by address** (*Trust Email*, automatic linking):
   on the demo host anyone signs in as them (PA-06).
-- **A change to a realm's file** reaches an existing stack only once that realm is deleted (from the
-  console, as an administrator of the master realm): `keycloak-import` then imports it again at the
-  next start (`up.sh`, the deployment).
+- **A change to a realm's file, or to `INFRA_HOST`** (its client's redirect URIs), reaches an
+  existing stack only once that realm is deleted (from the console, as an administrator of the master
+  realm): `keycloak-import` then imports it again at the next start (`up.sh`, the deployment).
 
 An application's realm export declares, for instance, the simulated Google (dev; on the demo host,
 `infra.c4-soft.com` in place of `host.docker.internal`: the back-channel URLs stay on

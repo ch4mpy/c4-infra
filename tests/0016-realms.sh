@@ -5,6 +5,9 @@
 #     the other realms are as they were;
 #   - AC-02: each one's discovery names its issuer https://host.docker.internal/auth/realms/<name>;
 #   - AC-07: registration, password reset and brute-force protection off; their users are PA-05's;
+#     no required action enabled, so that a visitor signed in as a public account can't change its
+#     password nor add a second factor: an authorization request asking for one (kc_action), signed
+#     in, comes back to the redirect URI with a code, no form;
 #   - AC-04 (its refusal): the shared client any-application accepts a broker endpoint of a realm of
 #     the infra host (the login page, 200), and refuses another host, another path, http and a path
 #     climbing out with .. (400);
@@ -57,6 +60,10 @@ users() { # <realm>: "<username> <email or -> <is_private_email or ->" per user,
   kc_admin get users -r "$1" 2> /dev/null \
     | jq -r '.[] | "\(.username) \(.email // "-") \(.attributes.is_private_email[0] // "-")"' | sort | paste -sd' ' -
 }
+for realm in "${REALMS[@]}"; do
+  enabled=$(kc_admin get authentication/required-actions -r "$realm" 2> /dev/null | jq -r '[.[] | select(.enabled) | .alias] | join(",")')
+  check "AC-07: $realm: no required action enabled (${enabled:-none})" test -z "$enabled"
+done
 check "AC-07: simulated-google's users" test "$(users simulated-google)" = \
   'alice alice@simulated-google.test - bob bob@simulated-google.test -'
 check "AC-07: simulated-facebook's users, carol without an address" test "$(users simulated-facebook)" = \
@@ -80,5 +87,41 @@ for realm in "${REALMS[@]}"; do
       && grep -qF 'HTTP 403' "$work/registration.out" || { cat "$work/registration.out"; return 1; }
   }
   check "AC-05: $realm: the registration account may not read it (403)" refused_to_registrations "$realm"
+done
+# A browser asking for a required action once signed in (Application Initiated Action): it follows
+# the redirects (its cookies kept) until a page, or the broker endpoint it was given
+ENDPOINT=$BASE/auth/realms/some-app/broker/google/endpoint
+browse() { # <url> [curl option…]: the last page in $work/page.html, the endpoint reached in $work/reached
+  local url=$1 status location i
+  shift
+  : > "$work/reached"
+  for ((i = 0; i < 15; i++)); do
+    status=$(kc_curl -c "$work/jar" -b "$work/jar" -D "$work/h" -o "$work/page.html" -w '%{http_code}' "$@" "$url")
+    set --
+    case "$status" in
+      30?)
+        location=$(sed -n 's/^[Ll]ocation: //p' "$work/h" | tr -d '\r')
+        case "$location" in
+          "$ENDPOINT"*) printf '%s' "$location" > "$work/reached"; return 0 ;;
+          /*) location=$BASE$location ;;
+        esac
+        url=$location
+        ;;
+      *) return 0 ;;
+    esac
+  done
+}
+no_form_for() { # <kc_action>: alice signs in to simulated-google asking for it, and comes back with a code
+  local action
+  rm -f "$work/jar"
+  browse "$BASE/auth/realms/simulated-google/protocol/openid-connect/auth?client_id=any-application&response_type=code&scope=openid&redirect_uri=$(jq -rn --arg v "$ENDPOINT" '$v | @uri')&kc_action=$1"
+  action=$(grep -o 'action="[^"]*"' "$work/page.html" | head -n 1 | sed 's/^action="//; s/"$//; s/&amp;/\&/g')
+  [ -n "$action" ] || { echo "no login form"; return 1; }
+  browse "$action" -d username=alice -d password=alice-password -d credentialId=
+  grep -q '[?&]code=' "$work/reached" \
+    || { echo "not back with a code: $(sed -n 's/.*<title>\(.*\)<\/title>.*/\1/p' "$work/page.html" | head -n 1)"; return 1; }
+}
+for kc_action in UPDATE_PASSWORD CONFIGURE_TOTP webauthn-register; do
+  check "AC-07: alice signed in asking for $kc_action: back with a code, no form" no_form_for "$kc_action"
 done
 finish
