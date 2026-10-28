@@ -62,7 +62,8 @@ every time it deploys.
   issuer host's root, PKCE `S256`, `iss` in the authorization response, the standard token exchange
   and, where a realm opts in, client ID metadata documents; a `resource` parameter is ignored
   (resource indicators stay off). A new Keycloak image migrates the database once, at the first
-  `up` or deployment that runs it, Keycloak stopped first (see "Backups").
+  `up` or deployment that runs it, Keycloak stopped first (see "Backups"). An application's tests
+  run the same Keycloak: "Keycloak in an application's tests".
 - **A block of 1 000 ports per application** for what runs on the host (dev servers, Spring Boot
   apps, databases), registered in [`registry.txt`](registry.txt) (see the port registry below);
   the shared services keep their usual ports.
@@ -466,6 +467,57 @@ The claims Keycloak doesn't map by itself (`picture`, `is_private_email`) reach 
 through an attribute importer mapper (`oidc-user-attribute-idp-mapper`), the attribute declared in the
 realm's user profile (or its unmanaged attributes enabled); an account without an address, or without
 a name, gets the realm's first-login form when its user profile requires them.
+
+### Keycloak in an application's tests
+
+An application's tests that start a Keycloak of their own (Testcontainers, a compose file of its CI)
+run the stack's (intent 0029). [`keycloak-image.properties`](keycloak-image.properties) describes
+it: `KC_VERSION`, the settings and `KC_FEATURES` as [`keycloak/Dockerfile`](keycloak/Dockerfile)
+sets them, and `KC_PUBLISHED_IMAGE`, the stack's image in GHCR, tagged
+`<version>-<tree of keycloak/>` by the demo workflow: a tag never moves, a change of `keycloak/` is
+a new tag (the deployment's own tag, the tree alone, stays beside it). The package is public once
+its owner made it so, once and for good ([docs/demo-setup.md](docs/demo-setup.md), step 7): until
+then, pulling it needs a GitHub login with `read:packages`.
+`tests/0029-description.sh` keeps the description equal to the Dockerfile and to that tree.
+
+- **What to run**: `KC_PUBLISHED_IMAGE`; or, for a test that can't pull it, upstream
+  `quay.io/keycloak/keycloak:<KC_VERSION>` with `KC_FEATURES`, `KC_HTTP_RELATIVE_PATH`,
+  `KC_HEALTH_ENABLED`, `KC_METRICS_ENABLED` and `KC_CACHE` as the description gives them, without
+  the stack's themes. Never a floating tag.
+- **Reading the description**: `KEY=value` lines, no quotes: a script reads the key it needs
+  (`sed -n 's/^KC_PUBLISHED_IMAGE=//p' ../c4-infra/keycloak-image.properties`), or sources it in a
+  subshell, never into the environment that starts Keycloak (its `KC_DB` is the stack's,
+  `postgres`); Maven reads it as properties (`properties-maven-plugin`'s
+  `read-project-properties`); a check on the workstation compares the application's pin with it.
+  A CI that can't read c4-infra reads the image itself: its label
+  `org.opencontainers.image.version` and its environment (`docker image inspect`).
+- **Starting it**: `start-dev` on a file database, `KC_DB=dev-file` as a variable (the image is
+  built for PostgreSQL), a bootstrap administrator of the test's own, nothing else: the image
+  already serves under `/auth`, plain HTTP in `start-dev`, health and metrics on the management port
+  `9000`, with its features. No `--features`, which would replace the image's.
+
+  ```bash
+  # test-admin.env: the test's KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD
+  docker run --rm -p 8080:8080 -e KC_DB=dev-file --env-file test-admin.env "$KC_PUBLISHED_IMAGE" start-dev
+  ```
+
+  In Testcontainers' terms: the image name from the description, the variable `KC_DB=dev-file`, the
+  context path `/auth`, no features of its own.
+- **What the stack adds, and whether a test has it**: the stack's login themes (the simulated
+  providers'), in the image; the master realm, its administrator and its SMTP settings, the
+  stack's, not in it; the simulated realms, not in it: a test imports
+  [`keycloak-import/simulated-*-realm.json`](keycloak-import/) with `INFRA_HOST` set to its own host
+  (the files name it), and points its realm's providers there; Mailpit, the registration account
+  and the dev brute-force settings, the stack's.
+- **A change** of the stack's Keycloak shows in the description (an application's check of its pin
+  fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
+  refuses a change of `keycloak/` without its entry.
+
+Changelog, newest first:
+
+- 2026-10-28 — `26.8.1-33909cd89858`: first published; Keycloak 26.8.1, its features
+  `token-exchange-delegation`, `parameterized-scopes` and `cimd`, the simulated providers' login
+  themes (0016). Asks nothing of an application already on 26.8.1 with these features.
 
 ### Routes file
 

@@ -130,8 +130,12 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `c4-infra.<project>` as an external one, never `c4-infra` (the shared services' own), under a
    unique container name: `deploy-dev.sh`'s registration creates that network and attaches the
    shared services to it (c4-infra's README, "One network per application").
-7. **Docs**: `CLAUDE.md` / `.claude/README.md` (ports, host names, the shared stack), `README.md`.
-8. **Check**: `./deploy-dev.sh`, start the apps, log in and out on
+7. **Keycloak in its tests**: tests that start a Keycloak of their own (Testcontainers) run the
+   stack's: the image `KC_PUBLISHED_IMAGE` of c4-infra's `keycloak-image.properties`, or upstream
+   Keycloak with its `KC_VERSION` and `KC_FEATURES`; never a floating tag (c4-infra's README,
+   ["Keycloak in an application's tests"](../README.md#keycloak-in-an-applications-tests)).
+8. **Docs**: `CLAUDE.md` / `.claude/README.md` (ports, host names, the shared stack), `README.md`.
+9. **Check**: `./deploy-dev.sh`, start the apps, log in and out on
    `https://<project>.dev.localhost/`, then end the session from Keycloak's admin console (the
    back-channel logout must log the gateway session out). Then stop the project's former
    containers for good: `docker compose -p <project> down` (its volumes stay until `-v`).

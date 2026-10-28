@@ -78,5 +78,6 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0026 | [The demo host doesn't bound the logs of an application's containers](0026-demo-host-bounds-no-application-logs/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0027 | [The demo host backs up no application's data](0027-demo-host-backs-up-no-application-data/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0028 | [The migration guide misleads a project on its demo ports, the images it may run and its CI's platform](0028-migration-guide-misleads-on-demo-ports-images-ci/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0029 | [An application can't tell which Keycloak its tests should run](0029-applications-cannot-tell-which-keycloak-to-test/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0030 | [new-realm-ids.sh leaves a user federation component's id as it was](0030-new-realm-ids-keeps-federation-component-ids/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0031 | [No test proves that a front end's own Permissions-Policy reaches the browser unchanged](0031-front-end-own-permissions-policy-untested/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
