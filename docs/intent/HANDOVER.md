@@ -9,8 +9,13 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 
 ## Next
 
-- **0025** — a refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them (0011's verifier). Accepted, no spec. Next: `/sdlc-plan draft 0025`, in plan mode.
-- **0019** delivered (2026-10-28): the proofs run without `LC_ALL=C`.
+- **0019** and **0025** delivered (2026-10-28).
+- Accepted on 2026-10-28, each on its own branch: **0026** (the demo host doesn't bound an application's logs; spec approved), **0027** (it backs up no application's data; spec approved), **0028** (the migration guide misleads; no spec), **0029** (which Keycloak an application's tests should run; spec approved), **0030** (`new-realm-ids.sh` keeps a user federation's id; bug, no spec), **0031** (no test of a front end's own Permissions-Policy; no spec). Next: their plans (`/sdlc-plan draft <NNNN>`, in plan mode).
+
+## Tickee and poc-immo-pf on c4-infra (analysed 2026-10-28, read only; to resume later)
+
+- **Tickee**: its intent 0001 (accepted) and its plan (approved 2026-10-23) are on `origin/0001-tickee-sur-l-infra-partagee`, not implemented; the plan follows `docs/migration.md` and needs deviations for c4-infra 0015, 0016, 0023, 0024 (`logging:` refused by `c4-app`, the `demo` profile's ports 7080/8080). Its tenant2 LDAP stays its own container; c4-infra already lets the shared Keycloak reach it (`networks.sh`, `tests/0007-dev.sh`). The product owner's questions: resume 0001 with deviations; keep `osixia/openldap:1.5.0` (unmaintained) or replace it; the LDAP's dev port; its 5-minute sync while Tickee is stopped; the legacy `gateway` client; Tickee as the first application deployed by `sudo c4-app`; archive `tickee_demo`.
+- **poc-immo-pf (immo)**: nothing blocks it in dev. To do: `headers=app` and its own CSP with a nonce (unblocks its Te Fenua tiles and YouTube frames; its policy on every response); its test Keycloak from 26.7 to 26.8.1 with the stack's features (0029); stale docs; its Apple step (c4-infra 0014 rejected); its intent 0021 (MCP) on a separate MCP origin (c4-infra 0013). The product owner's questions: Apple; the simulated providers in its dev realm (`trustEmail: false`); immo on the demo host or not; the separate MCP origin; brute force 5 vs 10.
 
 ## The workstation
 
