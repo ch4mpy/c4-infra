@@ -150,6 +150,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    file it mounts or reads (`env_file`) is inside `~/<project>/`, relative to it (the model is read
    as the project's account: it can't read any other). Its data go in named volumes: what is
    mounted from `~/<project>/` is root's copy, made again, as sent, by each `sudo c4-app` command.
+   Every service runs an `image:` the project's CI built and pushed to a registry (GHCR): no
+   `build:`, which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
    No published port, no `network_mode`, no other network, no alias or container name outside
    `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
    README, "Accounts"):

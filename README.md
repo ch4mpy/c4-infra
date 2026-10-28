@@ -478,15 +478,19 @@ One account per application, plus the shared stack's, each opened by one workflo
 application whose account runs it (never an argument), on its own project only:
 
 - `sudo c4-app pull [--registry <host> --registry-user <user>]` (the registry's token on stdin, in a
-  temporary Docker configuration removed at once), `sudo c4-app up`, `sudo c4-app down`: its compose
-  project, named after it (`-p <app>`, for the model and for root's compose: a top-level `name:` of
-  its file changes nothing). Each command copies `~/<app>/` (read as the application) into
+  temporary Docker configuration removed at once), `sudo c4-app up`: its compose project, named after
+  it (`-p <app>`, for the model and for root's compose: a top-level `name:` of its file changes
+  nothing). Each of them copies `~/<app>/` (read as the application) into
   `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
   symbolic link or a special file; that copy is only the containers' mount sources. The compose
   model is read as the application (`docker compose config`: no file its account can't read, such as
   another application's `env_file`) and, once checked, kept with the files root itself reads in a
   **root-only snapshot**, `/var/lib/c4-apps/.run.<app>/` (mode `0700 root:root`, outside anything a
-  container may mount); root's `docker compose` runs that snapshot model, for every command;
+  container may mount); root's `docker compose` runs that snapshot model, for both commands;
+- `sudo c4-app down`: stops and removes the project's containers and networks by its name
+  (`docker compose -p <app> down`), reading no compose file: whatever `~/<app>/compose.yml` holds now
+  (refused, or replaced), its account can always stop its project, and nothing that file declares
+  runs (intent 0011). Its volumes stay;
 - `sudo c4-app register <register-app.sh's options>`, without `--app`: paths relative to
   `~/<app>/`, which must stay inside it, and `--rabbitmq-password-env <VAR>` taken from
   `~/<app>/.env`. The registration then runs with the registration account's secret, which the
@@ -495,35 +499,29 @@ application whose account runs it (never an argument), on its own project only:
   provides"). It reads the realm, routes and theme files from the snapshot too, so a container can't
   swap them under it.
 
-`sudo c4-app up`, `down` and `pull` all check that model before root's compose touches it (intent
-0007): compose runs a provider's and a hook's executables, so an unchecked model must never reach
-it. The check is an **allowlist** — the top-level keys, the service keys, and, for the nested
-objects that can escape (`build`, `deploy`, `security_opt`, `volumes` and `networks` entries), their
+`sudo c4-app up` and `pull` check that model before root's compose touches it (intent 0007):
+compose runs a provider's and a hook's executables, so an unchecked model must never reach it. The
+check is an **allowlist** — the top-level keys, the service keys, and, for the nested objects that
+can escape (`deploy`, `security_opt`, `volumes` and `networks` entries), their
 sub-keys and values — and refuses anything else, naming the service (or network/volume) and the key:
 
-- **a service may set** its `image` or its `build` (not both), `container_name` and network aliases
-  under `<app>.`,
+- **a service may set** its `image`, `container_name` and network aliases under `<app>.`,
   `command`/`entrypoint`/`environment`/`env_file`, `expose`, its own networks and named volumes,
   **read-only** bind mounts inside `/var/lib/c4-apps/<app>/`, `healthcheck`, `depends_on`, resource
   limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
   no-new-privileges`). A service name is `[a-z0-9_-]+` — no dot, which would be an alias on the
   shared network;
-- **refused with their own message**: a service named after a shared service (`keycloak`,
-  `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared host
-  (`infra.c4-soft.com`); a published port (`expose` is fine: only the shared Caddy publishes);
+- **refused with their own message**: `build` — the demo host runs the images the application's
+  CI builds and pushes to a registry, and builds none itself (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
+  `grafana-lgtm`, `reverse-proxy`, `keycloak-db`); a published port (`expose` is fine: only the
+  shared Caddy publishes);
   `privileged`, `cap_add`, `devices`, `device_cgroup_rules`, a `deploy` reservation of host devices;
   `network_mode`, `links`, `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup`
   set to `host` or another container; a read-write bind mount, or one of the staging root or outside
   it (the Docker socket, another application's files…); a network or volume that is external, has a
-  name or driver of its own, or `driver_opts`; a `build` context or Dockerfile outside the staging
-  tree; a service that builds and sets an `image`, or whose name has a `-`. Compose names a built image
-  `<project>-<service>` (`faito-gateway`), in the Docker daemon every application shares: an image
-  name of the application's own choosing could be another application's, which root's build would
-  replace for that application's next `up`; and with a `-` in a service's name, application `a`'s
-  `b-c` and application `a-b`'s `c` would both build `a-b-c`;
+  name or driver of its own, or `driver_opts`;
 - **refused by the allowlist** (not an application's to set): `use_api_socket`,
-  `post_start`/`pre_stop` hooks, a `provider` service, `build.network`/`privileged`/`entitlements`/
-  `ssh`/`tags` (`tags` names the image too), and anything else not listed above. A need for one of
+  `post_start`/`pre_stop` hooks, a `provider` service, and anything else not listed above. A need for one of
   these is a new intent, not a change an application makes on its own.
 
 Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
