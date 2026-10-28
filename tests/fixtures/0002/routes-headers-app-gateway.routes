@@ -1,0 +1,3 @@
+# 0002 fixture (intent 0015, AC-06): headers=app on the gateway, refused by sudo c4-app register
+/fr/*       fr
+/gateway/*  gateway  headers=app
