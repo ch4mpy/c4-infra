@@ -118,3 +118,27 @@ Proposed by Claude, for Jérôme Wacongne (engineer) to approve with this plan:
 <!-- filled during implementation: date — what — why — impact on files or proof -->
 
 - 2026-10-28 — the review round (bootstrap: one; `code-review high`, on 0028's commits, in the batch). Fixed: the guard passed on an empty `registry.sh upstream` (an empty `grep -F` pattern matches any line) and found `:80` inside `:8080`: `demo_upstream_in_dev` fails on an empty upstream and requires a non-digit after the port; the test's header names the new checks (its *Files* line); dev step 1 names the MCP server's `9080` among the ports set back, and how (a `demo` profile or the compose file's `SERVER_PORT`); the README's sentence attributed the ports to the routes file, which names none ("Routes file" gives them); the other-platform paragraph limits the secrets to the deployment's protected branch or environment, never printed; one registry per `pull`. Answered: `c4-app`'s `build` message (`demo/c4-app:258`) still says the host runs the images the CI pushes: code, unchanged by the plan's choice 3, pinned by two tests; `--registry-user` refuses a GitLab deploy token's user (`gitlab+deploy-token-<id>`: `+`), with a message that says the user is missing: pre-existing in `c4-app` (`:346`), a bug intent suggested. Files: none new.
+
+## Verification
+
+### Verification — 0952874 (integration 13474a8, which contains it; the full run at 205b8eb held its earlier content)
+
+- Verification command (batch `batch-0031-0030-0028-0026-0027-0029`, the product owner's decision of 2026-10-28): `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --all` at the integration commit 205b8eb → `verification passed` (`total: 1764.0 s for 72 test(s)`, 2026-10-28; also the milestone before the push); after the verifiers' documentation fixes, `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed 205b8eb --all` at 13474a8 → `verification passed (--changed: 8 of 72 tests)`.
+- Risk tier: standard (documentation and a test).
+- Reviews: bootstrap mode: 1 round, on 0028's own commits; bugs (`code-review high`) 8 fixed (d92001c) / 2 answered.
+  - fixed: the guard passed on an empty `registry.sh upstream` and found `:80` in `:8080`; the test's header; the MCP server's `9080` among the ports set back, and how; the README attributing the ports to the routes file; the secrets limited to the protected branch or environment; one registry per `pull`;
+  - answered: `c4-app`'s `build` message (code, unchanged: the plan's choice 3); a GitLab deploy token's user refused (pre-existing, below).
+- After the verifier: `docs/migration.md` named "any registry `docker login` accepts"; now "any registry `sudo c4-app pull --registry` logs in to", step 5 giving the forms (0952874; the rerun at 13474a8).
+- Guard check (not a bug): `tests/0004-registry.sh docs` before the doc change → `3 check(s) failed` (`not found: <project>.gateway:7080`, `frontend:80`, `mcp:9080`), then `every check passed`; the verifier's neighbours: MCP removed from the dev section, `frontend:8080`, an empty upstream, `gateway:8081` → each KO.
+- Verifier: 4/5 criteria OK, 1 partly not verifiable — table below.
+- Not verifiable here: a login through `c4-app` to a registry other than GHCR (the stand-in has no registry with a login): for the human reviewer, at the first such application.
+- Files outside the plan: none.
+- Pre-existing findings: `demo/c4-app`'s `--registry-user` refuses a GitLab deploy token's user (`gitlab+deploy-token-<id>`: `+`), with a message saying the user is missing (`demo/c4-app`, `cmd_pull`) → bug intent suggested (immo is on GitLab; `gitlab-ci-token` is accepted).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Ports: the dev step says the containers keep their ports, naming the demo upstreams | OK | `docs/migration.md` dev step 1 against `registry.sh`'s `registry_upstream`; `ok - migration.md, In dev: the demo's gateway/fr/mcp upstream (registry.sh), where the ports move` |
+| Images: a public image runs, only `build:` refused | OK | `demo/c4-app`'s allowlist and `pull_missing` read; `0002-accounts.stand-in`: `ok - AC-02: the document's sudo c4-app up exits 0` on `caddy:2.11.4-alpine` |
+| CI: the registry and the job whatever the platform, the GitHub example kept | OK (another registry's login: not verifiable here) | the paragraph against `cmd_pull` (forms tested by the verifier); the example byte-identical on main, 0028 and the integration head (sha256); `0002-workflow` → `every check passed` |
+| Status: no stale status | OK | `grep -rniE 'not set up yet\|postponed on 2026-10-21' README.md docs/*.md` → nothing; the first successful deploy-demo run 2026-10-23T05:32:18Z |
+| The tests reading these documents still pass | OK | `0002-workflow`, `0004-registry`, `0008-certificate-scripts`, `0016-no-real-provider`, `0002-accounts.stand-in`, `0009-master-realm.stand-in` → `every check passed` (205b8eb; 13474a8's rerun) |
