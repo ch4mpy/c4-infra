@@ -1,0 +1,20 @@
+# 0027 fixture (tests/0027-isolation.stand-in.sh): Faito's files, its service and its volume labelled
+# with Hurura'a's project; compose sets its own label over them, faito's (plan 0027, fact a)
+services:
+  files:
+    image: caddy:2.11.4-alpine
+    container_name: faito.files
+    command: [caddy, file-server, --root, /srv, --listen, ':7080']
+    labels:
+      c4-infra.backup: volumes
+      com.docker.compose.project: hururaa
+      com.docker.compose.service: files
+    networks: [c4-infra.faito]
+    volumes: [files_data:/srv]
+networks:
+  c4-infra.faito:
+    external: true
+volumes:
+  files_data:
+    labels:
+      com.docker.compose.project: hururaa

@@ -53,7 +53,10 @@ It installs Docker from its official repository and `unattended-upgrades`, `jq` 
 22, 80 and 443 only (`ufw`), and rejects any new outgoing connection of the applications' accounts
 (group `c4-apps`) but on the loopback; writes `/etc/sudoers.d/c4-infra` (checked by `visudo`): the
 group `c4-apps` may run `sudo c4-app` only, and `c4-infra` may install `c4-app` (one exact command
-line, `demo/deploy.sh`'s); and creates the account `c4-infra`, the only one in the `docker` group,
+line, `demo/deploy.sh`'s); writes `/etc/cron.d/c4-apps-backup`, the applications' nightly backup
+at 03:45 (host time, after Keycloak's at 03:15: root runs `c4-app nightly`, which runs each
+application's `sudo c4-app backup` as its account; [README](../README.md), "Backups"); and creates
+the account `c4-infra`, the only one in the `docker` group,
 with `~/c4-infra` and the key installed as `restrict <key>` (no forwarding, no terminal: the
 workflow runs commands; you log in as `ubuntu`). It ends with
 `Done. c4-infra's workflow can now deploy as c4-infra@<ip>`.
@@ -166,7 +169,8 @@ gh run watch -R ch4mpy/c4-infra
   when it changed, waits up to 300 s for every service to be healthy (on an empty database,
   Keycloak creates its master realm pre-configured: [README](../README.md), "The master realm"),
   reloads Caddy, creates the registration account (as the administrator of `.env`), and installs the
-  nightly backup of Keycloak's database (03:15, host time, `~/backups/`). Every action of the
+  nightly backup of Keycloak's database (03:15, host time, `~/backups/`); the applications' is
+  root's, at 03:45 (step 3). Every action of the
   workflow is pinned by commit (its tag as a comment).
 - The first start takes a few minutes: Let's Encrypt certificates, then Keycloak's database
   migrations.
@@ -183,7 +187,11 @@ gh run watch -R ch4mpy/c4-infra
   5): Mailpit asks for them itself, through Caddy as from an application's container (only
   `/mailpit/livez` and `/mailpit/readyz` answer without);
 - `https://infra.c4-soft.com/grafana/` (user `admin`; anonymous access is off).
-- On the host: `ssh c4-infra@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l'`.
+- On the host: `ssh c4-infra@<vps-ip> 'cd ~/c4-infra && docker compose ps && crontab -l && cat /etc/cron.d/c4-apps-backup'`
+  (Keycloak's backup at 03:15, the applications' at 03:45); once an application runs, its nightly
+  log: `ssh -t ubuntu@<vps-ip> sudo tail /var/backups/c4-apps/<app>/backup.log`. To run the
+  applications' nightly backup now, as root's cron does (`c4-app nightly` refuses `sudo`'s
+  `SUDO_USER`): `ssh -t ubuntu@<vps-ip> sudo env -u SUDO_USER /usr/local/sbin/c4-app nightly`.
 
 ## 9. Adding an application
 
@@ -227,6 +235,15 @@ own compose project and registers it with what its registry entry assigns to it,
 6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on its
    own network `c4-infra.<app>` with unique container names, its routes file, the commands it runs
    as `<app>@<vps-ip>`).
+7. **Its backups** ([README](../README.md), "Backups"): its `compose.yml` labels the services that
+   hold its data (`c4-infra.backup: postgres` or `volumes`); the host backs it up every night at
+   03:45 into `/var/backups/c4-apps/<app>/`, which its account reads, kept 7 days, the run's output
+   in `backup.log` there. Step 4's `vps-bootstrap.sh` (re)writes `/etc/cron.d/c4-apps-backup`.
+   Its workflow may run `sudo c4-app backup` itself (before a deployment that migrates its database);
+   `sudo c4-app restore` lists its backups, `sudo c4-app restore <stamp> --yes` restores one. A copy
+   off the host is the application's to pull, with `rsync` through its key. When an application
+   leaves the host, its backups stay until removed: `sudo rm -rf /var/backups/c4-apps/<app>`, from
+   `ubuntu`.
 
 Faito has no demo deployment yet.
 

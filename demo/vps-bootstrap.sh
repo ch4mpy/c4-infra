@@ -16,7 +16,8 @@
 # Each run also prepares the host, idempotently: Docker from its official repository and
 # unattended-upgrades when Docker is missing; ufw, jq and rsync; the firewall (22, 80 and 443 in
 # only; no new outgoing connection from the applications' accounts but on the loopback); the group
-# c4-apps; /etc/sudoers.d/c4-infra, checked by visudo before it is installed. Keys are appended,
+# c4-apps; /etc/sudoers.d/c4-infra, checked by visudo before it is installed; the applications'
+# nightly backup, /etc/cron.d/c4-apps-backup (03:45, root: c4-app nightly). Keys are appended,
 # never replaced, as `restrict <key>`: no forwarding and no terminal, the workflows run commands
 # (the demo operator logs in as ubuntu).
 set -euo pipefail
@@ -111,6 +112,15 @@ install -m 0440 -o root -g root "$sudoers" /etc/sudoers.d/c4-infra
 rm -f "$sudoers"
 # root's staging copies of the applications' files (c4-app)
 install -d -m 0755 -o root -g root /var/lib/c4-apps
+# The applications' nightly backup (intent 0027), after the shared stack's Keycloak at 03:15: root's
+# cron runs c4-app nightly, which backs up each application as its account (sudo c4-app backup)
+cron=$(mktemp)
+cat > "$cron" <<'EOF'
+# Written by c4-infra's demo/vps-bootstrap.sh (intent 0027): each application's backup, as its account
+45 3 * * * root /usr/local/sbin/c4-app nightly
+EOF
+install -m 0644 -o root -g root "$cron" /etc/cron.d/c4-apps-backup
+rm -f "$cron"
 
 # Firewall: SSH and HTTP(S) in only (Docker publishes 80 and 443 for Caddy, nothing else); and the
 # applications' accounts open no connection of their own but on the loopback: their ssh and rsync

@@ -76,6 +76,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0024 | [A deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator](0024-database-image-change-under-keycloak/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0025 | [A refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them](0025-refused-deployment-still-staged/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0026 | [The demo host doesn't bound the logs of an application's containers](0026-demo-host-bounds-no-application-logs/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0027 | [The demo host backs up no application's data](0027-demo-host-backs-up-no-application-data/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0028 | [The migration guide misleads a project on its demo ports, the images it may run and its CI's platform](0028-migration-guide-misleads-on-demo-ports-images-ci/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0030 | [new-realm-ids.sh leaves a user federation component's id as it was](0030-new-realm-ids-keeps-federation-component-ids/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0031 | [No test proves that a front end's own Permissions-Policy reaches the browser unchanged](0031-front-end-own-permissions-policy-untested/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |

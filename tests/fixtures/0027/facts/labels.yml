@@ -1,0 +1,15 @@
+# 0027 fact (a) (tests/0027-backup-facts.stand-in.sh): a service and a volume setting compose's own
+# project and service labels, naming another project
+services:
+  forged:
+    image: ${FACTS_IMAGE}
+    entrypoint: [sleep, infinity]
+    init: true
+    labels:
+      com.docker.compose.project: other
+      com.docker.compose.service: x
+    volumes: [data:/data]
+volumes:
+  data:
+    labels:
+      com.docker.compose.project: other
