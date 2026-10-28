@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (verification of 0013, 2026-10-27)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-27
 - Decided: 2026-10-27
 - Supersedes: —
