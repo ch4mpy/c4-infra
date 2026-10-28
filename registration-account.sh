@@ -60,9 +60,8 @@ account_login() {
     < /dev/null 2>&1)
 }
 
-# kcadm's output when Keycloak refuses a login (26.8.1, intent 0024): a wrong secret
-# [unauthorized_client], an unknown client [invalid_client], a wrong password or an account not fully
-# set up [invalid_grant]. Any other failure is a Keycloak that doesn't answer, or not yet.
+# kcadm's output when Keycloak refuses a login (26.8.1, intent 0024); any other failure is a Keycloak
+# that doesn't answer, or not yet
 refused() { # <kcadm's output>
   case "$1" in
     *"[unauthorized_client]"* | *"[invalid_client]"* | *"[invalid_grant]"*) return 0 ;;
@@ -70,9 +69,7 @@ refused() { # <kcadm's output>
   return 1
 }
 
-# <login command…> (account_login, admin_try): retried while Keycloak doesn't answer, for
-# ANSWER_TIMEOUT seconds, then exit 1 saying so, never blaming the account or an administrator;
-# returns 1 when Keycloak refuses the login
+# <login command…>: retried while Keycloak doesn't answer, then exit 1 saying so; 1 when it refuses
 ANSWER_TIMEOUT=60
 until_answered() {
   local deadline=$((SECONDS + ANSWER_TIMEOUT))

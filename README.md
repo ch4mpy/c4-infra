@@ -647,7 +647,8 @@ dumps nothing.
 
 **A new image of Keycloak's database** (another tag, or the same tag published again upstream, as
 `postgres:18.6` was on 2026-10-28: intent 0024) recreates its container on the same volume.
-`demo/deploy.sh` brings the database up first, on its own, and restarts a running Keycloak on it
-("Keycloak's database recreated…: Keycloak restarted on it"), before the rest of the stack and the
-registration account: Keycloak would otherwise keep the former container's connections. Logins fail
+`demo/deploy.sh` brings the database up first, on its own, and when it was recreated or started
+again, restarts a running Keycloak on it ("Keycloak's database recreated or started again: Keycloak
+restarted on it"), before the rest of the stack and the registration account: Keycloak would
+otherwise keep the former container's connections. Logins fail
 during that restart; sessions survive it (persisted in the database).
