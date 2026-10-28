@@ -91,3 +91,37 @@
 - 2026-10-28 — step 3a. AC-09 can't be "a refused `INFRA_HOST` no longer stops `c4-app up`": `networks.sh ensure`, which `up` runs, reads `INFRA_HOST` on the demo host on purpose (the proxy's alias) and refuses it. The test asserts what the spec's AC-09 says, that c4-app's check reads no `INFRA_HOST` (its message `c4-app: INFRA_HOST of … can't be read` absent), and that `networks.sh` is then the one refusing it. The hook of AC-04 is staged by the earlier `up` (hook.sh sent first), so that the provider's executable exists where `down-hook.yml` names it: "no marker" then means compose wasn't handed the file. Steps 3b and 3c were committed before 3a (its stand-in run took longer). No impact on files.
 - 2026-10-28 — steps 4a and 4b checked together: `tests/0011-demo-host.stand-in.sh` and `tests/0007-compose-check.stand-in.sh` run once after both (`every check passed`, each), not after each (a stand-in run takes six minutes); step 5's docs committed before 4d–4f (they don't depend on them).
 - 2026-10-28 — step 6, review round (bootstrap: one; `code-review high`, `security-review`: no finding). `demo/c4-app`: the source directory is checked in `stage()` only, so that `down` needs nothing of the application's (RQ-04); its header says `down` works on no copy. `networks.sh`: the file's content is a function (`apps_yaml`) that `write_apps_file` writes to the temporary file before the rename, under `set -e` (a pipeline would have renamed a truncated file). `tests/0011-facts.sh` (not frozen: step 2's): host paths through `cygpath -w` under Git Bash, as CLAUDE.md asks; fact (b) is measured on Linux only (Windows' compose runs no shell script as a provider), and says so. No impact on files or proof.
+- 2026-10-28 — step 6. The proof is `bash tests/run.sh --changed main --all` (43 of the 51 tests: every test the change concerns, stand-in and facts ones included), not `--all`: the product owner's rule of 2026-10-27 (CLAUDE.md, Verification); `--all` runs at the next milestone. AC-03's tests are among the 43.
+
+## Verification
+
+### Verification — 77782bc
+
+- Verification command: `LC_ALL=C TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed main --all` at 77782bc → `total: 1101.2 s for 43 test(s)` / `verification passed (--changed: 43 of 51 tests)` (2026-10-28)
+- Risk tier: high (what the demo host runs as root, `sudo c4-app`; the spec's tech lead agreement of 2026-10-23)
+- Reviews: bootstrap mode: 1 round; bugs (`code-review high`) 8 findings, 4 fixed / 4 answered; security (`security-review`) no finding (`down` from `/` with the environment cleared reads no file of the application's, selects by the exact project label, runs no provider or hook; `build` caught after `docker compose config`'s normalisation; the other changes take no untrusted input); no `simplify` pass (bootstrap)
+  - fixed (77782bc): `down` still required `~/<app>/<app>` (the check moved into `stage()`, `demo/c4-app`); `{ … } | write_apps_file` would have renamed a truncated file (the content is now `apps_yaml`, written under `set -e` before the rename, `networks.sh`); `tests/0011-facts.sh` gave host paths to the docker CLI without `cygpath -w` (CLAUDE.md); `c4-app`'s header said every command works on a copy
+  - answered: `dotenv_value` still reads an `.env` it can't even stat as missing — AC-07 is a file that exists and can't be read; the stack's `.env` sits next to the scripts that read it (`registry.sh:75`)
+  - answered: a reload that fails on a transient error while the admin API answers is reported as "refuses its configuration" — the plan's *Risks*: Caddy's message is printed first, and the fix and the retry are the same command (`up.sh:108`)
+  - answered: AC-10's first check accepts any message on a failure — the second check (`certs/tls.crt` created) holds the pre-fix KO; the test is frozen (`tests/0011-up.sh:79`)
+  - answered: `routes.sh` could record `seen_options` after validating the option instead of a special case for an empty key — a smaller change to a working loop; only an empty key is a bad subscript of an associative array (`routes.sh:142`)
+- Mutation check (bug): at 6856e1a / b234695 (tests in, no fix): `tests/0011-demo-host.stand-in.sh` → `10 check(s) failed` (AC-01 builds as root, `failed to solve: failed to read dockerfile`; AC-09 `c4-app: INFRA_HOST of … can't be read`; AC-04 down refused), `tests/0007-compose-check.stand-in.sh` → `7 check(s) failed`, `tests/0011-up.sh` → `6 check(s) failed` (with a certificate issued: AC-05 `docker exec failing → "refuses its configuration"`), `tests/0011-scripts.sh` → `4 check(s) failed`, `tests/0003-routes.sh` → `2 check(s) failed` (`seen_options: bad array subscript`)
+- Verifier: 12/12 criteria OK — table below; neighbouring flows: `networks.sh compose-file` on the real daemon in a scratch copy writes the same `compose.apps.yml` (mode 0644, no temporary file left), `docker compose config --quiet` exit 0; `tests/0003-up-reload.sh` `every check passed`; 0002-accounts' `down` stops Faito's containers, not Hurura'a's nor the stack's
+- Not verifiable here: none
+- Files outside the plan: none
+- Pre-existing findings (not fixed, out of scope): `stage()` runs before `check_model`, so a refused `up` or `pull` still syncs the refused files into `/var/lib/c4-apps/<app>/`, which the running containers mount (RQ-01's "nothing changed" holds for containers only) → bug intent suggested; the header comments of `tests/fixtures/0007/hostile/build-*.yml` still give their former reasons (a detail)
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 | OK | `0011-demo-host.stand-in`: `ok - AC-01: build.yml: sudo c4-app up is refused`, `… it says "c4-app: refused: service gateway: build: the demo host runs the images the application's CI pushes to a registry"`, `… no network c4-infra.faito was created`, `… sudo c4-app pull is refused` |
+| AC-02 | OK | `0007-compose-check.stand-in`: the seven `build-*.yml` say RQ-01's message, `every check passed` |
+| AC-03 | OK | `0007-isolation.stand-in` `ok - Hurura'a starts`, `ok - Faito starts`; `0002-accounts.stand-in` pull and up exit 0; `0003-demo-deploy.stand-in` `every check passed` |
+| AC-04 | OK | `0011-demo-host.stand-in`: down exits 0, no container, `faito_internal` gone, `faito_cache` and `c4-infra.faito` kept, no `hook-ran`; `0011-facts` (b): an unchecked down does run the provider (Linux) |
+| AC-05 | OK | `0011-up`: "refuses" when the admin API answers, "isn't reachable" and never "refuses" otherwise; `0011-facts` (c) on a real Caddy; `0003-up-reload` unchanged, passing |
+| AC-06 | OK | `0011-scripts networks`: waits while the lock is held, writes nothing meanwhile, then `services: {}`, no temporary file (the rename on that path read in the code, not failing first) |
+| AC-07 | OK | `0011-scripts dotenv`: `fails (exit 1)`, names the file; a missing key reads empty, exit 0; the verifier also on a real `chmod 000` file |
+| AC-08 | OK (guard) | alike on dev (Compose v5.3.0) and on the stand-in |
+| AC-09 | OK | `service-dotted-name.yml` refused by the name rule; `ok - AC-09: a refused INFRA_HOST: c4-app's check doesn't read it` |
+| AC-10 | OK | `0011-up`: a fresh clone reaches `docker compose up`, `certs/tls.crt` created |
+| AC-11 | OK | `0003-routes`: `refused empty-option-key` exits 1, names line 3, says `unknown option '=x'`, prints no site |
+| AC-12 | OK | mutation check above: each test KO before its fix |
