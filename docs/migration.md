@@ -188,9 +188,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
    of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
    by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
-   `~/<project>/`, `sudo c4-app pull` (the GHCR token on stdin), `sudo c4-app register` (paths
-   relative to `~/<project>/`; `--rabbitmq-password-env` names a variable of `~/<project>/.env`)
-   and `sudo c4-app up`:
+   `~/<project>/`, `sudo c4-app pull` (its registry's token on stdin: GHCR's here),
+   `sudo c4-app register` (paths relative to `~/<project>/`; `--rabbitmq-password-env` names a
+   variable of `~/<project>/.env`) and `sudo c4-app up`:
 
    ```yaml
      deploy:
@@ -235,6 +235,17 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
              GHCR_USER: ${{ github.actor }}
              GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
    ```
+
+   On another platform (GitLab, any CI that runs a shell), the job does the same, in the same order:
+   the host's key pinned from `VPS_KNOWN_HOSTS` before anything connects (the lines of
+   `demo/trust-host-key.sh`), `VPS_SSH_KEY` in an ssh agent, what the job runs pinned as the
+   actions are (an image by digest, anything it includes by commit), then the `rsync`,
+   `sudo c4-app pull --registry <registry host> --registry-user <user>` with the registry's token on
+   stdin, read from a secret variable of the platform (never on a command line), `register` and
+   `up`. `--registry` takes a host name, with an optional `:port` and no path; `--registry-user`
+   letters, digits, `.`, `_` and `-`. Without `--registry`, `pull` logs in nowhere, which is enough
+   when every image is public. `VPS_HOST`, `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` become secret
+   variables of that platform.
 
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
