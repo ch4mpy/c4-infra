@@ -170,8 +170,13 @@ recorded() { # <test>: its last duration in microseconds, 0 when none
   awk -v test="$1" '$1 == test { took = $2 } END { print took + 0 }' "$durations_file"
 }
 
-record_durations() {
-  { [ -f "$durations_file" ] && cat "$durations_file"; printf '%s\n' "${durations[@]}" | awk '{ print $2, $1 }'; } \
+record_durations() { # the tests that passed: a failure's duration says nothing of the next run
+  local entry kept=()
+  for entry in "${durations[@]}"; do
+    [[ " ${failed[*]} " == *" ${entry#* } "* ]] || kept+=("$entry")
+  done
+  [ ${#kept[@]} -gt 0 ] || return 0
+  { [ -f "$durations_file" ] && cat "$durations_file"; printf '%s\n' "${kept[@]}" | awk '{ print $2, $1 }'; } \
     | awk '{ took[$1] = $2 } END { for (test in took) print test, took[test] }' | sort > "$durations_file.new" \
     && mv "$durations_file.new" "$durations_file"
 }
@@ -189,20 +194,21 @@ in_turn() { # every selected test, one after the other
 }
 
 # A lane runs its tests (indexes of selected) one after the other, a stand-in lane with its own
-# stand-in host. In $lanes: <i>.started when test i starts, its output in <i>.log, <i>.done
-# ("<status> <microseconds>") when it ends, and lane<k>.pid the test running. The lane keeps the
-# lock's pipe, its tests don't: a run killed with kill -9 holds the lock until its lanes end
+# stand-in host, each test in a process group of its own, which an interrupt stops whole. In $lanes:
+# <i>.started when test i starts, its output in <i>.log, <i>.done ("<status> <microseconds>") when it
+# ends, and lane<k>.pid the test running. The lane keeps the lock's pipe, its tests don't: a run
+# killed with kill -9 holds the lock until its lanes' running tests end, and starts no other
 lane() { # <k> <stand-in name, "" for none> <stand-in volume> <index…>
-  local k=$1 name=$2 volume=$3 i start status
+  local k=$1 i start status
+  local -a stand_in=()
+  [ -z "$2" ] || stand_in=(STAND_IN_NAME="$2" STAND_IN_VOLUME="$3")
   shift 3
+  set -m
   for i in "$@"; do
+    kill -0 $$ 2> /dev/null || break
     : > "$lanes/$i.started"
     start=$(micros)
-    if [ -n "$name" ]; then
-      STAND_IN_NAME=$name STAND_IN_VOLUME=$volume bash "${selected[$i]}" > "$lanes/$i.log" 2>&1 {SUITE_LOCK_FD}>&- &
-    else
-      bash "${selected[$i]}" > "$lanes/$i.log" 2>&1 {SUITE_LOCK_FD}>&- &
-    fi
+    env "${stand_in[@]}" bash "${selected[$i]}" < /dev/null > "$lanes/$i.log" 2>&1 {SUITE_LOCK_FD}>&- &
     echo $! > "$lanes/lane$k.pid"
     wait $!
     status=$?
@@ -210,44 +216,52 @@ lane() { # <k> <stand-in name, "" for none> <stand-in volume> <index…>
   done
 }
 
+GIB=1073741824
+# what Docker reports when Docker Desktop is given 10 GiB, the memory two stand-in lanes need (PA-03)
+TWO_STAND_IN_LANES_MEMORY=$((9 * GIB))
+
 # The stand-in tests in one or two lanes of their own (Docker's memory, spec PA-03), every other
 # test in lane 1; only this shell prints, each test's output whole once it ends (PA-02)
 in_lanes() {
-  local i k others=() stand_ins=() d unknown=0 name volume
-  local -a load=() members=() lane_names=() lane_volumes=() lane_of=() lane_pids=()
-  local memory=${SUITE_DOCKER_MEMORY:-$(docker info --format '{{.MemTotal}}' 2> /dev/null || echo 0)}
+  local i k others=() stand_ins=() d name volume known=0 total=0 estimate
+  local -a load=() members=() took=() lane_names=() lane_volumes=() lane_of=() lane_pids=() lane_tests=()
+  local memory=${SUITE_DOCKER_MEMORY:-$(docker info --format '{{.MemTotal}}' 2> /dev/null)}
   local stand_in_lanes=2
   for i in "${!selected[@]}"; do
     if [[ ${selected[$i]} == *.stand-in.sh ]]; then stand_ins+=("$i"); else others+=("$i"); fi
   done
-  if [ "${memory:-0}" -lt 9663676416 ]; then
+  [[ $memory =~ ^[0-9]+$ ]] || memory=0
+  if [ "$memory" -lt "$TWO_STAND_IN_LANES_MEMORY" ]; then
     stand_in_lanes=1
-    echo "== Docker has $((${memory:-0} / 1073741824)) GiB, under the 10 GiB two stand-in lanes need (CLAUDE.md): one stand-in lane"
+    local tenths=$(((memory * 10 + GIB / 2) / GIB))
+    echo "== Docker reports $((tenths / 10)).$((tenths % 10)) GiB, under the 9 GiB of Docker Desktop given 10 GiB, which two stand-in lanes need (CLAUDE.md): one stand-in lane"
   fi
   [ ${#stand_ins[@]} -ge "$stand_in_lanes" ] || stand_in_lanes=${#stand_ins[@]}
   name=${STAND_IN_NAME:-c4-infra-stand-in}
   volume=${STAND_IN_VOLUME:-c4-infra-stand-in-docker}
   for ((k = 2; k < stand_in_lanes + 2; k++)); do
-    load[k]=0
+    load[k]=0 members[k]=""
     if [ "$k" -eq 2 ]; then
       lane_names[k]=$name lane_volumes[k]=$volume
     else
       lane_names[k]=$name-$((k - 1)) lane_volumes[k]=${volume%-docker}-$((k - 1))-docker
     fi
   done
-  # the longest first, each to the least loaded lane; the tests never run before, alternating
+  # the longest first, each to the least loaded lane; a test never run before counts as the average
+  # of those that were (a second when none was)
+  for i in "${stand_ins[@]}"; do
+    took[i]=$(recorded "${selected[$i]}")
+    [ "${took[i]}" -eq 0 ] || { known=$((known + 1)); total=$((total + took[i])); }
+  done
+  estimate=1000000
+  [ "$known" -eq 0 ] || estimate=$((total / known))
   while read -r d i; do
-    if [ "$d" -eq 0 ]; then
-      k=$((2 + unknown % stand_in_lanes))
-      unknown=$((unknown + 1))
-    else
-      k=2
-      [ "$stand_in_lanes" -eq 2 ] && [ "${load[3]}" -lt "${load[2]}" ] && k=3
-    fi
+    k=2
+    [ "$stand_in_lanes" -eq 2 ] && [ "${load[3]}" -lt "${load[2]}" ] && k=3
     load[k]=$((load[k] + d))
     members[k]+=" $i"
     lane_of[i]="lane $k, stand-in ${lane_names[k]}"
-  done < <(for i in "${stand_ins[@]}"; do echo "$(recorded "${selected[$i]}") $i"; done | sort -k1,1nr -k2,2n)
+  done < <(for i in "${stand_ins[@]}"; do d=${took[i]}; [ "$d" -gt 0 ] || d=$estimate; echo "$d $i"; done | sort -k1,1nr -k2,2n)
   for i in "${others[@]}"; do
     lane_of[i]="lane 1"
   done
@@ -256,11 +270,11 @@ in_lanes() {
   trap 'interrupted' INT TERM
   if [ ${#others[@]} -gt 0 ]; then
     lane 1 "" "" "${others[@]}" &
-    lane_pids+=($!)
+    lane_pids[1]=$! lane_tests[1]="${others[*]}"
   fi
   for ((k = 2; k < stand_in_lanes + 2; k++)); do
     lane "$k" "${lane_names[k]}" "${lane_volumes[k]}" ${members[k]} &
-    lane_pids+=($!)
+    lane_pids[k]=$! lane_tests[k]=${members[k]}
   done
   stand_in_hosts=("${lane_names[@]}")
 
@@ -283,6 +297,19 @@ in_lanes() {
         remaining=$((remaining - 1))
       fi
     done
+    # a lane gone before its tests' ends (killed, out of memory): they failed, no result
+    for k in "${!lane_pids[@]}"; do
+      kill -0 "${lane_pids[k]}" 2> /dev/null && continue
+      for i in ${lane_tests[k]}; do
+        [ -n "${printed[i]:-}" ] || [ -e "$lanes/$i.done" ] && continue
+        echo "== ${selected[$i]}"
+        [ ! -f "$lanes/$i.log" ] || cat "$lanes/$i.log"
+        echo "-- ${selected[$i]}: no result, its lane ended before it"
+        failed+=("${selected[$i]}")
+        printed[i]=1
+        remaining=$((remaining - 1))
+      done
+    done
     [ "$remaining" -eq 0 ] || sleep 1
   done
   wait "${lane_pids[@]}"
@@ -290,18 +317,40 @@ in_lanes() {
   rm -rf "$lanes"
 }
 
-# Ctrl-C or TERM during lanes: no lane starts another test, their running tests get TERM, and their
-# stand-in hosts are removed (their docker exec calls end with them)
-interrupted() {
+remove_stand_in_hosts() {
+  [ ${#stand_in_hosts[@]} -eq 0 ] || docker rm -f "${stand_in_hosts[@]}" > /dev/null 2>&1
+}
+
+alive() { # <pid…>: one of them still runs
   local pid
+  for pid in "$@"; do
+    kill -0 "$pid" 2> /dev/null && return 0
+  done
+  return 1
+}
+
+# Ctrl-C or TERM during lanes: no lane starts another test, each running test's process group gets
+# TERM (twice: a test forked as its lane stopped), the stand-in hosts are removed, and the run ends
+# once those tests have (30 s at most), so that the next run doesn't meet them; the hosts are removed
+# again then, one a test was starting as it got TERM included
+interrupted() {
+  local pid i tests=()
   trap - INT TERM
   for pid in "${lane_pids[@]}"; do
     kill "$pid" 2> /dev/null
   done
-  for pid in $(cat "$lanes"/lane*.pid 2> /dev/null); do
-    kill "$pid" 2> /dev/null
+  for i in 1 2; do
+    for pid in $(cat "$lanes"/lane*.pid 2> /dev/null); do
+      kill -TERM -- "-$pid" 2> /dev/null && tests+=("$pid")
+    done
+    sleep 0.2
   done
-  [ ${#stand_in_hosts[@]} -eq 0 ] || docker rm -f "${stand_in_hosts[@]}" > /dev/null 2>&1
+  remove_stand_in_hosts
+  for ((i = 0; i < 30; i++)); do
+    alive "${tests[@]}" || break
+    sleep 1
+  done
+  remove_stand_in_hosts
   rm -rf "$lanes"
   echo "interrupted: every lane stopped" >&2
   exit 130

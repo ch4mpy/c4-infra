@@ -43,8 +43,9 @@ git_() {
 
 # <name> <covers…>: prints "<name> 1" to "<name> 3", 0.3 s apart ($work/sleep-<name> changes the
 # pause), logs its start and end with the run's RUN_ID, its pid in $work/pid-<run> and its sleeps'
-# in $work/sleeps-<run>; a stand-in one keeps a container named $STAND_IN_NAME meanwhile;
-# $work/fail-<name> fails it
+# in $work/sleeps-<run> (in the foreground, as a real test's commands); a stand-in one keeps a
+# container named $STAND_IN_NAME meanwhile; $work/fail-<name> fails it, $work/kill-lane-<name> kills
+# its lane (its parent) first
 fake_test() {
   local name=$1
   shift
@@ -59,11 +60,11 @@ if [[ $name == *.stand-in ]]; then
   docker run -d --name "\$STAND_IN_NAME" alpine:3 sleep 600 > /dev/null
   echo "$name stand-in \$STAND_IN_NAME \$STAND_IN_VOLUME"
 fi
+[ ! -e "$work/kill-lane-$name" ] || kill -9 \$PPID
 for line in 1 2 3; do
   echo "$name \$line"
-  sleep "\$(cat "$work/sleep-$name" 2> /dev/null || echo 0.3)" &
-  echo \$! >> "$work/sleeps-\${RUN_ID:-run}"
-  wait \$!
+  sh -c 'echo \$\$ >> "\$1"; exec sleep "\$2"' sh "$work/sleeps-\${RUN_ID:-run}" \
+    "\$(cat "$work/sleep-$name" 2> /dev/null || echo 0.3)"
 done
 echo "\${RUN_ID:-run} $name end \$EPOCHREALTIME" >> "$work/order.log"
 [ ! -e "$work/fail-$name" ]
@@ -176,20 +177,42 @@ check "PA-01: the two others together on the other one" \
 
 # PA-03: under 9 GiB, one stand-in lane, said
 SUITE_DOCKER_MEMORY=6206390272 suite small.log --all
-check "PA-03: 6 GiB: the run says so" grep -qF '== Docker has 5 GiB, under the 10 GiB two stand-in lanes need (CLAUDE.md): one stand-in lane' "$work/small.log"
+SUITE_DOCKER_MEMORY=6G suite not-a-number.log --all
+check "PA-03: a memory that isn't a number counts as none" grep -qF '== Docker reports 0.0 GiB' "$work/not-a-number.log"
+check "PA-03: 6 GiB: the run says so" grep -qF '== Docker reports 5.8 GiB, under the 9 GiB of Docker Desktop given 10 GiB, which two stand-in lanes need (CLAUDE.md): one stand-in lane' "$work/small.log"
 check "PA-03: 6 GiB: one host for the three stand-in tests" \
   test "$(stand_in_of small.log 0003-three.stand-in)|$(stand_in_of small.log 0005-five.stand-in)" \
   = "$STAND_IN_NAME $STAND_IN_VOLUME|$STAND_IN_NAME $STAND_IN_VOLUME"
 check "PA-03: 6 GiB: still passes" grep -qx 'verification passed' "$work/small.log"
 
-# AC-03: a failed stand-in test, the other lanes go on
+# PA-01: a test never run before beside one that was: each still on a host of its own
+printf '%s\n' "tests/0003-three.stand-in.sh 30000000" > "$durations"
+suite new-test.log --all
+check "PA-01: a new test and a known one: the run passes" passed new-test.log
+check "PA-01: a new test and a known one: on two hosts" \
+  test "$(stand_in_of new-test.log 0003-three.stand-in)" != "$(stand_in_of new-test.log 0004-four.stand-in)"
+
+# AC-03: a failed stand-in test, the other lanes go on; its duration isn't recorded
+four_before=$(grep '^tests/0004-four.stand-in.sh ' "$durations")
 touch "$work/fail-0004-four.stand-in"
 suite failed.log --all
 rm "$work/fail-0004-four.stand-in"
+check "a failed test's duration isn't recorded" grep -qxF "$four_before" "$durations"
 check "AC-03: exit 1" test "$status" -eq 1
 check "AC-03: listed under FAILED" grep -qxF '  tests/0004-four.stand-in.sh' "$work/failed.log"
 check "AC-03: every other test ran" ran_set failed.log "0001-one 0002-two 0003-three.stand-in 0004-four.stand-in 0005-five.stand-in"
 check "AC-06: no stand-in host left after a run that failed" no_host_left
+
+# a lane gone before its tests end (killed): the run doesn't wait for them, they fail
+touch "$work/kill-lane-0001-one"
+SECONDS=0
+timeout 120 bash "$repo/tests/run.sh" --all > "$work/lane-gone.log" 2>&1
+status=$?
+took=$SECONDS
+rm "$work/kill-lane-0001-one"
+check "a lane gone: the run ends (exit 1, in $took s)" test "$status" -eq 1
+check "a lane gone: its tests are listed under FAILED" grep -qxF '  tests/0002-two.sh' "$work/lane-gone.log"
+check "a lane gone: saying why" grep -qF -- '-- tests/0002-two.sh: no result, its lane ended before it' "$work/lane-gone.log"
 
 # AC-05: a run with lanes holds the lock until its last lane ends, kill -9 included; a run
 # interrupted leaves no test running. A run is started as a terminal starts it (SIGINT at its
@@ -217,9 +240,9 @@ first_start_after_last_end() { # <second run> <first run>
     END { if (first == "" || first <= last) { print "first start of " b ": " first ", last end of " a ": " last; exit 1 } }
   ' "$work/order.log"
 }
-none_running() { # <run>: none of its fake tests' processes live
+none_running() { # <run>: none of its fake tests' processes live, nor their commands
   local pid left=""
-  for pid in $(cat "$work/pid-$1" 2> /dev/null); do
+  for pid in $(cat "$work/pid-$1" "$work/sleeps-$1" 2> /dev/null); do
     kill -0 "$pid" 2> /dev/null && left="$left $pid"
   done
   [ -z "$left" ] || { echo "still running:$left"; ps -o pid,args -p ${left// /,} 2> /dev/null; return 1; }
@@ -235,6 +258,7 @@ for ending in waits kill-9; do
   check "AC-05, $ending: the next run waits" grep -q '^waiting for the run of ' "$work/after-$ending.log"
   check "AC-05, $ending: and starts after its last lane's end" first_start_after_last_end "after-$ending" "$ending"
 done
+check "AC-05, kill-9: no lane starts another test" test -z "$(grep '^kill-9 0002-two start' "$work/order.log")"
 
 echo 30 > "$work/sleep-0004-four.stand-in"
 as_terminal interrupted interrupted.log --all
