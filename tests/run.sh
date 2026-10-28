@@ -212,6 +212,7 @@ lane() { # <k> <stand-in name, "" for none> <stand-in volume> <index…>
     echo $! > "$lanes/lane$k.pid"
     wait $!
     status=$?
+    rm -f "$lanes/lane$k.pid"
     echo "$status $(($(micros) - start))" > "$lanes/$i.ending" && mv "$lanes/$i.ending" "$lanes/$i.done"
   done
 }
@@ -224,7 +225,7 @@ TWO_STAND_IN_LANES_MEMORY=$((9 * GIB))
 # test in lane 1; only this shell prints, each test's output whole once it ends (PA-02)
 in_lanes() {
   local i k others=() stand_ins=() d name volume known=0 total=0 estimate
-  local -a load=() members=() took=() lane_names=() lane_volumes=() lane_of=() lane_pids=() lane_tests=()
+  local -a load=() members=() recorded_took=() lane_names=() lane_volumes=() lane_of=() lane_pids=() lane_tests=()
   local memory=${SUITE_DOCKER_MEMORY:-$(docker info --format '{{.MemTotal}}' 2> /dev/null)}
   local stand_in_lanes=2
   for i in "${!selected[@]}"; do
@@ -250,8 +251,8 @@ in_lanes() {
   # the longest first, each to the least loaded lane; a test never run before counts as the average
   # of those that were (a second when none was)
   for i in "${stand_ins[@]}"; do
-    took[i]=$(recorded "${selected[$i]}")
-    [ "${took[i]}" -eq 0 ] || { known=$((known + 1)); total=$((total + took[i])); }
+    recorded_took[i]=$(recorded "${selected[$i]}")
+    [ "${recorded_took[i]}" -eq 0 ] || { known=$((known + 1)); total=$((total + recorded_took[i])); }
   done
   estimate=1000000
   [ "$known" -eq 0 ] || estimate=$((total / known))
@@ -261,13 +262,13 @@ in_lanes() {
     load[k]=$((load[k] + d))
     members[k]+=" $i"
     lane_of[i]="lane $k, stand-in ${lane_names[k]}"
-  done < <(for i in "${stand_ins[@]}"; do d=${took[i]}; [ "$d" -gt 0 ] || d=$estimate; echo "$d $i"; done | sort -k1,1nr -k2,2n)
+  done < <(for i in "${stand_ins[@]}"; do d=${recorded_took[i]}; [ "$d" -gt 0 ] || d=$estimate; echo "$d $i"; done | sort -k1,1nr -k2,2n)
   for i in "${others[@]}"; do
     lane_of[i]="lane 1"
   done
 
   lanes=$(mktemp -d)
-  trap 'interrupted' INT TERM
+  trap 'interrupted' INT TERM HUP
   if [ ${#others[@]} -gt 0 ]; then
     lane 1 "" "" "${others[@]}" &
     lane_pids[1]=$! lane_tests[1]="${others[*]}"
@@ -313,7 +314,7 @@ in_lanes() {
     [ "$remaining" -eq 0 ] || sleep 1
   done
   wait "${lane_pids[@]}"
-  trap - INT TERM
+  trap - INT TERM HUP
   rm -rf "$lanes"
 }
 
@@ -329,13 +330,13 @@ alive() { # <pid…>: one of them still runs
   return 1
 }
 
-# Ctrl-C or TERM during lanes: no lane starts another test, each running test's process group gets
-# TERM (twice: a test forked as its lane stopped), the stand-in hosts are removed, and the run ends
-# once those tests have (30 s at most), so that the next run doesn't meet them; the hosts are removed
-# again then, one a test was starting as it got TERM included
+# Ctrl-C, TERM or a hangup (the terminal or ssh session closed) during lanes: no lane starts another
+# test, each running test's process group gets TERM (twice: a test forked as its lane stopped), the
+# stand-in hosts are removed, and the run ends once those tests have (30 s at most), so that the next
+# run doesn't meet them; the hosts are removed again then, one a test was starting as it got TERM included
 interrupted() {
   local pid i tests=()
-  trap - INT TERM
+  trap - INT TERM HUP
   for pid in "${lane_pids[@]}"; do
     kill "$pid" 2> /dev/null
   done

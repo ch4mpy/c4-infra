@@ -12,6 +12,7 @@
 # Measured at 0022's step 1 (Linux, Docker Desktop given 12 GiB): two stand-in tests at once, each on
 # its own stand-in host, beside the dev stack, both pass (0003-demo-deploy 123 s, 0012-themes 298 s,
 # its new volume pulling its images); the sum of docker stats peaks at 6000 MiB, 50 % of 11955 MiB.
+# Not measured under Git Bash (set -m, a process group's TERM, Ctrl-C in a Windows console).
 #
 # covers: tests/run.sh tests/lib/suite-lock.sh
 set -uo pipefail
@@ -110,11 +111,14 @@ no_start_line() { # <log>
   ! grep -n ' started (lane ' "$work/$1"
 }
 
-# every line between a test's "== tests/<name>.sh" and its "-- tests/<name>.sh: …" is its own
+# every line between a test's "== tests/<name>.sh" and its "-- tests/<name>.sh: <n.n> s" is its own
 whole_blocks() { # <log>
   awk '
     /^== tests\/[^ :]*\.sh$/ { name = $2; sub(/^tests\//, "", name); sub(/\.sh$/, "", name); inside = 1; next }
-    inside && /^-- tests\// { inside = 0; next }
+    inside && /^-- tests\// {
+      if (index($0, "-- tests/" name ".sh: ") != 1 || $0 !~ / [0-9]+\.[0-9] s$/) { print name "'"'"'s block closed by: " $0; bad = 1 }
+      inside = 0; next
+    }
     inside && index($0, name " ") != 1 { print "in " name "'"'"'s block: " $0; bad = 1 }
     END { exit bad }
   ' "$work/$1" || { cat "$work/$1"; return 1; }
@@ -195,12 +199,20 @@ check "PA-01: a new test and a known one: on two hosts" \
 # AC-03: a failed stand-in test, the other lanes go on; its duration isn't recorded
 four_before=$(grep '^tests/0004-four.stand-in.sh ' "$durations")
 touch "$work/fail-0004-four.stand-in"
-suite failed.log --all
+RUN_ID=failed suite failed.log --all
 rm "$work/fail-0004-four.stand-in"
+ended() { # <run> <names>: each one ran to its end
+  local name
+  for name in $2; do
+    grep -q "^$1 $name end " "$work/order.log" || { echo "$name didn't end"; return 1; }
+  done
+}
 check "a failed test's duration isn't recorded" grep -qxF "$four_before" "$durations"
 check "AC-03: exit 1" test "$status" -eq 1
-check "AC-03: listed under FAILED" grep -qxF '  tests/0004-four.stand-in.sh' "$work/failed.log"
-check "AC-03: every other test ran" ran_set failed.log "0001-one 0002-two 0003-three.stand-in 0004-four.stand-in 0005-five.stand-in"
+check "AC-03: FAILED lists it alone" test "$(sed -n '/^FAILED:$/,$p' "$work/failed.log")" = "$(printf 'FAILED:\n  tests/0004-four.stand-in.sh')"
+check "AC-03: every other test ran to its end, in the other lanes as in its own" \
+  ended failed "0001-one 0002-two 0003-three.stand-in 0005-five.stand-in"
+check "AC-03: no test left without a result" test -z "$(grep -- ': no result, ' "$work/failed.log")"
 check "AC-06: no stand-in host left after a run that failed" no_host_left
 
 # a lane gone before its tests end (killed): the run doesn't wait for them, they fail
@@ -272,4 +284,14 @@ check "AC-05, interrupted: it says so" grep -qF 'interrupted: every lane stopped
 sleep 2
 check "AC-05, interrupted: no test of any lane goes on" none_running interrupted
 check "AC-06: no stand-in host left after a run interrupted" no_host_left
+
+# a hangup (the terminal or ssh session closed: SIGHUP to the run's process group) as Ctrl-C
+as_terminal hangup hangup.log --all
+check "AC-05, a hangup: its stand-in lane has started" started hangup 0004-four.stand-in
+sleep 1
+kill -HUP -- "-$holder"
+wait "$holder" 2> /dev/null
+sleep 2
+check "AC-05, a hangup: no test of any lane goes on" none_running hangup
+check "AC-06: no stand-in host left after a hangup" no_host_left
 finish
