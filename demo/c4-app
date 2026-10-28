@@ -568,6 +568,15 @@ in_database() { # <container>
   item_marker=c4-app.$app.$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
 }
 
+# E5: a throwaway container, its id in a cidfile of the run's, labelled with the application (docker ps
+# --filter label=c4-infra.c4-app finds it); sets throwaway, its docker run options
+throwaway=()
+in_throwaway() {
+  forget_item
+  item_cid=$(mktemp -u "$run/XXXXXXXX.cid")
+  throwaway=(--cidfile "$item_cid" --label "c4-infra.c4-app=$app" "${THROWAWAY[@]}")
+}
+
 # <command> under <limit>, in the background with the lock's descriptor closed, then waited for: a
 # signal reaches the trap at once. Its status; a cut (124, or 137 once timeout's KILL fired) is stopped
 # and returns 124, its line in cut. Otherwise the item stays recorded: the caller forgets or stops it
@@ -593,6 +602,8 @@ stop_item() {
   [ -z "$item_pid" ] || kill -TERM "$item_pid" 2> /dev/null || true
   if [ -n "$item_marker" ]; then
     stop_marked || status=1
+  elif [ -n "$item_cid" ]; then
+    stop_throwaway || status=1
   fi
   [ -z "$item_pid" ] || wait "$item_pid" 2> /dev/null || true
   forget_item
@@ -659,6 +670,26 @@ stop_marked() {
   [ -z "$names" ] || what+=("$names in $item_container")
   [ ${#ended[@]} -eq 0 ] || what+=("${#ended[@]} session$([ ${#ended[@]} -eq 1 ] || echo s) of its database")
   item_stopped=${what[0]:-nothing left running}${what[1]:+, ${what[1]}}
+}
+
+# E5: the item's throwaway container (its cidfile's id, once its CLI has ended if it had none yet)
+# removed, running or paused, and confirmed gone; gone already counts as stopped
+stop_throwaway() {
+  local deadline=$((SECONDS + STOP_WAIT)) id removed=
+  [ -s "$item_cid" ] || [ -z "$item_pid" ] || wait "$item_pid" 2> /dev/null || true
+  id=$(cat "$item_cid" 2> /dev/null || true)
+  [[ $id =~ ^[0-9a-f]{64}$ ]] || return 0
+  while docker inspect "$id" > /dev/null 2>&1; do
+    ! docker rm -f "$id" > /dev/null 2>&1 || removed=1
+    docker inspect "$id" > /dev/null 2>&1 || break
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "c4-app: the throwaway container $id didn't stop within $STOP_WAIT s" >&2
+      item_stopped="not its throwaway container"
+      return 1
+    fi
+    sleep 0.5
+  done
+  [ -z "$removed" ] || item_stopped="its throwaway container"
 }
 
 iec() { numfmt --to=iec-i --suffix=B "$1"; }
@@ -933,7 +964,8 @@ take_backup() {
     stop_mounters ${volumes_of[$service]}
     for volume in ${volumes_of[$service]}; do
       file=$service.${volume#"${app}_"}.tar
-      write_item "$file" docker run "${THROWAWAY[@]}" --mount "type=volume,src=$volume,dst=/data" --entrypoint tar "$tar_image" \
+      in_throwaway
+      write_item "$file" docker run "${throwaway[@]}" --mount "type=volume,src=$volume,dst=/data" --entrypoint tar "$tar_image" \
         --sparse --numeric-owner -cpf - -C /data .
       written+=("$file")
     done
