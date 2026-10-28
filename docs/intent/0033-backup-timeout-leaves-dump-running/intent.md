@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (0027's verifier and review round, 2026-10-28)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
