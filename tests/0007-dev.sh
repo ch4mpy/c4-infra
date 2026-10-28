@@ -11,10 +11,9 @@
 #   networks  AC-10 (dev): Faito registered, c4-infra.faito holds the five shared services and not
 #             keycloak-db, which is on c4-infra.keycloak-db only; compose's model has them there too
 #   tickee    AC-07 (without LDAP since 0023): Tickee registered (its network only), an HTTP stand-in
-#             on c4-infra.tickee (caddy respond, as tickee.gateway-standin, where Tickee's gateway would
-#             be): Keycloak reaches it, as back-channel logout does, a container on c4-infra.faito
-#             doesn't, by name nor by address; the stand-in removed, and Tickee's network when this
-#             test created it
+#             on c4-infra.tickee (caddy respond, as tickee.network-standin, a container of Tickee's
+#             there): Keycloak reaches it, a container on c4-infra.faito doesn't, by name nor by
+#             address; the stand-in removed, and Tickee's network when this test created it
 #   guard     compose.apps.yml is the same (cksum) before and after `tests/0001-loopback-ports.sh
 #             resolution`, which runs up.sh with a fake docker; with INFRA_ENV=demo (a scratch copy of
 #             networks.sh, its .env tests/fixtures/0003/demo.env), `networks.sh compose-file` puts the
@@ -39,7 +38,7 @@ RABBITMQ=c4-infra.rabbitmq
 FAITO_DIR=${FAITO_DIR:-../faito}
 SHARED='c4-infra.grafana-lgtm c4-infra.keycloak c4-infra.mailpit c4-infra.rabbitmq c4-infra.reverse-proxy'
 STANDIN_IMAGE=caddy:2.11.4-alpine
-STANDIN=tickee.gateway-standin
+STANDIN=tickee.network-standin
 
 work=$(mktemp -d)
 remove_tickee=false
@@ -167,15 +166,15 @@ part_tickee() {
       caddy respond --listen :7080 "$STANDIN" > /dev/null
   }
   check "Tickee's HTTP stand-in starts on c4-infra.tickee ($STANDIN, $STANDIN_IMAGE)" start_standin
-  keycloak_reaches() { # 30 s at most, while the stand-in starts
-    local deadline=$((SECONDS + 30))
-    until MSYS_NO_PATHCONV=1 docker exec c4-infra.keycloak bash -c "exec 3<>/dev/tcp/$STANDIN/7080" \
-      < /dev/null 2> /dev/null; do
-      [ "$SECONDS" -lt "$deadline" ] || { echo "no answer in 30 s"; return 1; }
+  keycloak_reaches() { # 30 s at most, while the stand-in starts; the last attempt's error shown
+    local deadline=$((SECONDS + 30)) error
+    until error=$(MSYS_NO_PATHCONV=1 docker exec "$KC_CONTAINER" bash -c "exec 3<>/dev/tcp/$STANDIN/7080" \
+      < /dev/null 2>&1); do
+      [ "$SECONDS" -lt "$deadline" ] || { echo "no answer in 30 s: ${error:-none}"; return 1; }
       sleep 1
     done
   }
-  check "AC-07: Keycloak reaches $STANDIN:7080, as back-channel logout does" keycloak_reaches
+  check "AC-07: Keycloak reaches $STANDIN:7080, a container on Tickee's network" keycloak_reaches
   check "control: from c4-infra.tickee, $STANDIN:7080 answers" \
     docker run --rm --network c4-infra.tickee alpine:3 nc -z -w 3 "$STANDIN" 7080
   check "AC-07: from c4-infra.faito, $STANDIN:7080 can't be reached by name" \

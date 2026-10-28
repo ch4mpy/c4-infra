@@ -117,9 +117,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `compose-observability.yml`, `compose-rabbitmq.yml`, `compose-reverse-proxy.yml`,
    `nginx-reverse-proxy/`, `keycloak/Dockerfile`, `keycloak/HealthCheck.java` and the Keycloak and
    mail entries of `.env` and `secrets/`. Another container of the project that the shared
-   services must reach (its gateway, which Keycloak calls for back-channel logout; a directory a
-   realm federates, which the project runs and maintains itself, the stack providing none) joins
-   the project's own network
+   services must reach (a directory a realm federates, which the project runs and maintains itself,
+   the stack providing none; the gateway runs on the host, step 4) joins the project's own network
    `c4-infra.<project>` as an external one, never `c4-infra` (the shared services' own), under a
    unique container name: `deploy-dev.sh`'s registration creates that network and attaches the
    shared services to it (c4-infra's README, "One network per application").
