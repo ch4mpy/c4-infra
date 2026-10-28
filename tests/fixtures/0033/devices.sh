@@ -61,7 +61,7 @@ unwatch() { [ ! -s /root/watcher.pids ] || kill $(cat /root/watcher.pids) 2> /de
 # (never one whose parent is postgres: it would take that for a crash); then Faito's containers started
 free_faito() {
   local pid id init
-  for pid in $(find /proc/[0-9]*/fd -lname /var/lib/c4-apps/.faito.lock 2> /dev/null | cut -d/ -f3 | sort -u); do
+  for pid in $(find /proc/[0-9]*/fd -lname /var/lib/c4-apps/.faito.lock 2> /dev/null | cut -d/ -f3 | LC_ALL=C sort -u); do
     kill -KILL "$pid" 2> /dev/null
   done
   pkill -KILL -x c4-app

@@ -94,7 +94,7 @@ limits() { # <line>…: $LIMITS, root's, 0644
 # RQ-04: nothing holds Faito's lock once the cut command has ended (the processes holding it named)
 lock_free() {
   on_host 'flock -n /var/lib/c4-apps/.faito.lock true' && return 0
-  echo "held by: $(on_host 'for pid in $(find /proc/[0-9]*/fd -lname /var/lib/c4-apps/.faito.lock 2> /dev/null | cut -d/ -f3 | sort -u); do cat "/proc/$pid/comm"; done' | paste -sd' ')"
+  echo "held by: $(on_host 'for pid in $(find /proc/[0-9]*/fd -lname /var/lib/c4-apps/.faito.lock 2> /dev/null | cut -d/ -f3 | LC_ALL=C sort -u); do cat "/proc/$pid/comm"; done' | paste -sd' ')"
   return 1
 }
 no_throwaway() { is "$(on_host 'throwaways' | paste -sd' ')" ""; }
