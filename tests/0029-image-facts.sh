@@ -2,15 +2,16 @@
 # 0029: the stack's Keycloak image, as an application's tests run it, says and does what
 # keycloak-image.properties describes (facts of the image, measured; run by --all):
 #
-#   - (a) its label org.opencontainers.image.version is KC_VERSION; its environment's KC_* are the
-#     description's;
+#   - (a) the image there (pulled when it isn't); its label org.opencontainers.image.version is
+#     KC_VERSION; its environment holds each setting of the description;
 #   - (b) it holds no credential: no environment variable or label named after a password, a secret,
 #     a token, a credential or a private key, nor valued like one; the files it adds or changes over
 #     quay.io/keycloak/keycloak:<KC_VERSION> are the healthcheck, the stack's themes (as
 #     keycloak/stack-themes/ holds them) and their JAR, and kc.sh build's output: no realm, no import;
 #   - (c) started as the README says, `-e KC_DB=dev-file <image> start-dev` and a bootstrap
 #     administrator, nothing else: ready, the master realm answering over plain HTTP under /auth,
-#     the description's features enabled, the simulated providers' login themes there.
+#     the description's features enabled and no other preview or experimental one, the simulated
+#     providers' login themes there.
 #
 #   bash tests/0029-image-facts.sh [<image>]   (c4-infra/keycloak, up.sh's build, by default; the
 #                                              published reference after its publication)
@@ -42,11 +43,13 @@ trap cleanup EXIT
 docker rm -f "$NAME" > /dev/null 2>&1
 
 # (a) what the image says
+docker image inspect "$IMAGE" > /dev/null 2>&1 || docker pull --quiet "$IMAGE" > /dev/null
+check "(a) $IMAGE is there" docker image inspect "$IMAGE"
 version=$(described KC_VERSION)
 check "(a) $IMAGE: org.opencontainers.image.version is $version" \
   test "$(docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.version"}}' | tr -d '\r')" = "$version"
 docker image inspect "$IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}' | tr -d '\r' > "$work/env"
-for key in KC_DB KC_HTTP_RELATIVE_PATH KC_HEALTH_ENABLED KC_METRICS_ENABLED KC_CACHE KC_FEATURES; do
+for key in $(grep -E '^[A-Z]' "$DESCRIPTION" | cut -d= -f1 | grep -vxE 'KC_VERSION|KC_PUBLISHED_IMAGE'); do
   check "(a) its $key is the description's ($(described "$key"))" grep -qxF "$key=$(described "$key")" "$work/env"
 done
 
@@ -55,17 +58,20 @@ docker image inspect "$IMAGE" --format '{{range $k, $v := .Config.Labels}}{{prin
   | grep -v '^com\.docker\.compose\.' > "$work/labels"
 credential_free() {
   local found
+  [ -s "$work/env" ] || { echo "no environment read"; return 1; }
   found=$(cut -d= -f1 "$work/env" "$work/labels" | grep -iE 'pass|secret|token|credential|private'
     cut -d= -f2- "$work/env" "$work/labels" | grep -iE 'pass|secret|credential|private')
   [ -z "$found" ] || { printf '%s\n' "$found"; return 1; }
 }
 check "(b) no environment variable or label holds a credential" credential_free
-files() { # <image>: each file of /opt/keycloak and its checksum
-  docker run --rm --entrypoint bash "$1" -c 'cd /opt/keycloak && find . -type f -o -type l | LC_ALL=C sort \
-    | while read -r f; do printf "%s %s\n" "$f" "$(sha256sum "$f" | cut -d" " -f1)"; done'
+files() { # <image>: each file of /opt/keycloak and its checksum (the image has no awk)
+  docker run --rm --entrypoint bash "$1" -c 'cd /opt/keycloak && find . \( -type f -o -type l \) -print0 | LC_ALL=C sort -z \
+    | xargs -0 sha256sum | while read -r sum file; do printf "%s %s\n" "$file" "$sum"; done'
 }
 files "quay.io/keycloak/keycloak:$version" > "$work/upstream"
 files "$IMAGE" > "$work/image"
+check "(b) the files of both images listed ($(wc -l < "$work/upstream"), $(wc -l < "$work/image"))" \
+  eval '[ "$(wc -l < "$work/upstream")" -gt 100 ] && [ "$(wc -l < "$work/image")" -gt 100 ]'
 added_expected() {
   local other
   other=$(LC_ALL=C comm -13 "$work/upstream" "$work/image" | cut -d' ' -f1 \
@@ -95,18 +101,22 @@ master_answers() {
     head -n 1 <&3' | grep -q ' 200 '
 }
 check "(c) the master realm answers over plain HTTP, under /auth" master_answers
-log=$(docker logs "$NAME" 2>&1)
-# the log names each feature with its version (cimd:v1)
-enabled=$( { kc_features Preview "$log"; kc_features Experimental "$log"; } | tr ',' '\n' | sed 's/:v[0-9]*$//' | grep . \
-  | LC_ALL=C sort | paste -sd, -)
-check "(c) the features enabled are the description's ($enabled)" \
-  test "$enabled" = "$(described KC_FEATURES | tr ',' '\n' | LC_ALL=C sort | paste -sd, -)"
-login_themes() {
-  docker exec -e KC_CLI_PASSWORD "$NAME" /opt/keycloak/bin/kcadm.sh get serverinfo \
-    --no-config --server "$SERVER" --realm master --user admin 2> /dev/null | jq -r '.themes.login[].name'
+docker exec -e KC_CLI_PASSWORD "$NAME" /opt/keycloak/bin/kcadm.sh get serverinfo \
+  --no-config --server "$SERVER" --realm master --user admin 2> /dev/null > "$work/serverinfo.json"
+# serverinfo names a feature in capitals (token-exchange-delegation: TOKEN_EXCHANGE_DELEGATION), with its type
+features() { described KC_FEATURES | tr ',' '\n' | tr 'a-z-' 'A-Z_' | grep . | LC_ALL=C sort; }
+for feature in $(features); do
+  check "(c) the feature $feature is enabled" \
+    jq -e --arg f "$feature" 'any(.features[]; .name == $f and .enabled)' "$work/serverinfo.json"
+done
+other_features() {
+  local other
+  other=$(jq -r '.features[] | select(.enabled and (.type == "PREVIEW" or .type == "EXPERIMENTAL")) | .name' \
+    "$work/serverinfo.json" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
+  [ -z "$other" ] || { echo "enabled, not described:"; printf '%s\n' "$other"; return 1; }
 }
-login_themes > "$work/themes"
+check "(c) no other preview or experimental feature is enabled" other_features
 for theme in simulated-google simulated-facebook simulated-apple; do
-  check "(c) the login theme $theme is there" grep -qxF "$theme" "$work/themes"
+  check "(c) the login theme $theme is there" jq -e --arg t "$theme" 'any(.themes.login[]; .name == $t)' "$work/serverinfo.json"
 done
 finish

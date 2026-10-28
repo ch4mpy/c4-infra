@@ -468,19 +468,23 @@ a name, gets the realm's first-login form when its user profile requires them.
 An application's tests that start a Keycloak of their own (Testcontainers, a compose file of its CI)
 run the stack's (intent 0029). [`keycloak-image.properties`](keycloak-image.properties) describes
 it: `KC_VERSION`, the settings and `KC_FEATURES` as [`keycloak/Dockerfile`](keycloak/Dockerfile)
-sets them, and `KC_PUBLISHED_IMAGE`, the stack's image in GHCR, a public package, tagged
-`<version>-<tree of keycloak/>`: a tag never moves, a change of `keycloak/` is a new tag (the
-deployment's own tag, the tree alone, stays beside it), and the package can't go private again.
+sets them, and `KC_PUBLISHED_IMAGE`, the stack's image in GHCR, tagged
+`<version>-<tree of keycloak/>` by the demo workflow: a tag never moves, a change of `keycloak/` is
+a new tag (the deployment's own tag, the tree alone, stays beside it). The package is public once
+its owner made it so, once and for good ([docs/demo-setup.md](docs/demo-setup.md), step 7): until
+then, pulling it needs a GitHub login with `read:packages`.
 `tests/0029-description.sh` keeps the description equal to the Dockerfile and to that tree.
 
 - **What to run**: `KC_PUBLISHED_IMAGE`; or, for a test that can't pull it, upstream
   `quay.io/keycloak/keycloak:<KC_VERSION>` with `KC_FEATURES`, `KC_HTTP_RELATIVE_PATH`,
   `KC_HEALTH_ENABLED`, `KC_METRICS_ENABLED` and `KC_CACHE` as the description gives them, without
   the stack's themes. Never a floating tag.
-- **Reading the description**: `KEY=value` lines, no quotes: bash sources it (`set -a;
-  . ../c4-infra/keycloak-image.properties`), Maven reads it as properties
-  (`properties-maven-plugin`'s `read-project-properties`), and a check on the workstation compares
-  the application's pin with it. A CI that can't read c4-infra reads the image itself: its label
+- **Reading the description**: `KEY=value` lines, no quotes: a script reads the key it needs
+  (`sed -n 's/^KC_PUBLISHED_IMAGE=//p' ../c4-infra/keycloak-image.properties`), or sources it in a
+  subshell, never into the environment that starts Keycloak (its `KC_DB` is the stack's,
+  `postgres`); Maven reads it as properties (`properties-maven-plugin`'s
+  `read-project-properties`); a check on the workstation compares the application's pin with it.
+  A CI that can't read c4-infra reads the image itself: its label
   `org.opencontainers.image.version` and its environment (`docker image inspect`).
 - **Starting it**: `start-dev` on a file database, `KC_DB=dev-file` as a variable (the image is
   built for PostgreSQL), a bootstrap administrator of the test's own, nothing else: the image

@@ -76,8 +76,8 @@ jobs:
           KC_VERSION_IMAGE: ${{ steps.image.outputs.version_image }}
           PROXY_IMAGE: ${{ steps.image.outputs.proxy_image }}
 
+      # every run: the references' check below uses its imagetools
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: steps.existing.outputs.keycloak != 'true' || steps.existing.outputs.keycloak_version != 'true' || steps.existing.outputs.proxy != 'true'
 
       - name: Push c4-infra-keycloak
         if: steps.existing.outputs.keycloak != 'true'

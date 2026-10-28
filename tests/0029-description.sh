@@ -46,6 +46,11 @@ sourced_as_written() { # <description>: bash's value of each key is its line's t
       || { echo "$key: sourced as something else than '$value'"; return 1; }
   done < <(grep -E '^[A-Z]' "$1")
 }
+env_lines_read() { # <Dockerfile>: every ENV line is one KC_*=value, which built reads
+  local other
+  other=$(grep -nE '^[[:space:]]*ENV[[:space:]]' "$1" | grep -vE '^[0-9]+:ENV KC_[A-Z0-9_]+=[^[:space:]]*$')
+  [ -z "$other" ] || { echo "ENV lines of another form:"; printf '%s\n' "$other"; return 1; }
+}
 built() { # <Dockerfile>: KEY=value of its ARG KC_VERSION and ENV KC_* lines
   sed -nE 's/^ARG (KC_VERSION)=(.*)$/\1=\2/p; s/^ENV (KC_[A-Z0-9_]+)=(.*)$/\1=\2/p' "$1"
 }
@@ -109,34 +114,41 @@ refused_naming() { # <text> <command…>: the command fails, its output holding 
 
 check "(a) the description's lines are comments or KEY=value, no CR" form "$DESCRIPTION"
 check "(b) sourced by bash, each value is its line's text" sourced_as_written "$DESCRIPTION"
+check "(c) every ENV line of keycloak/Dockerfile is one KC_*=value" env_lines_read "$DOCKERFILE"
 check "(c) its settings are keycloak/Dockerfile's, both ways" same_settings "$DOCKERFILE" "$DESCRIPTION"
 tree=$(keycloak_tree)
 check "(d) keycloak/'s tree read ($tree)" grep -qE '^[0-9a-f]{12}$' <<< "$tree"
 check "(d) KC_PUBLISHED_IMAGE is $REPOSITORY:<KC_VERSION>-$tree" published_here "$DESCRIPTION" "$tree"
 
 # The differences named, on copies
-sed 's/,cimd$//' "$DOCKERFILE" > "$work/feature-removed"
+version=$(built "$DOCKERFILE" | sed -n 's/^KC_VERSION=//p')
+features=$(built "$DOCKERFILE" | sed -n 's/^KC_FEATURES=//p')
+fewer=${features%,*}
+[ "$fewer" != "$features" ] || fewer=
+sed "s/^ENV KC_FEATURES=.*/ENV KC_FEATURES=$fewer/" "$DOCKERFILE" > "$work/feature-removed"
 check "(c) a feature removed from the Dockerfile: named" \
-  refused_naming "KC_FEATURES: $work/feature-removed says token-exchange-delegation,parameterized-scopes, $DESCRIPTION says token-exchange-delegation,parameterized-scopes,cimd" \
+  refused_naming "KC_FEATURES: $work/feature-removed says $fewer, $DESCRIPTION says $features" \
   same_settings "$work/feature-removed" "$DESCRIPTION"
-sed 's/^KC_VERSION=.*/KC_VERSION=26.9.0/' "$DESCRIPTION" > "$work/other-version"
+sed "s/^KC_VERSION=.*/KC_VERSION=$version.0/" "$DESCRIPTION" > "$work/other-version"
 check "(c) another version in the description: named" \
-  refused_naming "KC_VERSION: $DOCKERFILE says 26.8.1, $work/other-version says 26.9.0" same_settings "$DOCKERFILE" "$work/other-version"
+  refused_naming "KC_VERSION: $DOCKERFILE says $version, $work/other-version says $version.0" same_settings "$DOCKERFILE" "$work/other-version"
 { cat "$DOCKERFILE"; echo 'ENV KC_LOG_LEVEL=info'; } > "$work/env-added"
 check "(c) an ENV added to the Dockerfile: named" \
   refused_naming "KC_LOG_LEVEL: in $work/env-added, not in $DESCRIPTION" same_settings "$work/env-added" "$DESCRIPTION"
 { cat "$DESCRIPTION"; echo 'KC_LOG_LEVEL=info'; } > "$work/key-added"
 check "(c) a key added to the description: named" \
   refused_naming "KC_LOG_LEVEL: in $work/key-added, not in $DOCKERFILE" same_settings "$DOCKERFILE" "$work/key-added"
+{ cat "$DOCKERFILE"; echo 'ENV KC_LOG_LEVEL info'; } > "$work/env-unread"
+check "(c) an ENV line of another form: named" refused_naming 'ENV KC_LOG_LEVEL info' env_lines_read "$work/env-unread"
 check "(d) another tree: named" \
-  refused_naming "keycloak/ gives $REPOSITORY:26.8.1-000000000000" published_here "$DESCRIPTION" 000000000000
+  refused_naming "keycloak/ gives $REPOSITORY:$version-000000000000" published_here "$DESCRIPTION" 000000000000
 git_dir=$(git rev-parse --absolute-git-dir)
 head_tree=$(git rev-parse --short=12 HEAD:keycloak)
 mkdir -p "$work/here/keycloak" "$work/other/keycloak"
 cp "$DOCKERFILE" "$work/here/keycloak/"
 cp "$DOCKERFILE" "$work/other/keycloak/"
 cp "$DESCRIPTION" "$work/here/"
-sed "s|^KC_PUBLISHED_IMAGE=.*|KC_PUBLISHED_IMAGE=$REPOSITORY:26.8.1-000000000000|" "$DESCRIPTION" > "$work/other/$DESCRIPTION"
+sed "s|^KC_PUBLISHED_IMAGE=.*|KC_PUBLISHED_IMAGE=$REPOSITORY:$version-000000000000|" "$DESCRIPTION" > "$work/other/$DESCRIPTION"
 check "(e) the workflow's Compute the images block read" test -n "$(compute_block)"
 if [ "$head_tree" = "$tree" ]; then
   check "(e) the block passes on this description" computed "$work/here"
@@ -147,7 +159,7 @@ else
   echo "# (e) skipped: keycloak/ isn't HEAD's ($tree, HEAD $head_tree), which the workflow reads"
 fi
 check "(e) a description naming another reference: the block stops, naming both" \
-  refused_naming "::error::keycloak-image.properties names $REPOSITORY:26.8.1-000000000000, keycloak/ gives $REPOSITORY:26.8.1-$head_tree" \
+  refused_naming "::error::keycloak-image.properties names $REPOSITORY:$version-000000000000, keycloak/ gives $REPOSITORY:$version-$head_tree" \
   computed "$work/other"
 check "(e) and writes no output" test ! -s "$work/other/output"
 
