@@ -1,0 +1,40 @@
+# 0027 fixture (tests/0027-backup.stand-in.sh): data.yml with a published port on other, which sudo
+# c4-app up refuses
+services:
+  db:
+    image: postgres:18.6
+    container_name: faito.db
+    environment:
+      POSTGRES_USER: fixture-user
+      POSTGRES_DB: fixture-db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    labels:
+      c4-infra.backup: postgres
+    networks: [c4-infra.faito]
+    volumes: [db_data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD, pg_isready, -q, -h, 127.0.0.1, -U, fixture-user, -d, fixture-db]
+      interval: 1s
+      retries: 60
+  files:
+    image: caddy:2.11.4-alpine
+    container_name: faito.files
+    command: [caddy, file-server, --root, /srv, --listen, ':7080']
+    labels:
+      c4-infra.backup: volumes
+    networks: [c4-infra.faito]
+    volumes: [files_data:/srv]
+  other:
+    image: caddy:2.11.4-alpine
+    container_name: faito.other
+    command: [caddy, respond, --listen, ':7080', other]
+    ports: ['7080:7080']
+    networks: [c4-infra.faito]
+    volumes: [cache:/cache]
+networks:
+  c4-infra.faito:
+    external: true
+volumes:
+  db_data: {}
+  files_data: {}
+  cache: {}
