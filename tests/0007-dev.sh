@@ -10,14 +10,18 @@
 #             distribution (25672) listen on its loopback only
 #   networks  AC-10 (dev): Faito registered, c4-infra.faito holds the five shared services and not
 #             keycloak-db, which is on c4-infra.keycloak-db only; compose's model has them there too
-#   tickee    AC-07 (without LDAP since 0023): Tickee registered (its network only), an HTTP stand-in
-#             on c4-infra.tickee (caddy respond, as tickee.network-standin, a container of Tickee's
-#             there): Keycloak reaches it, a container on c4-infra.faito doesn't, by name nor by
-#             address; the stand-in removed, and Tickee's network when this test created it
+#   tickee    AC-07 (without LDAP since 0023): Faito's network there (Faito registered); Tickee
+#             registered (its network only), an HTTP stand-in on c4-infra.tickee (caddy respond, as
+#             tickee.network-standin, a container of Tickee's there): Keycloak reaches it, a container
+#             on c4-infra.faito doesn't, by name nor at any of its addresses: the probe ran there and
+#             its connection failed (0034: a name unresolved, refused or timed out; an address refused
+#             or timed out), any other failure is a KO naming it; the stand-in removed, and Tickee's
+#             network when this test created it
 #   guard     compose.apps.yml is the same (cksum) before and after `tests/0001-loopback-ports.sh
 #             resolution`, which runs up.sh with a fake docker; with INFRA_ENV=demo (a scratch copy of
 #             networks.sh, its .env tests/fixtures/0003/demo.env), `networks.sh compose-file` puts the
-#             reverse proxy on each application's network under ${INFRA_HOST} too; dev's doesn't
+#             reverse proxy on each application's network under ${INFRA_HOST} too; dev's model has it
+#             on c4-infra.faito without that alias
 #   rewrite   review round 1 (2026-10-22): `networks.sh compose-file` in a scratch copy, with a fake
 #             docker answering the labelled network c4-infra.faito: with the daemon answering but no
 #             c4-infra network yet (a fresh host), it lists c4-infra.faito; a leftover
@@ -38,6 +42,10 @@ RABBITMQ=c4-infra.rabbitmq
 FAITO_DIR=${FAITO_DIR:-../faito}
 SHARED='c4-infra.grafana-lgtm c4-infra.keycloak c4-infra.mailpit c4-infra.rabbitmq c4-infra.reverse-proxy'
 STANDIN_IMAGE=caddy:2.11.4-alpine
+PROBE_IMAGE=alpine:3
+# why a probe from c4-infra.faito may fail: busybox nc's words (0034's step 0)
+BY_NAME_REFUSED="bad address|Connection refused|Operation timed out"
+BY_ADDRESS_REFUSED="Connection refused|Operation timed out"
 STANDIN=tickee.network-standin
 
 work=$(mktemp -d)
@@ -91,12 +99,31 @@ holds_shared() { # <network>: the five shared services, and not keycloak-db
 in_list() { # <word> <list>
   [[ " $2 " == *" $1 "* ]]
 }
-# the command fails (a refused connection)
-fails() {
-  if "$@" > /dev/null 2>&1; then
-    echo "it succeeded"
-    return 1
+# nc on <network> to <target>:7080, its words and status (or docker's, when the probe didn't run) in $work/probe.out
+probe() { # <network> <target>
+  MSYS_NO_PATHCONV=1 docker run --rm --network "$1" "$PROBE_IMAGE" \
+    sh -c 'nc -vv -z -w 3 "$1" 7080 2>&1; echo "nc exit $?"' sh "$2" > "$work/probe.out" 2>&1
+  echo "docker run exit $?" >> "$work/probe.out"
+  sed -i 's/\r$//' "$work/probe.out"
+}
+answers() { # <network> <target>
+  probe "$1" "$2"
+  grep -qx 'nc exit 0' "$work/probe.out" || { cat "$work/probe.out"; return 1; }
+}
+# the probe ran on <network> and its connection failed for one of <reasons> (a regex of nc's words)
+unreachable() { # <network> <target> <reasons>
+  probe "$1" "$2"
+  if ! grep -q '^nc exit ' "$work/probe.out"; then
+    echo "the probe didn't run on $1:"
+  elif grep -qx 'nc exit 0' "$work/probe.out"; then
+    echo "the connection succeeded:"
+  elif grep -qx 'nc exit 1' "$work/probe.out" && grep -qE "$3" "$work/probe.out"; then
+    return 0
+  else
+    echo "nc failed for another reason than $3:"
   fi
+  cat "$work/probe.out"
+  return 1
 }
 
 part_rabbitmq() {
@@ -155,7 +182,10 @@ part_networks() {
 }
 
 part_tickee() {
-  local address
+  local address addresses
+  faito_network() { docker network inspect c4-infra.faito > /dev/null 2> "$work/faito.err" || { cat "$work/faito.err"; return 1; }; }
+  check "Faito's network c4-infra.faito is there (Faito registered: bash $FAITO_DIR/deploy-dev.sh, or bash register-app.sh --app faito)" \
+    faito_network
   docker network inspect c4-infra.tickee > /dev/null 2>&1 || remove_tickee=true
   register_tickee() { bash register-app.sh --app tickee > "$work/tickee.log" 2>&1 || { cat "$work/tickee.log"; return 1; }; }
   check "Tickee registers (bash register-app.sh --app tickee: its network only)" register_tickee
@@ -175,20 +205,27 @@ part_tickee() {
     done
   }
   check "AC-07: Keycloak reaches $STANDIN:7080, a container on Tickee's network" keycloak_reaches
-  check "control: from c4-infra.tickee, $STANDIN:7080 answers" \
-    docker run --rm --network c4-infra.tickee alpine:3 nc -z -w 3 "$STANDIN" 7080
+  check "control: from c4-infra.tickee, $STANDIN:7080 answers" answers c4-infra.tickee "$STANDIN"
   check "AC-07: from c4-infra.faito, $STANDIN:7080 can't be reached by name" \
-    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$STANDIN" 7080
-  address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$STANDIN" | tr -d '\r')
-  check "$STANDIN has an address (${address:-none})" test -n "$address"
-  check "AC-07: from c4-infra.faito, $address:7080 can't be reached" \
-    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$address" 7080
+    unreachable c4-infra.faito "$STANDIN" "$BY_NAME_REFUSED"
+  # one address per network the stand-in is on
+  addresses=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' "$STANDIN" | tr -d '\r' | grep .)
+  check "$STANDIN has an address (${addresses:-none})" test -n "$addresses"
+  for address in $addresses; do
+    check "AC-07: from c4-infra.faito, $address:7080 can't be reached" \
+      unreachable c4-infra.faito "$address" "$BY_ADDRESS_REFUSED"
+  done
   docker rm -f "$STANDIN" > /dev/null 2>&1
-  check "the stand-in is removed" test -z "$(docker ps -aq -f "name=^$STANDIN\$")"
+  standin_removed() {
+    local left
+    left=$(docker ps -aq -f "name=^$STANDIN\$" 2> "$work/ps.err") || { echo "docker ps failed:"; cat "$work/ps.err"; return 1; }
+    [ -z "$left" ] || { echo "still there: $left"; return 1; }
+  }
+  check "the stand-in is removed" standin_removed
 }
 
 part_guard() {
-  local before after status scratch model found
+  local before after status scratch model found config_read
   check "compose.apps.yml is there (up.sh)" test -f compose.apps.yml
   before=$(cksum < compose.apps.yml)
   bash tests/0001-loopback-ports.sh resolution > "$work/0001.log" 2>&1
@@ -208,9 +245,15 @@ part_guard() {
     in_list infra.c4-soft.com "$found"
   found=$(jq -r '.services["keycloak-db"].networks | keys | join(" ")' <<< "$model")
   check "demo: keycloak-db on its network only ($found)" test "$found" = keycloak-db
-  found=$(docker compose config --format json | jq -r '.services["reverse-proxy"].networks["c4-infra.faito"].aliases // [] | join(" ")')
-  check "dev: the reverse proxy has no INFRA_HOST alias on c4-infra.faito (${found:-no alias})" \
-    fails in_list host.docker.internal "$found"
+  model=$(docker compose config --format json 2> "$work/config.err") && config_read=true || config_read=false
+  found=$(jq -r '.services["reverse-proxy"].networks["c4-infra.faito"].aliases // [] | join(" ")' <<< "$model" 2> /dev/null)
+  dev_without_alias() {
+    $config_read || { echo "docker compose config failed:"; cat "$work/config.err"; return 1; }
+    jq -e '.services["reverse-proxy"].networks | has("c4-infra.faito")' <<< "$model" > /dev/null \
+      || { echo "dev's model doesn't put the reverse proxy on c4-infra.faito"; return 1; }
+    ! in_list host.docker.internal "$found"
+  }
+  check "dev: the reverse proxy has no INFRA_HOST alias on c4-infra.faito (${found:-no alias})" dev_without_alias
 }
 
 # a path of this machine, as the docker CLI wants it (a Windows path under Git Bash)
