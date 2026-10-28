@@ -10,7 +10,14 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 ## Next
 
 - **0019** and **0025** delivered (2026-10-28).
-- Accepted on 2026-10-28, each on its own branch: **0026** (the demo host doesn't bound an application's logs; spec approved), **0027** (it backs up no application's data; spec approved), **0028** (the migration guide misleads; no spec), **0029** (which Keycloak an application's tests should run; spec approved), **0030** (`new-realm-ids.sh` keeps a user federation's id; bug, no spec), **0031** (no test of a front end's own Permissions-Policy; no spec). Next: their plans (`/sdlc-plan draft <NNNN>`, in plan mode).
+- **0026 to 0031** delivered on 2026-10-28, as one batch (the product owner's decision): planned together; 0026 and 0027 implemented by two agents in worktrees, each on its own stand-in host; one review round per intent; one `bash tests/run.sh --all` on the integration commit 205b8eb, `verification passed` (72 tests, 1764 s), the milestone before the push; the verifiers' documentation fixes rerun at 13474a8 (`--changed 205b8eb --all`, 8 tests); merged into `main` in the batch's order (0031, 0030, 0028, 0026, 0027, 0029). Each `plan.md` holds its evidence.
+- **Waiting for the product owner:** the push of `main` (it deploys the demo host: Loki's, Prometheus', Tempo's and Pyroscope's retentions, the new `c4-app`, the workflow's version tag of Keycloak's image); then 0029's steps 7 to 9 (the GHCR login with `read:packages`, every version of the package checked, the package made public — irreversible —, the anonymous checks); `/etc/cron.d/c4-apps-backup` is written by the first application's `vps-bootstrap.sh`.
+- **Follow-ups found on the way** (not intents yet):
+  - `c4-app pull --registry-user` refuses a GitLab deploy token's user (`gitlab+deploy-token-<id>`: a `+`), saying the user is missing (0028's verifier): a bug intent before immo deploys from GitLab.
+  - Faito's `demo` profile doesn't set the OTLP endpoints (Faito's repository; `docs/migration.md` step 3 says how).
+  - 0027: a `pg_dump` cut by its timeout may keep running in the application's container (`docker exec` forwards no signal); a restore has no timeout; no dedicated test of the timeouts, of a `volumes` service without a volume, of a shared volume, of a multi-layer restart order.
+  - 0030: `new-realm-ids.sh` lists the users of an export in Keycloak's layout only (pre-existing).
+  - 0026: no test of `demo/deploy.sh` replacing a changed `c4-app` since the review round.
 
 ## Tickee and poc-immo-pf on c4-infra (analysed 2026-10-28, read only; to resume later)
 
