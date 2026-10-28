@@ -54,3 +54,5 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — step 0, measured in a stand-in (`nslookup -timeout=3 dl-cdn.alpinelinux.org` from a container of its Docker): fresh, `ufw` inactive, `FORWARD` policy `ACCEPT`: 20 ok, 0 failed; after `stand_in_accounts faito hururaa`, `ufw` active (`deny (routed)`), `FORWARD` policy `DROP`, Docker's chains (`DOCKER-USER`, `DOCKER-FORWARD`) before `ufw`'s: 19 ok, 1 failed; from the workstation's own Docker (the same resolver, `192.168.65.7`, then the router `192.168.178.1`): 50 ok, 0 failed. The demo host's firewall lets a container's DNS through (Docker's chains come first): no bug intent for the demo host; the failures happen on the stand-in's nested path, cause not established. The reproducing test points the stand-in's resolver at `192.0.2.1` (TEST-NET-1, which answers nothing), not `127.0.0.1`, which Docker drops for 8.8.8.8. No impact on files or proof.
