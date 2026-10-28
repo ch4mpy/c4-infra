@@ -13,7 +13,7 @@
 #
 #   bash tests/0025-refused-stage.stand-in.sh
 #
-# covers: demo/ tests/fixtures/0025/ tests/stand-in-host/
+# covers: demo/ register-app.sh registry.sh networks.sh tests/fixtures/0025/ tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -75,6 +75,7 @@ check "its compose.yml is still the former one" is "$(stand_in_exec cksum "$STAG
 check "the gateway still reads v1" is "$(read_page)" v1
 as_faito pull-refused.log "sudo c4-app pull"
 check "sudo c4-app pull is refused" refused pull-refused.log
+check "it says why" says pull-refused.log "c4-app: refused: service gateway: published ports (7080)"
 check "the staging directory's page.txt is still v1, after pull" is "$(staged_page)" v1
 
 check "mounted.yml is sent back, page.txt still v2, Hurura'a's theme in ~faito/faito/themes/" \
