@@ -117,7 +117,7 @@ unreachable() { # <network> <target> <reasons>
     echo "the probe didn't run on $1:"
   elif grep -qx 'nc exit 0' "$work/probe.out"; then
     echo "the connection succeeded:"
-  elif grep -qx 'nc exit 1' "$work/probe.out" && grep -qE "$3" "$work/probe.out"; then
+  elif grep -qx 'nc exit 1' "$work/probe.out" && grep -qE "^nc: .*($3)" "$work/probe.out"; then
     return 0
   else
     echo "nc failed for another reason than $3:"
@@ -209,8 +209,10 @@ part_tickee() {
   check "AC-07: from c4-infra.faito, $STANDIN:7080 can't be reached by name" \
     unreachable c4-infra.faito "$STANDIN" "$BY_NAME_REFUSED"
   # one address per network the stand-in is on
-  addresses=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' "$STANDIN" | tr -d '\r' | grep .)
-  check "$STANDIN has an address (${addresses:-none})" test -n "$addresses"
+  addresses=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' "$STANDIN" 2> "$work/inspect.err" \
+    | tr -d '\r' | grep .)
+  has_address() { [ -n "$addresses" ] || { cat "$work/inspect.err"; return 1; }; }
+  check "$STANDIN has an address (${addresses:-none})" has_address
   for address in $addresses; do
     check "AC-07: from c4-infra.faito, $address:7080 can't be reached" \
       unreachable c4-infra.faito "$address" "$BY_ADDRESS_REFUSED"
@@ -247,6 +249,7 @@ part_guard() {
   check "demo: keycloak-db on its network only ($found)" test "$found" = keycloak-db
   model=$(docker compose config --format json 2> "$work/config.err") && config_read=true || config_read=false
   found=$(jq -r '.services["reverse-proxy"].networks["c4-infra.faito"].aliases // [] | join(" ")' <<< "$model" 2> /dev/null)
+  $config_read || found="its model unread"
   dev_without_alias() {
     $config_read || { echo "docker compose config failed:"; cat "$work/config.err"; return 1; }
     jq -e '.services["reverse-proxy"].networks | has("c4-infra.faito")' <<< "$model" > /dev/null \
