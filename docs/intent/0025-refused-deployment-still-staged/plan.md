@@ -86,3 +86,8 @@
 | The other `c4-app` behaviours are kept | OK | `0007-compose-check`, `0011-demo-host`, `0002-accounts`, `0007-isolation`, `0013-mcp` `every check passed` (rerun at 83fb3da) |
 | The bug is reproduced | OK | step 1 and the mutation check: `6 check(s) failed` |
 
+
+### After deployment — deploy-demo run 40703456016 on `main` 1e7e40c (2026-10-28), success
+
+- `c4-app installed (/usr/local/sbin/c4-app)`; `Registration account c4-infra-registration: up to date`.
+- No application on the demo host yet: no `sudo c4-app up` to observe there; the stand-in run above is the behaviour's proof.
