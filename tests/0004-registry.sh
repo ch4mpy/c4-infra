@@ -209,6 +209,8 @@ port_registry_section() {
   awk '/^### Port registry$/ { on = 1; next } on && /^#/ { exit } on' README.md
 }
 
+migration_in_dev() { sed -n '/^## In dev$/,/^## /p' docs/migration.md; }
+
 holds() { # <text> <file or "-" for stdin>
   grep -qF -- "$1" "$2" || { echo "not found: $1"; return 1; }
 }
@@ -228,6 +230,12 @@ part_docs() {
   check "README: the section holds no table of numbers" no_table_of_numbers
   check "migration.md names bash registry.sh next" holds 'bash registry.sh next' docs/migration.md
   check "migration.md gives the columns" holds 'n app realms rabbitmq-user themes dev-host demo-host' docs/migration.md
+  local role upstream
+  for role in gateway fr mcp; do
+    upstream=$(REGISTRY_FILE=tests/fixtures/0004/taken-1-4.txt bash registry.sh upstream faito "$role" demo)
+    check "migration.md, In dev: the demo's $role upstream, ${upstream/http:\/\/faito./<project>.} (registry.sh), where the ports move" \
+      holds "${upstream/http:\/\/faito./<project>.}" - <<< "$(migration_in_dev)"
+  done
 }
 
 [ $# -gt 0 ] || set -- registry scripts docs
