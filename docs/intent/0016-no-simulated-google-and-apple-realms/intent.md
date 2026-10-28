@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-26; the spec of intent 0056 of the skills repository, `ch4mpy/claude`)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-26
 - Decided: 2026-10-27
 - Supersedes: —
