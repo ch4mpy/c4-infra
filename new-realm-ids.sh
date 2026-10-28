@@ -18,7 +18,7 @@ uuid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 # Keycloak's short id: 16 random bytes in base64url, without padding
 short='[A-Za-z0-9_-]{22}'
 # a federated user's storage id names its component, which it follows
-storage='f:[A-Za-z0-9_-]+:.+'
+storage="f:($uuid|$short):.+"
 
 refused=0
 for file in "$@"; do
@@ -29,13 +29,15 @@ for file in "$@"; do
   keyed=$(grep -oE '"(id|_id|internalId)" *: *"[^"]*"' "$file" | sed -E 's/.*: *"(.*)"$/\1/' | LC_ALL=C sort -u || true)
   others=$(grep -vxE "$uuid|$short|$storage" <<< "$keyed" | grep . || true)
   if [ -n "$others" ]; then
-    echo "$file: left as it was: ids neither UUIDs nor Keycloak's short ids, which can't be renewed in place:" $others >&2
+    echo "$file: left as it was: ids neither UUIDs nor Keycloak's short ids, which can't be renewed in place:" >&2
+    sed 's/^/  /' <<< "$others" >&2
     refused=1
     continue
   fi
   ids=($(grep -oE "$uuid" "$file" | LC_ALL=C sort -u || true))
   shorts=($(grep -xE "$short" <<< "$keyed" || true))
-  if [ $((${#ids[@]} + ${#shorts[@]})) -eq 0 ]; then
+  count=$((${#ids[@]} + ${#shorts[@]}))
+  if [ "$count" -eq 0 ]; then
     echo "$file: no id"
     continue
   fi
@@ -57,7 +59,7 @@ for file in "$@"; do
   done
   sed -i -f "$script" "$file"
   rm -f "$script"
-  echo "$file: $((${#ids[@]} + ${#shorts[@]})) ids replaced"
+  echo "$file: $count ids replaced"
   [ ${#renewed[@]} -eq 0 ] || printf '%s\n' "${renewed[@]}"
   while IFS=$'\t' read -r old name; do
     [ -n "$old" ] && echo "  user $name: $old -> ${new_id[$old]}"
