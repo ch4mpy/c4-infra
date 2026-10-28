@@ -10,11 +10,11 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 ## Next
 
 - **0025** — a refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them (0011's verifier). Accepted, no spec. Next: `/sdlc-plan draft 0025`, in plan mode.
-- **0019** — the stand-in deployment test fails on a workstation whose locale isn't C. Accepted, no spec. Next: `/sdlc-plan draft 0019`, in plan mode (the engineer's gate). Until it is delivered, run the proofs with `LC_ALL=C`.
+- **0019** — the stand-in deployment test fails on a workstation whose locale isn't C: being delivered (2026-10-28).
 
 ## The workstation
 
-- CLAUDE.md "Verification" lists what a run needs: the dev stack (`bash up.sh`), Faito registered from `../faito` (its `deploy-dev.sh`), Docker Desktop given at least 10 GiB for two stand-in lanes, a `TMPDIR` Docker Desktop shares; and `LC_ALL=C` until 0019.
+- CLAUDE.md "Verification" lists what a run needs: the dev stack (`bash up.sh`), Faito registered from `../faito` (its `deploy-dev.sh`), Docker Desktop given at least 10 GiB for two stand-in lanes, a `TMPDIR` Docker Desktop shares.
 - **Not measured under Git Bash:** the suite's lock (0017) and its lanes (0022: `set -m`, a process group's `TERM`, Ctrl-C in a Windows console). If the lanes misbehave there, `SUITE_DOCKER_MEMORY=0` forces one stand-in lane; `docker rm -f c4-infra.suite-lock` frees a lock left behind.
 - The split of the stand-in tests reads the durations of earlier runs from `.git/c4-infra-test-durations`, local to each clone: a new clone starts without it.
 - A run stopped from outside (not Ctrl-C) may leave a facts test's throwaway containers behind (`c4-infra.0009-facts-*` once, 2026-10-28): `docker ps -a` before rerunning.
