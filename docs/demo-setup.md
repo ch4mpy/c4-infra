@@ -152,7 +152,10 @@ gh run watch -R ch4mpy/c4-infra
 
 - The `build` job builds the Keycloak image and the reverse proxy's (Caddy with its rate-limit
   module, intent 0013) and pushes each to GHCR, tagged with the content of `keycloak/` and of
-  `reverse-proxy/` (skipped when that tag exists).
+  `reverse-proxy/` (skipped when that tag exists). Keycloak's is also tagged `<version>-<tree>`,
+  the reference `keycloak-image.properties` gives applications' tests, on the same image, in a
+  public package; a tag never moves (intent 0029: the job stops when the description names another
+  one, or when the two tags differ).
 - The `deploy` job pins the host's key first ([`demo/trust-host-key.sh`](../demo/trust-host-key.sh):
   it fails there without `VPS_KNOWN_HOSTS`), writes the host's `.env` on the runner with
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,

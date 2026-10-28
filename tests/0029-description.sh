@@ -13,7 +13,11 @@
 #     on a copy: named);
 #   - (e) the workflow's "Compute the images" block, run as it is: when keycloak/ is HEAD's, the
 #     version reference it publishes is KC_PUBLISHED_IMAGE, beside the tree's; a description naming
-#     another one stops it, ::error:: naming both (on copies).
+#     another one stops it, ::error:: naming both (on copies);
+#   - (f) the README's "Keycloak in an application's tests" holds a dated changelog entry for that
+#     tag: a change of keycloak/ without its entry fails (a README copy without it: named);
+#   - (g) the section names the description, start-dev and KC_DB=dev-file; docs/migration.md
+#     points to it.
 #
 #   bash tests/0029-description.sh
 #
@@ -92,6 +96,12 @@ computed() { # <dir>: the block run there (its keycloak/Dockerfile and keycloak-
   (cd "$1" && GIT_DIR=$git_dir GITHUB_OUTPUT=$1/output REGISTRY=ghcr.io GITHUB_REPOSITORY_OWNER=ch4mpy bash -c "$block")
 }
 output() { sed -n "s/^$2=//p" "$1/output"; }
+section() { # <README>: its "Keycloak in an application's tests" section
+  awk '/^### Keycloak in an application.s tests$/ { inside = 1; next } inside && /^##/ { exit } inside' "$1"
+}
+changelog_entry() { # <README> <tag>: a dated entry of the section's changelog names the tag
+  section "$1" | grep -qE "^- [0-9]{4}-[0-9]{2}-[0-9]{2} — \`${2//./\\.}\`" || { echo "no changelog entry for $2"; return 1; }
+}
 refused_naming() { # <text> <command…>: the command fails, its output holding the text
   local output
   ! output=$("${@:2}" 2>&1) && grep -qF -- "$1" <<< "$output" || { echo "output:"; printf '%s\n' "$output"; return 1; }
@@ -140,6 +150,15 @@ check "(e) a description naming another reference: the block stops, naming both"
   refused_naming "::error::keycloak-image.properties names $REPOSITORY:26.8.1-000000000000, keycloak/ gives $REPOSITORY:26.8.1-$head_tree" \
   computed "$work/other"
 check "(e) and writes no output" test ! -s "$work/other/output"
+
+published=$(sed -n 's/^KC_PUBLISHED_IMAGE=//p' "$DESCRIPTION")
+check "(f) the README's changelog has a dated entry for ${published##*:}" changelog_entry README.md "${published##*:}"
+grep -vF "\`${published##*:}\`" README.md > "$work/README.md"
+check "(f) a README without it: named" refused_naming "no changelog entry for ${published##*:}" changelog_entry "$work/README.md" "${published##*:}"
+for text in keycloak-image.properties start-dev KC_DB=dev-file; do
+  check "(g) the section names $text" grep -qF -- "$text" <(section README.md)
+done
+check "(g) docs/migration.md points to it" grep -qF "#keycloak-in-an-applications-tests" docs/migration.md
 
 printf 'KC_VERSION="26.8.1"\n' > "$work/quoted"
 check "(a) a quoted value: refused" refused_naming 'KC_VERSION="26.8.1"' form "$work/quoted"
