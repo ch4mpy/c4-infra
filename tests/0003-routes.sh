@@ -178,6 +178,17 @@ check "turu dev: the protected-resource document reaches the MCP server" \
   https_upstream /.well-known/oauth-protected-resource/mcp https://host.docker.internal:11280
 check "0013, turu dev: no single-page-app headers on the MCP origin" lacks spa-headers
 check "turu dev: no redirect for /mcp (no /mcp/* route)" block_lacks /mcp redir
+# 0015: headers=app on a front-end route, its own snippet; the other front ends and the MCP origin
+# as before
+generate "" "$FIXTURES/verif-app-headers.routes" turu dev
+check "0015, headers=app: exits 0" exited 0
+check "0015, headers=app: Turu's site" site turu.dev.localhost
+check "0015, headers=app: /fr/* imports spa-headers-app" block_holds '/fr/*' 'import spa-headers-app'
+check "0015, headers=app: /fr/* doesn't import spa-headers" eval '! block "/fr/*" | grep -qxF "import spa-headers"'
+check "0015, headers=app: /en/*, without it, imports spa-headers" spa '/en/*' http://host.docker.internal:11205
+check "0015, headers=app: /en/* doesn't import spa-headers-app" block_lacks '/en/*' spa-headers-app
+check "0015, headers=app: the MCP origin" site turu-mcp.dev.localhost
+check "0015, headers=app: no single-page-app headers on the MCP origin" lacks spa-headers
 generate "" examples/routes/turu.routes turu demo
 check "0013, turu demo: exits 0 (the mcp role has its upstream)" exited 0
 check "0013, turu demo: Turu's site, on turu.c4-soft.com" site turu.c4-soft.com
@@ -209,6 +220,14 @@ refused to-other-host 3 "routes name neither a host nor a port: 'to=//evil.examp
 # outside the grammar
 refused unknown-target 3 "unknown target 'admin'"
 refused unknown-option 3 "unknown option 'timeout=5s'"
+# an option with an empty key (intent 0011, AC-11)
+refused empty-option-key 3 "unknown option '=x'"
+# headers=app on a role that isn't a front end, another value, twice (intent 0015)
+refused headers-gateway 3 'headers=app is for a front end (fr, en or ui), not for gateway'
+refused headers-mcp 3 'headers=app is for a front end (fr, en or ui), not for mcp'
+refused headers-redirect 3 'headers=app is for a front end (fr, en or ui), not for a redirect'
+refused headers-value 3 "headers= takes app, not 'self'"
+refused headers-twice 3 'headers= given twice'
 refused to-on-role 3 'to= is for a redirect only'
 refused redirect-without-to 3 'redirect needs to=<path>'
 refused regex-brace 3 "path '~^/gateway/{path}\$' is not"

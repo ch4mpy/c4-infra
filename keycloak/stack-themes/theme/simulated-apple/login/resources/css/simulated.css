@@ -1,0 +1,27 @@
+/* The simulated Apple's look (intent 0016): a white page, near-black text, a black rounded action,
+   the system's sans-serif; no logo, no image. The banner is the header every page has. */
+body, .pf-v5-c-login {
+  background: #ffffff;
+  color: #1d1d1f;
+  font-family: system-ui, -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.pf-v5-c-login__main {
+  background: #ffffff;
+  box-shadow: none;
+}
+.pf-v5-c-button.pf-m-primary {
+  background: #000000;
+  border-radius: 12px;
+}
+#kc-header-wrapper {
+  background: #fff4ce;
+  color: #4a3500;
+  border: 2px solid #e0a800;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+}

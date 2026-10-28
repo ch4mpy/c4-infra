@@ -62,9 +62,16 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0008 | [c4-infra's certificate scripts spread the local CA's private key and its password](0008-certificate-scripts-spread-the-ca-key/intent.md) | bug | delivered | 2026-10-22 | 2026-10-22 |
 | 0009 | [Keycloak's master realm sends no mail](0009-master-realm-sends-no-mail/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0010 | [No realm of the shared Keycloak protects its accounts against password guessing](0010-no-brute-force-protection/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
-| 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | planned | 2026-10-23 | 2026-10-23 |
+| 0011 | [The demo host builds images the applications' CI already builds, and some stack scripts misreport errors](0011-demo-builds-and-script-errors/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0012 | [An application's Keycloak theme may read the shared Keycloak's environment](0012-themes-read-keycloak-environment/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0013 | [The shared stack lacks what Turu and Hurura'a need to move onto it](0013-stack-lacks-what-turu-and-hururaa-need/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
+| 0015 | [The shared proxy imposes its security headers on every application's front end](0015-proxy-imposes-front-end-headers/intent.md) | change | delivered | 2026-10-26 | 2026-10-27 |
+| 0016 | [The shared Keycloak offers no simulated Google, Facebook or Apple provider to try a social login](0016-no-simulated-google-and-apple-realms/intent.md) | change | delivered | 2026-10-26 | 2026-10-27 |
 | 0017 | [The verification runs every test every time, and says nothing of where its time goes](0017-suite-runs-every-test-every-time/intent.md) | change | delivered | 2026-10-27 | 2026-10-27 |
 | 0018 | [The registry test requires exactly four applications, so registering a new one fails the verification](0018-registry-test-pins-four-entries/intent.md) | bug | delivered | 2026-10-27 | 2026-10-27 |
 | 0019 | [The stand-in deployment test fails on a workstation whose locale isn't C](0019-stand-in-test-depends-on-locale/intent.md) | bug | accepted | 2026-10-28 | 2026-10-28 |
+| 0020 | [The isolation test's probe image fails to build in the stand-in, now and then, on a DNS error](0020-stand-in-probe-build-dns/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
+| 0022 | [A full verification runs its stand-in tests one after the other, while nothing else runs](0022-full-verification-runs-sequentially/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0023 | [The stack still documents and tests an LDAP user federation no application needs](0023-ldap-leaves-the-stack/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0024 | [A deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator](0024-database-image-change-under-keycloak/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
+| 0025 | [A refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them](0025-refused-deployment-still-staged/intent.md) | bug | accepted | 2026-10-28 | 2026-10-28 |

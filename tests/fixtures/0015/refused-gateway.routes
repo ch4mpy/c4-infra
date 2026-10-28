@@ -1,0 +1,3 @@
+# 0015 fixture (tests/0015-headers.sh): headers=app on the gateway, refused before any registration
+/fr/*       fr
+/gateway/*  gateway  headers=app

@@ -15,7 +15,8 @@
 #     imports realm faito, and no public-facing realm appears; through sudo c4-app register,
 #     Hurura'a's realm file with --reset-realms, Hurura'a's RabbitMQ user, a themes directory holding
 #     tickee (keycloak/themes/tickee, placed beforehand, unchanged), the two hostile routes files, a
-#     path outside ~/faito/, a symbolic link in it: each refused;
+#     routes file with headers=app on its gateway (intent 0015, AC-06: the line named, Faito's site
+#     unchanged), a path outside ~/faito/, a symbolic link in it: each refused;
 #   - AC-01: with Faito's key, reading Hurura'a's .env or the shared stack's, docker (directly or
 #     through sudo), stopping Hurura'a's container, a compose file whose env_file is Hurura'a's .env,
 #     and a connection to Hurura'a's container's address (the firewall's rule; c4-infra's account
@@ -181,7 +182,8 @@ check "hururaa.gateway runs" running hururaa.gateway
 printf 'RABBITMQ_PASSWORD=%s\n' "$(openssl rand -hex 16)" > "$work/faito.env"
 check "AC-02: Faito's files are rsynced to ~faito/faito/ with its key (the document's rsync line)" \
   upload faito "$work/faito.env" faito-realm-named-public-facing.json:faito-realm.json \
-  public-facing-realm.json themes routes-hururaa-host.routes routes-keycloak-port.routes
+  public-facing-realm.json themes routes-hururaa-host.routes routes-keycloak-port.routes \
+  routes-headers-app-gateway.routes
 # the pull without its GHCR login (the stand-in has no registry): the document's line up to it
 doc_run pull.log faito "${DOC_PULL%% --registry*}"
 check "AC-02: the document's sudo c4-app pull exits 0" exited_0 pull.log
@@ -228,6 +230,12 @@ as port.log faito "sudo c4-app register --proxy routes-keycloak-port.routes"
 refused_saying "AC-03: a routes file routing to keycloak:8080" port.log "routes name neither a host nor a port: 'keycloak:8080'"
 check "AC-03: Faito's site is still its own (faito.c4-soft.com)" \
   stand_in_exec grep -qxF 'faito.c4-soft.com {' "$STACK/caddy/apps/faito.caddy"
+faito_site() { stand_in_exec cksum "$STACK/caddy/apps/faito.caddy" | tr -d '\r'; }
+before=$(faito_site)
+as headers.log faito "sudo c4-app register --proxy routes-headers-app-gateway.routes"
+refused_saying "0015, AC-06: headers=app on the gateway" headers.log \
+  "routes-headers-app-gateway.routes:3: headers=app is for a front end (fr, en or ui), not for gateway"
+check "0015, AC-06: Faito's site is as it was" eval '[ -n "$before" ] && [ "$(faito_site)" = "$before" ]'
 as outside.log faito "sudo c4-app register --proxy ../hururaa/x"
 refused_saying "AC-03: a path outside ~/faito/ (../hururaa/x)" outside.log "../hururaa/x is outside ~/faito/: refused"
 as absolute.log faito "sudo c4-app register --proxy /home/hururaa/hururaa/hururaa.routes"

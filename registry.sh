@@ -49,6 +49,11 @@ REGISTRY_MAX=38
 # theme directory of that name would replace it for every realm, master included. The dotted ones
 # are outside a theme name's characters already; listed for the next image that adds one.
 REGISTRY_KEYCLOAK_THEMES=(base keycloak keycloak.v2 keycloak.v3)
+# The realms the stack imports itself (keycloak-import/): Keycloak's master, and the simulated
+# providers' (intent 0016); and the stack's own login themes, in its Keycloak image
+# (keycloak/stack-themes/), which a registered theme of that name would replace
+REGISTRY_STACK_REALMS=(master simulated-google simulated-facebook simulated-apple)
+REGISTRY_STACK_THEMES=(simulated-google simulated-facebook simulated-apple)
 
 # What the shared stack itself owns in Keycloak and RabbitMQ, which no entry may claim: a
 # registration may delete and import its entry's realms and set its RabbitMQ user's password
@@ -67,12 +72,19 @@ _registry_rabbitmq_admin() {
 # quotes and unquoted, "$$" is a "$"; an unquoted value ends at " #" and loses its final spaces.
 # What compose would read otherwise is refused, saying why, rather than read differently (returns
 # 1): a "$" it interpolates ($NAME, ${NAME}), an escape sequence in double quotes, a quote that
-# doesn't close. Prints nothing (returns 0) when the file or the key is missing.
+# doesn't close. Prints nothing (returns 0) when the file or the key is missing; a file it can't
+# read is an error naming it (returns 1).
 dotenv_value() { # <file> <key>
-  local file=$1 key=$2 line value
+  local file=$1 key=$2 lines line value status=0
   local single="^'((\\\\.|[^\\\\'])*)'" double='^"((\\.|[^\\"])*)"'
   [ -f "$file" ] || return 0
-  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*=" "$file" | tail -n 1) || true
+  # grep: 1 the key is missing, 2 the file can't be read
+  lines=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*=" "$file") || status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "registry.sh: $file can't be read (above)" >&2
+    return 1
+  fi
+  line=${lines##*$'\n'}
   [ -n "$line" ] || return 0
   value=${line#*=}
   value=${value%$'\r'}
@@ -202,12 +214,23 @@ registry_check() {
       [ "$value" != - ] || continue
       IFS=, read -r -a list_values <<< "$value"
       for value in "${list_values[@]}"; do
-        [ "$kind $value" != "realm master" ] \
-          || _registry_problem "$file:$number: realm master is Keycloak's own (the shared stack's): no entry may claim it"
-        if [ "$kind" = theme ]; then
+        if [ "$kind" = realm ]; then
+          for reserved in "${REGISTRY_STACK_REALMS[@]}"; do
+            [ "$value" = "$reserved" ] || continue
+            if [ "$value" = master ]; then
+              _registry_problem "$file:$number: realm master is Keycloak's own (the shared stack's): no entry may claim it"
+            else
+              _registry_problem "$file:$number: realm $value is the shared stack's (a simulated provider, keycloak-import/): no entry may claim it"
+            fi
+          done
+        else
           for reserved in "${REGISTRY_KEYCLOAK_THEMES[@]}"; do
             [ "$value" != "$reserved" ] \
               || _registry_problem "$file:$number: theme $value is built into Keycloak (every realm's): no entry may claim it"
+          done
+          for reserved in "${REGISTRY_STACK_THEMES[@]}"; do
+            [ "$value" != "$reserved" ] \
+              || _registry_problem "$file:$number: theme $value is the shared stack's (a simulated provider's, keycloak/stack-themes/): no entry may claim it"
           done
         fi
         _registry_claim "$kind" "$value" "$app" "$number"

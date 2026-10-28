@@ -11,6 +11,8 @@
 #   stand_in_exec [-i] <command…>    runs the command in the stand-in, as root; -i passes stdin, which
 #                                    the caller always redirects
 #   stand_in_load_image <image>…     copies images of this machine into the stand-in's Docker
+#   stand_in_probe                   the isolation tests' probe (tests/fixtures/0007/probe/: an echo on
+#                                    :7080, curl, nmap, nc) as c4-test/probe in the stand-in's Docker
 #   stand_in_send <dir>              sends the files of demo/deploy-files.txt into <dir>, as the
 #                                    deployment does
 #   stand_in_env <dir>               writes <dir>/.env with demo/write-env.sh, run inside the
@@ -99,6 +101,24 @@ stand_in_load_image() {
     docker save "$image" | stand_in_exec -i docker load -q > /dev/null \
       || { echo "stand_in_load_image: $image not loaded" >&2; return 1; }
   done
+}
+
+# Built on this machine, when it lacks the image or the fixture changed (the label c4-infra.fixture holds
+# its content's hash: a build would ask the registry for the base image even then), then copied in unless
+# the stand-in's volume already holds it: the stand-in's own Docker fails to resolve a name now and then
+# (intent 0020)
+stand_in_probe() {
+  local fixture=$STAND_IN_ROOT/tests/fixtures/0007/probe hash
+  hash=$(cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
+    echo "$file"
+    cat "$file"
+  done | cksum | cut -d' ' -f1)
+  if [ "$(docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null)" != "$hash" ]; then
+    docker build -q --label "c4-infra.fixture=$hash" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
+      || { echo "stand_in_probe: c4-test/probe doesn't build on this machine (above)" >&2; return 1; }
+  fi
+  [ "$(stand_in_exec docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null \
+    | tr -d '\r')" = "$hash" ] || stand_in_load_image c4-test/probe
 }
 
 stand_in_send() { # <dir>

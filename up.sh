@@ -53,9 +53,11 @@ bash ./env.sh
   done
 ) || exit 1
 
-certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
+# a fresh clone has none yet (intent 0011)
+certificate_before=none
+[ ! -f certs/tls.crt ] || certificate_before=$(cksum < certs/tls.crt)
 bash ./certs/make-certs.sh
-certificate_after=$(cat certs/tls.crt | cksum)
+certificate_after=$(cksum < certs/tls.crt)
 
 # compose.apps.yml (COMPOSE_FILE): the shared services on each registered application's network,
 # before any compose call (intent 0007)
@@ -102,7 +104,12 @@ docker compose up -d --wait
 # serving: say so and stop, never restart it (it would start on the refused one, every site down)
 if ! output=$(MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
   printf '%s\n' "$output" | tail -n 5 >&2
-  echo "The reverse proxy refuses its configuration (above): it keeps serving its previous configuration. Fix caddy/ (or the site of caddy/apps/ it names), then run $0 again." >&2
+  # its admin API answering (compose.yml's healthcheck probe) means Caddy refused the configuration
+  if MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy wget -q -O /dev/null http://127.0.0.1:2019/config/ > /dev/null 2>&1; then
+    echo "The reverse proxy refuses its configuration (above): it keeps serving its previous configuration. Fix caddy/ (or the site of caddy/apps/ it names), then run $0 again." >&2
+  else
+    echo "The reverse proxy isn't reachable (above): its container isn't running, or its admin API doesn't answer yet. Run $0 again; docker compose ps and docker logs c4-infra.reverse-proxy tell why." >&2
+  fi
   exit 1
 fi
 

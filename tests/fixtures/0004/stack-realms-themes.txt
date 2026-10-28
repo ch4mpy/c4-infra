@@ -1,0 +1,11 @@
+# tests/0004 (intent 0016): entries claiming the simulated providers' realms and the stack's themes
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+5 verif-a simulated-google - - verif-a.dev.localhost verif-a.c4-soft.com
+6 verif-b simulated-facebook - - verif-b.dev.localhost verif-b.c4-soft.com
+7 verif-c simulated-apple - - verif-c.dev.localhost verif-c.c4-soft.com
+8 verif-d verif-d - simulated-google verif-d.dev.localhost verif-d.c4-soft.com
+9 verif-e verif-e - simulated-facebook verif-e.dev.localhost verif-e.c4-soft.com
+10 verif-f verif-f - simulated-apple verif-f.dev.localhost verif-f.c4-soft.com

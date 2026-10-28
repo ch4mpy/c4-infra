@@ -4,7 +4,8 @@
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts
 #     faito hururaa: deployed as c4-infra over ssh, demo/deploy.sh); the probe image
-#     (tests/fixtures/0007/probe/: an echo on :7080, curl, nmap, nc) built in the stand-in's daemon;
+#     (tests/fixtures/0007/probe/: an echo on :7080, curl, nmap, nc) in the stand-in's daemon, built on
+#     the workstation and copied (stand_in_probe), the test stopped without it;
 #   - Hurura'a, then Faito (tests/fixtures/0007/<app>/: a gateway on the external network
 #     c4-infra.<app>), each rsynced to ~<app>/<app>/ with its own key, registered (sudo c4-app
 #     register --proxy <app>.routes --rabbitmq-user <app>-api --rabbitmq-password-env
@@ -192,11 +193,11 @@ ac3_reachability() { # <label prefix>
 }
 
 check "the stand-in host starts" stand_in_up
+failures_before=$failures
+check "the probe image is in the stand-in ($PROBE)" stand_in_probe
+# the checks below need it: without it, they would fail for its sake, and an old one would mislead them
+[ "$failures" -eq "$failures_before" ] || { echo "no probe: stopped"; finish; }
 check "the accounts (c4-infra, hururaa, faito), the shared stack deployed as c4-infra" stand_in_accounts hururaa faito
-build_probe() {
-  (cd "$FIXTURES/probe" && tar -cf - .) | stand_in_exec -i docker build -q -t "$PROBE" - > /dev/null
-}
-check "the probe image is built in the stand-in ($PROBE)" build_probe
 
 # Hurura'a, then Faito: uploaded, registered, started; the ups' outcomes are checked after AC-10's
 # first assertion (without a network of its own, an application doesn't start)

@@ -1,0 +1,13 @@
+# 0011 fixture (tests/0011-demo-host.stand-in.sh): valid.yml of 0007 whose gateway builds its image
+# (build: .), which sudo c4-app up and pull refuse: the demo host runs the images the application's CI
+# pushes to a registry
+services:
+  gateway:
+    build: .
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    expose: ['7080']
+    networks: [c4-infra.faito]
+networks:
+  c4-infra.faito:
+    external: true
