@@ -1008,6 +1008,18 @@ maintenance=postgres
 exec psql -q -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$maintenance" -v db="$db" -v owner="${POSTGRES_USER:-postgres}"'
 RESTORE='exec pg_restore --exit-on-error -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"'
 
+# RQ-02: a restore's step under RESTORE_TIMEOUT (bounded), its output discarded: a cut or a failure
+# refuses, saying nothing changed while no data was replaced yet
+restore_step() { # <stamp> <step> <failure> <stdin> <command>…
+  local stamp=$1 step=$2 failure=$3 in=$4 code=0 unchanged=": restore refused, nothing changed"
+  shift 4
+  [ -z "$restoring" ] || unchanged=
+  bounded "$RESTORE_TIMEOUT" "$step" "$in" /dev/null "$@" || code=$?
+  forget_item
+  [ "$code" -ne 124 ] || fail "restore of backup $stamp: $cut$unchanged"
+  [ "$code" -eq 0 ] || fail "$failure"
+}
+
 list_backups() {
   local entry name found=
   for entry in "$backups"/*; do
@@ -1050,12 +1062,14 @@ match_backup() { # <stamp>
   done
   [ ${#dump_into[@]} -gt 0 ] || [ ${#tar_into[@]} -gt 0 ] || fail "backup $1 of $app is empty: restore refused"
   for file in "${!dump_into[@]}"; do
-    docker exec -i "${dump_into[$file]}" pg_restore -f /dev/null < "$backups/$1/$file" \
-      || fail "$file of backup $1 can't be read whole (pg_restore, above): restore refused, nothing changed"
+    in_database "${dump_into[$file]}"
+    restore_step "$1" "reading $file whole" "$file of backup $1 can't be read whole (pg_restore, above): restore refused, nothing changed" \
+      "$backups/$1/$file" docker exec -i -e PGAPPNAME "${dump_into[$file]}" pg_restore -f /dev/null
   done
   for file in "${!tar_into[@]}"; do
-    docker run -i "${THROWAWAY[@]}" --entrypoint tar "$tar_image" -tf - < "$backups/$1/$file" > /dev/null \
-      || fail "$file of backup $1 can't be read whole (tar, above): restore refused, nothing changed"
+    in_throwaway
+    restore_step "$1" "reading $file whole" "$file of backup $1 can't be read whole (tar, above): restore refused, nothing changed" \
+      "$backups/$1/$file" docker run -i "${throwaway[@]}" --entrypoint tar "$tar_image" -tf -
   done
 }
 
@@ -1101,20 +1115,24 @@ cmd_restore() {
   take_backup
   safety=$stamp
   altered=1
+  printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' > "$run/recreate.sql"
   for file in $(sorted "${!dump_into[@]}"); do
-    printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' \
-      | docker exec -i "${dump_into[$file]}" sh -c "$RECREATE" \
-      || fail "${dump_into[$file]}: its database could not be recreated (above)"
-    docker exec -i "${dump_into[$file]}" sh -c "$RESTORE" < "$backups/$wanted/$file" \
-      || fail "${dump_into[$file]}: $file could not be restored (above)"
+    name=${dump_into[$file]}
+    in_database "$name"
+    restore_step "$wanted" "recreating $name's database" "$name: its database could not be recreated (above)" \
+      "$run/recreate.sql" docker exec -i -e PGAPPNAME "$name" sh -c "$RECREATE"
+    in_database "$name"
+    restore_step "$wanted" "restoring $file into $name" "$name: $file could not be restored (above)" \
+      "$backups/$wanted/$file" docker exec -i -e PGAPPNAME "$name" sh -c "$RESTORE"
   done
   # a database that mounts a restored volume stops too
   # shellcheck disable=SC2046 # volume names, checked: no space, no glob
   stop_mounters $(sorted "${tar_into[@]}")
   for file in $(sorted "${!tar_into[@]}"); do
-    docker run -i "${THROWAWAY[@]}" --mount "type=volume,src=${tar_into[$file]},dst=/data" --entrypoint sh "$tar_image" \
-      -c 'find /data -mindepth 1 -delete && tar --numeric-owner -xpf - -C /data' < "$backups/$wanted/$file" \
-      || fail "${tar_into[$file]}: $file could not be restored (above)"
+    in_throwaway
+    restore_step "$wanted" "refilling ${tar_into[$file]}" "${tar_into[$file]}: $file could not be restored (above)" \
+      "$backups/$wanted/$file" docker run -i "${throwaway[@]}" --mount "type=volume,src=${tar_into[$file]},dst=/data" \
+      --entrypoint sh "$tar_image" -c 'find /data -mindepth 1 -delete && tar --numeric-owner -xpf - -C /data'
   done
   altered=
   restoring=
