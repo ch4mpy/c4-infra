@@ -3,8 +3,8 @@
 - Author: Jérôme Wacongne (product owner, tech lead)
 - Kind: bug
 - Source: conversation (0023's evidence, 2026-10-28; HANDOVER "Left open")
-- Spec needed: no
-- Status: accepted
+- Spec needed: yes
+- Status: specified
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
