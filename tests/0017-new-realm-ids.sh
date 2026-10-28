@@ -25,14 +25,14 @@ status=$?
 
 no_old_id() {
   local id
-  for id in $(grep -oE "$UUID" "$FIXTURE" | sort -u); do
+  for id in $(grep -oE "$UUID" "$FIXTURE" | LC_ALL=C sort -u); do
     ! grep -qF "$id" "$realm" || { echo "still there: $id"; return 1; }
   done
 }
 
 all_v4() {
   local id
-  for id in $(grep -oE "$UUID" "$realm" | sort -u); do
+  for id in $(grep -oE "$UUID" "$realm" | LC_ALL=C sort -u); do
     grep -qE "$V4" <<< "$id" || { echo "not a version 4 UUID: $id"; return 1; }
   done
 }
@@ -49,7 +49,7 @@ check "it says how many ids it replaced" grep -qxF "$realm: 5 ids replaced" "$wo
 check "the file is still JSON" jq -e .realm "$realm"
 check "no id of the fixture is left" no_old_id
 check "every id is a random (version 4) UUID" all_v4
-check "the five ids are still five different ones" test "$(grep -oE "$UUID" "$realm" | sort -u | wc -l)" -eq 5
+check "the five ids are still five different ones" test "$(grep -oE "$UUID" "$realm" | LC_ALL=C sort -u | wc -l)" -eq 5
 check "the realm role's containerId is still the realm's id" jq -e '.roles.realm[0].containerId == .id' "$realm"
 check "the component's parentId is still the realm's id" \
   jq -e '.components["org.keycloak.userprofile.UserProfileProvider"][0].parentId == .id' "$realm"

@@ -31,7 +31,7 @@ register() { # the status of one anonymous registration, from this workstation
 
 statuses=()
 for _ in $(seq 1 11); do statuses+=("$(register)"); done
-first_ten=$(printf '%s\n' "${statuses[@]:0:10}" | sort -u | paste -sd' ' -)
+first_ten=$(printf '%s\n' "${statuses[@]:0:10}" | LC_ALL=C sort -u | paste -sd' ' -)
 check "AC-14: the first 10 registrations of the minute reach Keycloak ($first_ten)" test "$first_ten" = 403
 check "AC-14: the 11th gets 429 from the proxy (${statuses[10]})" test "${statuses[10]}" = 429
 discovery=$(kc_curl -o /dev/null -w '%{http_code}' "$BASE/auth/realms/master/.well-known/openid-configuration")

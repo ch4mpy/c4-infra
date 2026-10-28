@@ -130,5 +130,5 @@ kc_claims() {
 }
 
 kc_features() {
-  grep -oE "$1 features enabled: .*" <<< "$2" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
+  grep -oE "$1 features enabled: .*" <<< "$2" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | LC_ALL=C sort | paste -sd, -
 }

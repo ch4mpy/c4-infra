@@ -34,7 +34,7 @@ trap 'rm -rf "$work"' EXIT
 # the realms but the simulated ones, with what tells a change: their id and their users' count
 others() {
   local realm
-  for realm in $(kc_admin get realms --fields realm 2> /dev/null | jq -r '.[].realm' | grep -v '^simulated-' | sort); do
+  for realm in $(kc_admin get realms --fields realm 2> /dev/null | jq -r '.[].realm' | grep -v '^simulated-' | LC_ALL=C sort); do
     printf '%s %s %s\n' "$realm" "$(kc_admin get "realms/$realm" --fields id 2> /dev/null | jq -r .id)" \
       "$(kc_admin get users/count -r "$realm" 2> /dev/null)"
   done
@@ -60,7 +60,7 @@ done
 
 users() { # <realm>: "<username> <email or -> <is_private_email or ->" per user, sorted
   kc_admin get users -r "$1" 2> /dev/null \
-    | jq -r '.[] | "\(.username) \(.email // "-") \(.attributes.is_private_email[0] // "-")"' | sort | paste -sd' ' -
+    | jq -r '.[] | "\(.username) \(.email // "-") \(.attributes.is_private_email[0] // "-")"' | LC_ALL=C sort | paste -sd' ' -
 }
 for realm in "${REALMS[@]}"; do
   enabled=$(kc_admin get authentication/required-actions -r "$realm" 2> /dev/null | jq -r '[.[] | select(.enabled) | .alias] | join(",")')

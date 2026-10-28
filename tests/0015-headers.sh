@@ -161,7 +161,7 @@ for env in dev demo; do
   check "$env, AC-05: /ui/x (no headers=app): two policies, today's" \
     eval '[ "$(values content-security-policy | wc -l)" -eq 2 ]'
   check "$env, AC-05: the shared one first" eval '[ "$(values content-security-policy | head -n 1)" = "$SHARED_CSP" ]'
-  check "$env, AC-05: two X-Frame-Options" eval '[ "$(values x-frame-options | sort | paste -sd" " -)" = "DENY SAMEORIGIN" ]'
+  check "$env, AC-05: two X-Frame-Options" eval '[ "$(values x-frame-options | LC_ALL=C sort | paste -sd" " -)" = "DENY SAMEORIGIN" ]'
 
   fetch verif.c4-soft.com /gateway/x
   check "$env, AC-08: a gateway that doesn't answer: 502" answered 502

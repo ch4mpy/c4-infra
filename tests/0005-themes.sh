@@ -121,7 +121,7 @@ polled_only_200() {
   local count
   count=$(wc -l < "$work/poll.codes" 2> /dev/null || echo 0)
   [ "$count" -gt 0 ] || { echo "no answer recorded"; return 1; }
-  ! grep -vqx 200 "$work/poll.codes" || { echo "$count answers, not 200:"; grep -vx 200 "$work/poll.codes" | sort | uniq -c; return 1; }
+  ! grep -vqx 200 "$work/poll.codes" || { echo "$count answers, not 200:"; grep -vx 200 "$work/poll.codes" | LC_ALL=C sort | uniq -c; return 1; }
 }
 
 unchanged_since() { # <start time>

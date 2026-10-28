@@ -58,7 +58,7 @@ listening_sockets() { # <container>
 addresses_of_port() { # <sockets file> <port>
   local hex
   hex=$(printf '%04X' "$2")
-  awk -F: -v port="$hex" '$2 == port { print $1 }' "$1" | sort -u | paste -sd' ' -
+  awk -F: -v port="$hex" '$2 == port { print $1 }' "$1" | LC_ALL=C sort -u | paste -sd' ' -
 }
 
 # every address is the loopback's (127.0.0.1 or ::1), 127.0.0.1 among them
@@ -73,11 +73,11 @@ loopback_only() { # <addresses, space-separated>
 # The containers of a network, by name, sorted, on one line
 network_containers() { # <network>
   docker network inspect -f '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' "$1" 2> /dev/null | tr -d '\r' \
-    | sed '/^$/d' | sort | paste -sd' ' -
+    | sed '/^$/d' | LC_ALL=C sort | paste -sd' ' -
 }
 networks_of() { # <container>: its networks, sorted, on one line
   docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' "$1" 2> /dev/null \
-    | tr -d '\r' | sed '/^$/d' | sort | paste -sd' ' -
+    | tr -d '\r' | sed '/^$/d' | LC_ALL=C sort | paste -sd' ' -
 }
 holds_shared() { # <network>: the five shared services, and not keycloak-db
   local found service

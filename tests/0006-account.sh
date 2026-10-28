@@ -256,7 +256,7 @@ check "AC-06: the host's process list caught the registrations at work ($host_ca
   test "${host_caught:-0}" -ge 1
 check "AC-06: docker top caught the admin CLI at work ($kc_caught of $kc_samples samples)" test "${kc_caught:-0}" -ge 1
 no_leak() {
-  [ ! -s "$work/leaks" ] || { echo "the secret appears in:"; sort "$work/leaks" | uniq -c; return 1; }
+  [ ! -s "$work/leaks" ] || { echo "the secret appears in:"; LC_ALL=C sort "$work/leaks" | uniq -c; return 1; }
 }
 check "AC-06: the secret appears in no process list nor in docker inspect" no_leak
 check "AC-06: no session is left in Keycloak's /dev/shm" \
