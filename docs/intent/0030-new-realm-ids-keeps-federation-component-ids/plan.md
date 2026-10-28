@@ -1,0 +1,90 @@
+# Plan: new-realm-ids.sh leaves a user federation component's id as it was
+
+- Spec: none, the [intent](intent.md) (bug, spec needed: no)
+- Status: approved
+- Branch: 0030-new-realm-ids-keeps-federation-component-ids
+- Approved: 2026-10-28, Jérôme Wacongne (engineer; the batch and the agents, product owner)
+
+## Starting point
+
+Read on 2026-10-28, `main` at 75d2809, with the intent at c10da65 on its branch:
+- `new-realm-ids.sh:15` matches a UUID only (`uuid='[0-9a-f]{8}-…-[0-9a-f]{12}'`). `:21` takes every UUID of the file as its ids (`grep -oE "$uuid" | sort -u`, a bare `sort`). `:26-35` draws them new version 4 UUIDs in one `openssl rand` and writes a sed script, `s/<old>/<new>/g`, which `:36` applies in place. The replacement is textual and applies to every occurrence, so references follow (`containerId`, `parentId`, a key provider's `kid`). An id that isn't a UUID stays as it was, along with every reference to it. `:19-20` finds the users from Keycloak's layout (`    "id" : "<uuid>",` then `"username"`).
+- Tickee's `tenant2-realm.json` (read only), Keycloak's layout: the LDAP component `org.keycloak.storage.UserStorageProvider[0]` has the id `yF3TX8w9ReakazORRBtTAQ`, 22 characters of base64url (a Keycloak "short id", not a UUID), at line 1523. The id occurs 7 times: the component's `id`, and each of its 3 users' `origin` and `federationLink` (lines 432/435, 454/457, 476/479). Its 10 mappers are sub-components with UUID ids of their own, which the script already renews. The sub-components carry no `parentId`, because nesting gives the parent. The export has no `federatedUsers`.
+- Every id of the other known exports (Tickee's other three, tickee_demo's four, Faito, Hurura'a, poc-immo-pf, Turu, labofact, quiz, rest-hero, and c4-infra's fixtures and `keycloak-import/`) is a UUID, except two other LDAP components: tickee_demo's tenant1 `kboPfN_cTrWQ8SlBSzObog` and tenant2 `Ik9GteBwT7KaqJpsoC1azw`. No two known exports share a component id today. The bug bites a realm cloned from an export with a federation. poc-immo-pf's export uses jq's layout (`"id": `): `:19` lists none of its users (pre-existing, outside the intent).
+- `register-app.sh:447` imports a realm with `account -i create realms -f - -s "realm=$realm"`. The test uses that path.
+- `tests/0017-new-realm-ids.sh` uses a fixture with 5 UUIDs and no other id, so its checks (`5 ids replaced`…) hold after the fix, unchanged.
+
+## Engineer's choices
+
+- Decided by Jérôme Wacongne (engineer), 2026-10-28: every recommendation below.
+
+Proposed by Claude, to confirm by Jérôme Wacongne (engineer) with this plan:
+
+1. **Which ids** *(to confirm)*: every UUID of the file, as today (anywhere, `kid` included), plus every value of an entity's id key, whatever its form: `"id"` (realm, clients, roles, groups, scopes, protocol mappers, components **and sub-components**, flows, authenticator configs, users, credentials, organizations, authorization policies and scopes), `"_id"` (authorization resources) and `"internalId"` (identity providers). Each of them is a primary key of the shared database. By form:
+   - a UUID gets a new version 4 UUID;
+   - a Keycloak short id (`^[A-Za-z0-9_-]{22}$`) gets a new short id;
+   - a storage id `f:<component>:<external>` (a `federatedUsers` entry) isn't an id of its own: its component part follows the component;
+   - any other form, a readable id such as a realm id `"faito"` from a hand-written template, **refuses that file**. The file is left as it was, its ids are named, the other files are processed and the script exits 1. Replacing a readable word as text would also rewrite the realm's name, its URLs and its clients.
+
+   Alternatives: renew the short ids only and leave other forms silently (as today); or warn about other forms without refusing. Recommended: the refusal, because it fails closed and no known export holds such an id.
+2. **The new id's form** *(to confirm)*: the old id's form. A short id gets 22 characters of base64url (`openssl rand -base64 16`, `+/` → `-_`, without padding), drawn like the UUIDs with openssl and no new tool. The reason: Keycloak gives a user storage provider a short id, and that id is embedded in its federated users' storage ids (`f:<component>:<external>`), so the plan keeps the length Keycloak chose. Alternative: a UUID for every id (simpler; step 0 (d) measures whether Keycloak accepts it). Recommended: the same form.
+3. **How to find them** *(to confirm)*: without a JSON parser, as today. `grep -oE '"(id|_id|internalId)" *: *"[^"]*"'` reads both Keycloak's layout (`" : "`) and jq's (`": "`), minified JSON too. A key inside a string value is escaped (`\"id\"`), so it doesn't match. The replacement stays the sed script, applied to every occurrence: `federationLink`, `origin` and a storage id follow, and the file stays byte for byte as it was outside its ids, which keeps the application's diff readable. Each id that isn't a UUID is printed as it's renewed (`  id <old> -> <new>`). The ids are sorted with `LC_ALL=C sort -u`, the rule since 0019. jq is used in the test only. Alternative: jq to find the ids. jq parses JSON exactly, but it's a new dependency of the script, Windows' jq adds `\r` on Git Bash, and rewriting the file with jq would reformat what the application commits. Recommended: grep.
+4. **The reproducing test** *(to confirm)*: one test, `tests/0030-federation-ids.sh`, in two parts. A file part, without Docker. A Keycloak part: both copies imported into a throwaway Keycloak of the stack's image, as `register-app.sh` imports them (that is the intent's expected outcome). Its `covers:` names `keycloak/`, so a Keycloak upgrade runs it again. The name doesn't end in `-facts.sh`: it's the script's test, run by `tests/run.sh --changed`. Step 0's facts are measured once and recorded under *Deviations*, as in 0024 and 0025. Alternative: the file part alone as the reproducing test, plus `tests/0030-keycloak-facts.sh` for the imports (which then run only with `--all`). Recommended: the single test, which reproduces the bug as the intent states it.
+
+## Files
+
+| File | Change | For |
+| --- | --- | --- |
+| `new-realm-ids.sh` | modified: the ids are the UUIDs of the file (`:21`, `LC_ALL=C sort -u`) plus the values of `"id"`, `"_id"` and `"internalId"`, in either layout; each is sorted by its form (choice 1): a UUID gets a new UUID, a short id a new short id (choice 2), a storage id follows its component, any other form refuses the file (named, left as it was, exit 1 at the end); renewed ids that aren't UUIDs are printed; the count includes them; the sed script and its in-place run are unchanged; header comment (every id an import needs unique, not every UUID) | the outcome |
+| `tests/0030-federation-ids.sh` | new, frozen after step 1, `# covers: new-realm-ids.sh tests/fixtures/0030/ keycloak/`. **Files** (no Docker): two copies a and b of the fixture, each through the script: exit 0; `<file>: N ids replaced`, where N is the fixture's UUIDs + 1; no id of the fixture left in either copy (`grep -F`, the component's included); the component's id has Keycloak's form, isn't the fixture's, and differs between a and b; each linked user's `federationLink` and `origin` equal its own file's component id, and the local user has none; the mappers' ids are renewed and differ between a and b; each copy equals the fixture once every id is masked (the layout kept); copy c, a copy of a run through the script a second time (an export already rewritten): exit 0, new ids again, its users still linked; a file with a readable id (`"id" : "verif-readable"`): exit 1, the id named, the file left as it was (`cmp`); a `federatedUsers` storage id `f:<component>:<external>`: not refused, its component part following. **Keycloak** (a throwaway of `c4-infra/keycloak`, `start-dev --db=dev-file`, no published port, removed whatever happens, as `tests/0013-keycloak-facts.sh`; files passed on kcadm's stdin, no bind mount; `MSYS_NO_PATHCONV=1`): a, b and c imported under three names (`create realms -f - -s realm=…`): each import exits 0; each realm's components hold its own file's LDAP component; one user of each, read back, is linked to its own realm's component. Every `sort` written `LC_ALL=C sort` | the outcome, the constraint |
+| `tests/fixtures/0030/verif-ldap-realm.json` | new: Keycloak's export layout; realm `verif-ldap` (UUID id); an LDAP `UserStorageProvider` with a short id, `enabled` false, `ldap://ldap.invalid:389`, no bind credential, and two mapper sub-components (UUIDs); two users linked to it (`federationLink`, `origin`, `LDAP_ID`) and one local user. Derived at step 0 from Keycloak 26.8.1's own partial export and the user layout of Tickee's tenant2 | the outcome |
+| `README.md` | modified: "What an application provides", one sentence: `new-realm-ids.sh` gives new ids to the UUIDs and to a user federation's short id, with its users' links, and refuses an id it can't renew (a readable one) | the outcome |
+| `docs/intent/0030-…/plan.md`, `intent.md`, `docs/intent/README.md` | this plan; status planned, then delivered; the index row | — |
+
+`docs/migration.md` stays as it is: its sentence ("give each realm file ids of its own") still holds, and intent 0028 rewrites the guide on its own branch.
+
+## Order of work
+
+**Batch** (the product owner, 2026-10-28): 0026 to 0031 are delivered in one batch, merged in this order into `batch-0031-0030-0028-0026-0027-0029`, from `main`: 0031, 0030, 0028, 0026, 0027, 0029. This intent's review round runs on its own commits. The verification command runs once, `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --all` on the integration head, from the main tree: this intent's verification and the milestone before the push. Its verifier gets that log; the mutation checks run as written below. A failure is attributed by rerunning the failing test on this intent's branch, and fixed there. `/sdlc-ship` delivers the six in the batch's order, with one push of `main`, validated by the product owner.
+
+0. **Setup and facts**: on the branch `0030-new-realm-ids-keeps-federation-component-ids` (at c10da65), `git merge main` (75d2809). Then, in a throwaway Keycloak of the stack's image (26.8.1, `start-dev --db=dev-file`, no published port, as `tests/0013-keycloak-facts.sh`), with realms imported as `register-app.sh:447` does (`kcadm create realms -f - -s realm=<name>`):
+   - (a) **the forms**: an LDAP component created through the admin API (`create components`, `providerId=ldap`, disabled, `ldap://ldap.invalid`): the forms of its id and of its default mappers' ids, and the layout of its partial export. The fixture is drafted from them and from Tickee's tenant2 users;
+   - (b) **the bug**: realm A is the draft fixture through `main`'s script; realm B is the same fixture through `main`'s script again (other UUIDs, the same component id). Is B imported or refused? Record kcadm's message, and whether B is absent after a refusal (rolled back) or left half imported;
+   - (c) **the fix by hand**: B's component given a new short id, its users' links following: imported? Does each realm list its own component? Is one user of each, read back (`get users/<id>`), linked to its own realm's component, without reaching a directory (the component disabled)?
+   - (d) the same with a UUID as the component's id (choice 2's alternative): imported?
+   - (e) a mapper's (sub-component's) id shared, everything else renewed: refused?
+   - (f) only if (b) isn't refused on H2: (b) again on PostgreSQL, through the dev stack's Keycloak (`kc_admin`), realms `verif-0030-a` and `verif-0030-b`, deleted afterwards.
+
+   — skill: none — check: the answers recorded under *Deviations*. Then, by (b)'s answer:
+   - **refused**: the plan goes on as written;
+   - **imported, and each realm has its own component with its users linked inside it** (Keycloak renews the id itself, or keeps the ids per realm): the bug doesn't exist on 26.8.1. Steps 1 to 3 don't run; nothing is committed but the facts in this plan. The product owner decides: abandon 0030 (status `abandoned`, "dropped"), or keep the measurement as `tests/0030-keycloak-facts.sh` (`covers: keycloak/`) so that a Keycloak upgrade that starts refusing is caught;
+   - **imported, but a realm loses its component, or B's users point at A's component** (one application's users federated through another's directory): the bug exists and is worse than the intent says, because it is silent and crosses applications. The product owner is told before step 1. The plan goes on: the test already asserts each realm's own component and links. The risk becomes high (isolation between applications), so the security pass runs at step 4.
+1. **Failing test**: `tests/0030-federation-ids.sh` and its fixture. — skill: none — check: `bash tests/0030-federation-ids.sh` exits 1 with KO on the component's renewed id, on the distinct ids of a and b, on the readable id's refusal and on B's import (and C's); the layout and A's import `ok`. `bash tests/0019-collation.sh` passes. Commit `test(0030): …` alone and freeze it.
+2. **Fix** `new-realm-ids.sh`. — skill: none — check: `bash -n new-realm-ids.sh`; `bash tests/0030-federation-ids.sh` and `bash tests/0017-new-realm-ids.sh` end with `every check passed`. On copies, in a temporary directory, of Tickee's tenant2 and tickee_demo's tenant1 (short ids) and of poc-immo-pf's immo (jq's layout): the short id is gone, `jq -e .realm` holds, and the count equals UUIDs + short ids. The projects' files are never touched. Commit `fix(0030): …`.
+3. **Docs**: the script's header, README. — skill: none — check: reread; `bash tests/0004-registry.sh` and `bash tests/0016-no-real-provider.sh` (they declare `README.md`) pass. Commit `docs(0030): …`.
+4. **Verification**: `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed --all` (the concerned tests: `0030-federation-ids`, `0017-new-realm-ids`, `0004-registry`, `0016-no-real-provider`; no stand-in or facts test, since `keycloak/` doesn't change). Mutation check: `main`'s `new-realm-ids.sh` with the current test, in a throw-away worktree, must give the test `KO`. Then `/sdlc-verify 0030` (bootstrap: one round, the bugs pass; standard risk: a developer's tool that rewrites a realm file the developer commits, with no change to the registration, the hosts or a secret's handling; high only after step 0's third answer). Its evidence goes into `## Verification`. — skill: sdlc-verify — check: `verification passed`. Then `/sdlc-ship 0030` (bootstrap: the local merge of the branch into `main`).
+
+## Risks
+
+- A value of an id key that is neither a UUID, a short id nor a storage id (a readable id from a hand-written template) → the file is refused, its ids named, the file left as it was (choice 1); the developer gives such an id a UUID by hand. No known export holds one (read 2026-10-28).
+- A 22-character base64url value that isn't random (hand-written) is taken for a short id and replaced as text everywhere, as a UUID is → each id renewed that isn't a UUID is printed; the script runs once per file and its result is committed after the developer reads the diff.
+- A later Keycloak gives other entities short ids, or another id form → the rule reads every value of an id key, whatever its form: a short one is renewed, any other is refused. The test's `covers: keycloak/` runs it again on a Keycloak upgrade.
+- The throwaway runs on H2, the stack on PostgreSQL → the primary keys come from the same Liquibase changelog. Step 0 (f) checks PostgreSQL if H2 doesn't refuse.
+- A `federatedUsers` storage id (`f:<component>:<external>`) is in no known export, so its form is assumed from Keycloak's storage ids → it isn't refused, and its component part follows the text replacement; the test's file part checks it, without an import.
+- Merging with 0028 (`README.md`, `docs/migration.md`) → 0030 changes one sentence of the README and leaves the guide; whichever merges second resolves.
+- Tickee's committed tenant2 isn't changed here (another repository): Tickee's migration runs the script (its own plan, `origin/0001-tickee-sur-l-infra-partagee`).
+
+## Proof
+
+| Criterion | How | Test, command or check |
+| --- | --- | --- |
+| Two realms cloned from an export with an LDAP user federation, both through `new-realm-ids.sh`, are both imported, each with its own component (the intent's expected outcome) | automated test | `tests/0030-federation-ids.sh`: the component's id renewed, different in a and b; a and b imported into a throwaway Keycloak 26.8.1; each realm lists its own component |
+| Its users' links follow | automated test | the same test: each user's `federationLink` and `origin` equal its file's component id; in Keycloak, a user of each realm read back, linked to its own realm's component |
+| Every id an import needs unique is renewed, sub-components included; an id the script can't renew is refused, not left | automated test | the same test: the mappers' ids renewed; no id of the fixture left; a readable id refused (exit 1, named, the file unchanged); a storage id following its component |
+| An export the script already rewrote still imports (constraint) | automated test | the same test: c (a run twice) imported; `tests/0017-new-realm-ids.sh` unchanged, `every check passed` |
+| The file is otherwise unchanged | automated test | the same test: each copy equals the fixture once its ids are masked |
+| The bug is reproduced | mutation check | `main`'s `new-realm-ids.sh` gives the test `KO` (the component's id unchanged in both copies, B's import refused): at step 1, and in a throw-away worktree at step 4 |
+
+## Deviations
+
+<!-- filled during implementation: date — what — why — impact on files or proof -->
