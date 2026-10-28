@@ -173,6 +173,10 @@ same for every application:
   the specs (not the dev ports: specs are regenerated while the dev applications run);
 - a management port, if an application sets one, on its port + 1.
 
+The block is the workstation's: on the demo host, the containers keep the ports "Routes file" gives
+their upstreams (the gateway's `7080`, the front ends' `80`, the MCP server's `9080`) and publish
+none.
+
 Windows reserves dynamic port ranges from 49152 on (and some fixed ones: `netsh interface ipv4 show
 excludedportrange protocol=tcp`), so blocks stay below: `n` goes up to 38.
 
@@ -552,7 +556,8 @@ no RabbitMQ UI), Mailpit asking for its own credentials; plain HTTP inside the D
 
 Step by step in [docs/demo-setup.md](docs/demo-setup.md): VPS and DNS, deployment key, host
 preparation, host key, passwords (three of them fixed by the first deployment), the GitHub `demo`
-environment, first deployment and checks. Not set up yet (postponed on 2026-10-21).
+environment, first deployment and checks. Deployed since 2026-10-23 (the first successful run of
+`deploy-demo.yml`).
 
 ### Accounts
 
@@ -608,8 +613,8 @@ sub-keys and values — and refuses anything else, naming the service (or networ
   limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
   no-new-privileges`). A service name is `[a-z0-9_-]+` — no dot, which would be an alias on the
   shared network;
-- **refused with their own message**: `build` — the demo host runs the images the application's
-  CI builds and pushes to a registry, and builds none itself (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
+- **refused with their own message**: `build` — the demo host builds no image; it pulls each
+  service's `image:`, the application's own from its registry or a public one (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
   `grafana-lgtm`, `reverse-proxy`, `keycloak-db`); a published port (`expose` is fine: only the
   shared Caddy publishes);
   `privileged`, `cap_add`, `devices`, `device_cgroup_rules`, a `deploy` reservation of host devices;

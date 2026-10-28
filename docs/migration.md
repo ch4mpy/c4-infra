@@ -53,9 +53,17 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    | `openapi` profile: gateway / REST API | dev ports | p090 / p190, passed as `--server.port` |
    | `openapi` profile: their management | dev ports + 1 | p091 / p191, passed as `--management.server.port` (else they take the dev applications' p081 / p181) |
 
-   In `application.yml` (`server.port`, `management.server.port`, `rest-api-v1` and the like), the
-   poms' `integration-tests.port` (`openapi` profile), `angular.json` / `package.json` (`--port`),
-   `.env` (`REST_API_DB_PORT`) and `.vscode/launch.json` if it names ports.
+   In `application.yml`'s default and dev profiles, not the `demo` one's (`server.port`,
+   `management.server.port`, `rest-api-v1` and the like), the poms' `integration-tests.port`
+   (`openapi` profile), `angular.json` / `package.json` (`--port`), `.env` (`REST_API_DB_PORT`) and
+   `.vscode/launch.json` if it names ports.
+
+   Only what runs on the workstation moves. On the demo host the containers keep their ports and
+   publish none: its Caddy reaches `<project>.gateway:7080`, `<project>.frontend:80` and
+   `<project>.mcp:9080` (`registry.sh upstream`). So a port the default profile moved is set back
+   for the demo containers, by their `demo` profile or their compose file's environment
+   (`SERVER_PORT`): the gateway's `7080`, the MCP server's `9080`, the REST API's `8080`, which the
+   demo `rest-api-v1` names, and the management ports the compose file's healthchecks name.
 2. **Origin.** The project is served on `https://<project>.dev.localhost/`:
    - gateway: a new `app-uri: https://<project>.dev.localhost` replaces `reverse-proxy-uri` in
      `client-uri`, `post-login-*` and `post-logout-*` (the allowed patterns become
@@ -130,8 +138,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 ## On the demo host
 
-1. Deploy `c4-infra` on the VPS first (its README). Its Caddy takes ports 80 and 443: a project
-   still deploying its own Caddy on the same host must move in the same maintenance window.
+1. c4-infra runs on the demo host (deployed since 2026-10-23, its README). Its Caddy holds ports 80
+   and 443: a project's own Caddy can't run beside it, so a project still deploying one on that
+   host moves in one maintenance window.
 2. **Its account** on the host, `<project>`, named after its registry entry, opened by its own key
    only: [demo-setup.md](demo-setup.md), step 9, "Adding an application" (its registry entry
    deployed, its key pair, `vps-bootstrap.sh app <project> '<key>'`, its secrets `VPS_HOST`,
@@ -150,8 +159,13 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    file it mounts or reads (`env_file`) is inside `~/<project>/`, relative to it (the model is read
    as the project's account: it can't read any other). Its data go in named volumes: what is
    mounted from `~/<project>/` is root's copy, made again, as sent, by each `sudo c4-app` command.
-   Every service runs an `image:` the project's CI built and pushed to a registry (GHCR): no
-   `build:`, which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
+   Every service runs an `image:`, pulled as it is: the project's own, built and pushed by its CI
+   to its registry (GHCR, GitLab's, any registry `sudo c4-app pull --registry` logs in to), or a
+   public one (`postgres`…). `sudo c4-app up` pulls the images the host lacks without logging in
+   anywhere: an image behind a login comes first through `sudo c4-app pull --registry <host>
+   --registry-user <user>` (step 5 below, which gives the forms it accepts), one registry per pull,
+   which pulls every image under that login: the private ones come from one registry. No `build:`,
+   which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
    No published port, no `network_mode`, no other network, no alias or container name outside
    `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
    README, "Accounts"):
@@ -176,9 +190,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
    of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
    by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
-   `~/<project>/`, `sudo c4-app pull` (the GHCR token on stdin), `sudo c4-app register` (paths
-   relative to `~/<project>/`; `--rabbitmq-password-env` names a variable of `~/<project>/.env`)
-   and `sudo c4-app up`:
+   `~/<project>/`, `sudo c4-app pull` (its registry's token on stdin: GHCR's here),
+   `sudo c4-app register` (paths relative to `~/<project>/`; `--rabbitmq-password-env` names a
+   variable of `~/<project>/.env`) and `sudo c4-app up`:
 
    ```yaml
      deploy:
@@ -223,6 +237,18 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
              GHCR_USER: ${{ github.actor }}
              GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
    ```
+
+   On another platform (GitLab, any CI that runs a shell), the job does the same, in the same order:
+   the host's key pinned from `VPS_KNOWN_HOSTS` before anything connects (the lines of
+   `demo/trust-host-key.sh`), `VPS_SSH_KEY` in an ssh agent, what the job runs pinned as the
+   actions are (an image by digest, anything it includes by commit), then the `rsync`,
+   `sudo c4-app pull --registry <registry host> --registry-user <user>` with the registry's token on
+   stdin, read from a secret variable of the platform (never on a command line), `register` and
+   `up`. `--registry` takes a host name, with an optional `:port` and no path; `--registry-user`
+   letters, digits, `.`, `_` and `-`. Without `--registry`, `pull` logs in nowhere, which is enough
+   when every image is public. `VPS_HOST`, `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` become secret
+   variables of that platform, given only to the deployment's protected branch or environment (as
+   `environment: demo` does here), and never printed by the job.
 
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:

@@ -1,7 +1,8 @@
 # Setting up the demo host
 
-Status: **not set up yet**. Postponed on 2026-10-21 (OVH's administration console was down); until
-then, only the dev stack is in use. Follow these steps once, in order, when the VPS is available.
+Status: deployed since 2026-10-23 (the first successful run of `deploy-demo.yml`). Steps 0 to 8 set
+a host up, once, in order; step 9 adds an application; steps 10 to 12 are operations on a running
+host.
 
 The demo host runs the shared stack (Caddy, Keycloak on PostgreSQL, Mailpit, RabbitMQ, Grafana
 LGTM): the compose base [compose.yml](../compose.yml) with its demo override
@@ -211,7 +212,8 @@ own compose project and registers it with what its registry entry assigns to it,
    home closed to the other accounts, and ends with
    `Done. <app>'s workflow can now deploy as <app>@<ip>`. It refuses an account it didn't create
    (`ubuntu`, a system user).
-5. **Its secrets**, in the application's repository (its own `demo` environment), read on stdin:
+5. **Its secrets**, in the application's repository (its own `demo` environment), read on stdin;
+   on another platform than GitHub, the same three values as its CI's secret variables:
 
    ```bash
    A=ch4mpy/<app>
@@ -222,9 +224,9 @@ own compose project and registers it with what its registry entry assigns to it,
    ```
 
    then delete the local copy of the private key (or keep it in the password manager).
-6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on the
-   `c4-infra` network with unique container names, its routes file, the commands it runs as
-   `<app>@<vps-ip>`).
+6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on its
+   own network `c4-infra.<app>` with unique container names, its routes file, the commands it runs
+   as `<app>@<vps-ip>`).
 
 Faito has no demo deployment yet.
 

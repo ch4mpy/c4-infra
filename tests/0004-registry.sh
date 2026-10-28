@@ -11,7 +11,8 @@
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
 #              docker call
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
-#              numbers (AC-07); docs/migration.md states the registry's contract
+#              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
+#              names the demo upstreams registry.sh derives (0028)
 #
 # covers: registry.sh registry.txt register-app.sh up.sh README.md docs/migration.md
 # covers: tests/fixtures/0004/ routes.sh networks.sh registration-account.sh
@@ -209,6 +210,16 @@ port_registry_section() {
   awk '/^### Port registry$/ { on = 1; next } on && /^#/ { exit } on' README.md
 }
 
+migration_in_dev() { sed -n '/^## In dev$/,/^## /p' docs/migration.md; }
+demo_upstream_in_dev() { # <role>: registry.sh's demo upstream of a fixture's faito, as <project>.<…>:<port>, in the guide's dev section
+  local upstream
+  upstream=$(REGISTRY_FILE=tests/fixtures/0004/taken-1-4.txt bash registry.sh upstream faito "$1" demo) && [ -n "$upstream" ] \
+    || { echo "registry.sh upstream faito $1 demo: nothing"; return 1; }
+  upstream=${upstream/http:\/\/faito./<project>.}
+  # the port whole: :80 isn't found in :8080
+  migration_in_dev | grep -qE -- "${upstream//./\\.}([^0-9]|$)" || { echo "not found: $upstream"; return 1; }
+}
+
 holds() { # <text> <file or "-" for stdin>
   grep -qF -- "$1" "$2" || { echo "not found: $1"; return 1; }
 }
@@ -228,6 +239,10 @@ part_docs() {
   check "README: the section holds no table of numbers" no_table_of_numbers
   check "migration.md names bash registry.sh next" holds 'bash registry.sh next' docs/migration.md
   check "migration.md gives the columns" holds 'n app realms rabbitmq-user themes dev-host demo-host' docs/migration.md
+  local role
+  for role in gateway fr mcp; do
+    check "migration.md, In dev: the demo's $role upstream (registry.sh), where the ports move" demo_upstream_in_dev "$role"
+  done
 }
 
 [ $# -gt 0 ] || set -- registry scripts docs
