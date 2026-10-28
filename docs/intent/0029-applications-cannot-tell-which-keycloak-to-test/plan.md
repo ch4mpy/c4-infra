@@ -196,3 +196,10 @@ Not changed: `keycloak/` (C2), `compose*.yml`, `env.sh`, `demo/deploy.sh`, `demo
   - Each tag's provenance (SLSA, `mode=min`): build arguments `vcs:source=https://github.com/ch4mpy/c4-infra`, `vcs:revision`, the context `keycloak`; each revision's `keycloak/` tree is its tag (`fc47b85` → `33909cd89858`, `6e03af8` → `5c653a7874f9`, `08dfa3d` → `3ef3c92932a3`), files `Dockerfile`, `HealthCheck.java`, `themes/.gitkeep`, and `stack-themes/**` in the last.
   - `bash tests/0029-image-facts.sh ghcr.io/ch4mpy/c4-infra-keycloak:26.8.1-33909cd89858` → `every check passed` (pulled from GHCR: the label `26.8.1`, the description's settings, no credential, 505/519 files, only the expected ones, no realm, ready on `start-dev` with `KC_DB=dev-file`, the three features, the three login themes).
   - Clean: step 8 is the product owner's. The repository was made public by the product owner the same day; the package stays private until step 8 (an anonymous token: `authentication required`).
+- Step 8: the package made public by the product owner (2026-10-28).
+- Step 9, after publication, without credentials:
+  - `curl -s "https://ghcr.io/token?scope=repository:ch4mpy/c4-infra-keycloak:pull"`: an anonymous token (64 characters), where step 0 got `authentication required`;
+  - `curl -sI` with it on `/v2/ch4mpy/c4-infra-keycloak/manifests/26.8.1-33909cd89858` and `/manifests/33909cd89858`: `HTTP/2 200`, both `docker-content-digest: sha256:8ff2e5ba3819497c8b4e72a71e9d87807c08f5d3a1c974c8d7122e49fe6456d0`, step 6's;
+  - the amd64 manifest (`sha256:a519df43…`)'s config blob: `org.opencontainers.image.version: 26.8.1`, `KC_FEATURES=token-exchange-delegation,parameterized-scopes,cimd`;
+  - `docker pull` with an empty `DOCKER_CONFIG` (no login): exit 0, `ghcr.io/ch4mpy/c4-infra-keycloak@sha256:8ff2e5ba…`.
+  - Left: the next run of the workflow on `main` (the next delivery touching more than `**/*.md`): the tag step skipped, the same digest printed twice.
