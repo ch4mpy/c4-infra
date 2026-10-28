@@ -293,12 +293,11 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    the services that hold its data in its `compose.yml`: `c4-infra.backup: postgres` on a
    PostgreSQL service (a hot dump of its `POSTGRES_DB`), `c4-infra.backup: volumes` on a service
    whose named volumes are copied, the service stopped meanwhile. Tickee: `rest-api-db` `postgres`,
-   and `ldap2` `volumes` if its directory is to be kept rather than rebuilt from `ldap/*.ldif`;
-   immo: `rest_api_db` `postgres`, `rustfs` `volumes`. Its workflow may run
-   `ssh "$VPS" sudo c4-app backup` before a deployment that migrates its database. Its backups are
-   in `/var/backups/c4-apps/<project>/`, which its account reads (and may pull with `rsync`), kept 7
-   days; `sudo c4-app restore` lists them, `sudo c4-app restore <stamp> --yes` restores one, once
-   the state before is backed up.
+   and `ldap2` `volumes` if its directory is to be kept rather than rebuilt from `ldap/*.ldif`. Its
+   workflow may run `ssh "$VPS" sudo c4-app backup` before a deployment that migrates its database.
+   Its backups are in `/var/backups/c4-apps/<project>/`, which its account reads (and may pull with
+   `rsync`), kept 7 days; `sudo c4-app restore` lists them, `sudo c4-app restore <stamp> --yes`
+   restores one, once the state before is backed up.
 
 ## Per project
 
