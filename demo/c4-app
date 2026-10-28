@@ -35,8 +35,9 @@
 # The backups' time limits (intent 0033), in seconds: ITEM_TIMEOUT (1800) each dump or volume's
 # copy, RESTORE_TIMEOUT (3600) each restore step, NIGHTLY_TIMEOUT (7200) each application's nightly
 # run. One that a limit cuts is stopped where it runs (its processes and sessions in the database's
-# container, or its throwaway container), as one that reaches the floor, then refused, saying what
-# was stopped. Root's own /etc/c4-app/limits may change them (read_limits), for every application.
+# container, or its throwaway container), as one that reaches the floor or fails, then refused,
+# saying what was stopped. Root's own /etc/c4-app/limits may change them (read_limits), for every
+# application.
 #
 # pull, up and register work on a copy of ~/<application>/<application>/ (sent there by the
 # application's workflow), read as the application and written by root into
@@ -258,10 +259,12 @@ run=
 # E3: the item that runs (bounded), stopped on the way out: what it is, its timeout's pid, where it
 # runs, its FIFO's reader; what its stop stopped, a cut's line
 item_what= item_pid= item_container= item_marker= item_cid= item_reader= item_stopped= cut=
-# a docker stop under way (stop_containers)
 stopping=
 leave() {
   local status=$? what=$item_what deadline=$((SECONDS + STOP_WAIT))
+  local -a bound=()
+  # on a signal, a KILL may follow (the nightly run's, 60 s after its TERM): the start can't wait on
+  [ -z "$signalled" ] || bound=(timeout 20)
   # a signal sudo relays again must not cut the way out short
   trap '' INT TERM
   if [ -n "$what" ]; then
@@ -283,7 +286,7 @@ leave() {
   if [ -n "$stopping" ] && kill -0 "$stopping" 2> /dev/null; then
     echo "c4-app: ${stopped[*]} still stopping $STOP_WAIT s later: sudo c4-app up starts them" >&2
   elif [ ${#stopped[@]} -gt 0 ]; then
-    timeout 20 docker start "${stopped[@]}" > /dev/null || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+    "${bound[@]}" docker start "${stopped[@]}" > /dev/null || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
   fi
   [ "$status" -eq 0 ] || [ -z "$restoring" ] \
     || echo "c4-app: the restore of backup $restoring failed (above), before it changed any data: its containers run again" >&2
@@ -602,20 +605,28 @@ in_throwaway() {
 }
 
 # <command> under <limit>, in the background with the lock's descriptor closed, then waited for: a
-# signal reaches the trap at once. Its status; a cut (124, or 137 once timeout's KILL fired) is stopped
-# and returns 124, its line in cut. Otherwise the item stays recorded: the caller forgets or stops it
+# signal reaches the trap at once. Its status; one that fails has what it started stopped, said in
+# item_stopped, and a cut (124, or 137 once timeout's KILL fired, the limit past: before it, the
+# item's own status) returns 124, its line in cut
 bounded() { # <limit> <what> <stdin> <stdout> <command>…
-  local limit=$1 what=$2 in=$3 out=$4 code=0
+  local limit=$1 what=$2 in=$3 out=$4 code=0 start=$SECONDS
   shift 4
-  item_what=$what
+  item_what=$what item_stopped="nothing left running"
   PGAPPNAME=$item_marker timeout --kill-after=5 "$limit" "$@" < "$in" > "$out" 9>&- &
   item_pid=$!
   wait "$item_pid" || code=$?
   item_pid=
-  [ "$code" -eq 124 ] || [ "$code" -eq 137 ] || return "$code"
+  if [ "$code" -eq 0 ]; then
+    forget_item
+    return 0
+  fi
   stop_item || true
-  cut="$what didn't end within $limit s: stopped ($item_stopped)"
-  return 124
+  if { [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; } && [ $((SECONDS - start)) -ge "$limit" ]; then
+    cut="$what didn't end within $limit s: stopped ($item_stopped)"
+    return 124
+  fi
+  [ "$code" -ne 124 ] || code=1
+  return "$code"
 }
 
 # E4, E5: what the item started, stopped where it runs and confirmed gone within STOP_WAIT, said in
@@ -642,8 +653,8 @@ exec psql -X -q -At -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$main
 MARKED="select pid from pg_stat_activity where application_name = :'marker' and pid <> pg_backend_pid();"
 END="with marked as materialized (select pid from pg_stat_activity where application_name = :'marker' and pid <> pg_backend_pid())
 select pid from marked where pg_terminate_backend(pid);"
-marked_sessions() { # <query>
-  printf '%s\n' "$1" | timeout 10 docker exec -i "$item_container" sh -c "$SESSIONS" sh "$item_marker" | grep -xE '[0-9]+'
+marked_sessions() { # <query> <seconds>
+  printf '%s\n' "$1" | timeout "$2" docker exec -i "$item_container" sh -c "$SESSIONS" sh "$item_marker" | grep -xE '[0-9]+'
   [ "${PIPESTATUS[1]}" -eq 0 ]
 }
 # The item's processes: the host PIDs docker top lists for its container whose environment holds the
@@ -656,6 +667,8 @@ marked_pids() {
   done
 }
 parent() { awk '$1 == "PPid:" { print $2 }' "/proc/$1/status" 2> /dev/null; }
+# A psql call's limit: the seconds left before <deadline>, 1 to 10
+psql_wait() { local left=$(($1 - SECONDS)); echo $((left < 1 ? 1 : left > 10 ? 10 : left)); }
 # E4: the item's sessions ended, its processes killed (their environment read again just before), never
 # one whose parent is the container's first process: the database server would take that for a crash
 # and end every session (step 0, fact c); its session's end ends it. Confirmed gone, or named
@@ -667,7 +680,7 @@ stop_marked() {
     names+="${names:+, }$(cat "/proc/$pid/comm" 2> /dev/null || true)"
   done
   while :; do
-    for pid in $(marked_sessions "$END" 2> /dev/null); do
+    for pid in $(marked_sessions "$END" "$(psql_wait "$deadline")" 2> /dev/null); do
       ended[$pid]=1
     done
     for pid in $(marked_pids); do
@@ -677,7 +690,7 @@ stop_marked() {
     sleep 0.2
     [ "$(docker inspect -f '{{.State.Running}}' "$item_container" 2> /dev/null)" = true ] || break
     left=$(marked_pids)
-    if open=$(marked_sessions "$MARKED" 2> /dev/null) && [ -z "$open$left" ]; then
+    if open=$(marked_sessions "$MARKED" "$(psql_wait "$deadline")" 2> /dev/null) && [ -z "$open$left" ]; then
       break
     fi
     if [ "$SECONDS" -ge "$deadline" ]; then
@@ -857,8 +870,8 @@ room_above_floor() { # [<what is refused>]
   echo $((free - floor))
 }
 
-# An item into its file through a FIFO of the run's, cut at the room above the floor (head): reaching it
-# or the item's limit stops what the item started, then refuses, as a failure does
+# An item into its file through a FIFO of the run's, cut at the room above the floor (head): reaching it,
+# the item's limit or a failure stops what the item started, then refuses
 write_item() { # <file> <command>…
   local file=$1 room size code=0 reader=0
   shift
@@ -871,13 +884,10 @@ write_item() { # <file> <command>…
   wait "$item_reader" || reader=$?
   item_reader=
   size=$(stat -c %s "$partial/$file")
-  if [ "$size" -ge "$room" ]; then
-    stop_item || true
-    fail "$file reached the $(iec "$room") left above the floor on $BACKUP_ROOT: stopped ($item_stopped), backup of $app refused, nothing of it is kept, the earlier backups stay"
-  fi
-  forget_item
+  [ "$size" -lt "$room" ] \
+    || fail "$file reached the $(iec "$room") left above the floor on $BACKUP_ROOT: stopped ($item_stopped), backup of $app refused, nothing of it is kept, the earlier backups stay"
   [ "$code" -ne 124 ] || fail "$cut, no backup of $app kept"
-  [ "$code" -eq 0 ] && [ "$reader" -eq 0 ] || fail "$file failed (above): no backup of $app kept"
+  [ "$code" -eq 0 ] && [ "$reader" -eq 0 ] || fail "$file failed (above): stopped ($item_stopped), no backup of $app kept"
 }
 
 # The containers no longer to start again on the way out
@@ -1050,7 +1060,6 @@ restore_step() { # <stamp> <step> <failure> <stdin> <command>…
   shift 4
   [ -z "$restoring" ] || unchanged=
   bounded "$RESTORE_TIMEOUT" "$step" "$in" /dev/null "$@" || code=$?
-  forget_item
   [ "$code" -ne 124 ] || fail "restore of backup $stamp: $cut$unchanged"
   [ "$code" -eq 0 ] || fail "$failure"
 }
@@ -1149,8 +1158,8 @@ cmd_restore() {
   [ ${#stop[@]} -eq 0 ] || stop_containers "${stop[@]}" || fail "${stop[*]} could not be stopped (above)"
   take_backup
   safety=$stamp
-  altered=1
   printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' > "$run/recreate.sql"
+  altered=1
   for file in $(sorted "${!dump_into[@]}"); do
     name=${dump_into[$file]}
     in_database "$name"

@@ -32,7 +32,7 @@
 #
 #   bash tests/0033-limits-facts.stand-in.sh
 #
-# covers: compose.yml tests/stand-in-host/
+# covers: compose.yml tests/stand-in-host/ demo/c4-app
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -57,15 +57,12 @@ image_there() {
     || stand_in_load_image "$IMAGE"
 }
 
-# The stand-in's side: c4-app's constants as the plan has them, and the facts' helpers
-LIB=$(cat <<'EOF'
-FACTS=/root/facts
-DUMP='exec pg_dump --lock-wait-timeout=120s -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}" -Fc'
-SESSIONS='maintenance=postgres
-[ "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}" != postgres ] || maintenance=template1
-exec psql -X -q -At -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$maintenance" -v marker="$1"'
-THROWAWAY=(--rm --pull never --network none --read-only --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE
-  --cap-add FOWNER --cap-add FSETID --security-opt no-new-privileges --log-driver none)
+# The stand-in's side: c4-app's own DUMP, SESSIONS and THROWAWAY, read from demo/c4-app, and the
+# facts' helpers
+CONSTANTS=$(sed -n "/^DUMP='/p; /^SESSIONS='/,/'\$/p; /^THROWAWAY=(/,/)\$/p" demo/c4-app)
+LIB="FACTS=$FACTS
+$CONSTANTS
+$(cat <<'EOF'
 IMG=$(cat "$FACTS/image-id" 2> /dev/null)
 sql() { docker exec facts-db psql -X -U fact-user -d fact-db -Atc "$1"; }
 named() { sql "select count(*) from pg_stat_activity where application_name = '$1'"; }
@@ -121,8 +118,10 @@ serve() {
   { head -c -100 "$2"; exec sleep 600; } > "$1"
 }
 EOF
-)
+)"
 
+check "c4-app's DUMP, SESSIONS and THROWAWAY are read from demo/c4-app" \
+  test "$(grep -cE "^(DUMP='|SESSIONS='|THROWAWAY=\()" <<< "$CONSTANTS")" = 3
 check "the stand-in host starts" stand_in_up
 check "$IMAGE (compose.yml's keycloak-db) is in the stand-in's Docker" image_there
 check "$FACTS/lib.sh is written" eval \

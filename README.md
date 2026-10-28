@@ -903,16 +903,21 @@ volumes by that label and the name `<app>_<key>`: nothing of another application
   (marked by `PGAPPNAME`: never another, and never one whose end the database server would take for
   a crash of its own) and the sessions they opened (`pg_terminate_backend`, through the official
   image's `psql` as its `POSTGRES_USER` on the local socket, as the dump); a volume's copy or refill,
-  its throwaway container, removed. An item that reaches the floor (below) is stopped the same way. The command is
-  then refused in one line, naming the item or step, its limit and what was stopped, exit 1: `c4-app:
-  db.dump didn't end within 1800 s: stopped (pg_dump in <app>.db, 1 session of its database), no
-  backup of <app> kept`, or `c4-app: restore of backup <stamp>: refilling <app>_files didn't end
-  within 3600 s: stopped (its throwaway container)`, then the restore's failure as below (before or
-  after it replaced data). A nightly run cut by its limit stops its item the same way and starts the
-  containers it stopped; the log says `c4-app: stopped by a signal during <item>: stopped (…)`, then
-  `== exit 124: stopped after 7200 s`. What `c4-app` can't confirm stopped within 40 s is named with
-  its container (`c4-app: pg_dump (pid <n>) in <app>.db didn't stop within 40 s`), exit 1. Once
-  `c4-app` has ended, nothing it started runs on, and the application's next command doesn't wait.
+  its throwaway container, removed. An item that reaches the floor (below) or fails is stopped the
+  same way. The command is then refused in one line, naming the item or step, its limit and what
+  was stopped, exit 1: `c4-app: db.dump didn't end within 1800 s: stopped (pg_dump in <app>.db, 1
+  session of its database), no backup of <app> kept`, or `c4-app: restore of backup <stamp>:
+  refilling <app>_files didn't end within 3600 s: stopped (its throwaway container)`, then the
+  restore's failure as below (before or after it replaced data). A nightly run cut by its limit
+  stops its item the same way and starts the containers it stopped; the log says `c4-app: stopped
+  by a signal during <item>: stopped (…)`, then `== exit 124: stopped after 7200 s`. What `c4-app`
+  can't confirm stopped within 40 s is named with its container (`c4-app: pg_dump (pid <n>) in
+  <app>.db didn't stop within 40 s`), and the command fails: exit 1, or the nightly run's `== exit
+  124`. Once `c4-app` has ended, nothing it started runs on, and the application's next command
+  doesn't wait, but in one case: a signal (the nightly run's cut) that comes while it stops the
+  application's containers, whose `stop_grace_period` makes that stop outlast the 40 s. That
+  `docker stop` goes on after `c4-app`'s end, and the output says `c4-app: <containers> still
+  stopping 40 s later: sudo c4-app up starts them`.
 - **Who changes a limit**: the operator, as root (from `ubuntu`), for every application, in
   `/etc/c4-app/limits`: root's own regular file (`root:root`, writable by root only, in a directory of
   root's), read as data, never run. A line `ITEM_TIMEOUT=<seconds>`, `RESTORE_TIMEOUT=<seconds>` or
