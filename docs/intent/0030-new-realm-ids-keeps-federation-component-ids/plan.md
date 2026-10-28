@@ -88,3 +88,11 @@ Proposed by Claude, to confirm by Jérôme Wacongne (engineer) with this plan:
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — step 0, facts, in a throwaway Keycloak of the stack's image (`c4-infra/keycloak`, 26.8.1, `start-dev --db=dev-file`), realms imported as `register-app.sh` does (`kcadm create realms -f - -s realm=<name>`). Tickee's `tenant2-realm.json` (a copy; its realm id is a UUID) passed through `main`'s `new-realm-ids.sh` twice (`149 ids replaced` each time; `yF3TX8w9ReakazORRBtTAQ` still 7 times in each copy):
+  - (a) an LDAP component created through the admin API gets a short id (`Created new component with id 'skGpOnT-QpGbyTF0CElmEQ'`, 22 characters of base64url); its default mappers and the realm get UUIDs.
+  - (b) **the bug, reproduced**: A imported (`Created new realm with id 'verif-a'`); B refused, `Duplicate resource error`, exit 1, and absent afterwards (rolled back).
+  - (c) B with its component given a new short id (`rhw-rhYl6KOpFXiekPWGOA`), its users' links following: imported; each realm lists its own component, and its `manager2` is linked to it (`verif-a: … yF3TX8w9ReakazORRBtTAQ`, `verif-b: … rhw-rhYl6KOpFXiekPWGOA`).
+  - (d) a UUID as the component's id: imported, its users linked to it.
+  - (e) everything renewed but one mapper's (sub-component's) id, A's: `Duplicate resource error`.
+  - (f) not run: (b) is refused on H2. The plan goes on as written, standard risk.
