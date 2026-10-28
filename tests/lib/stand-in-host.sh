@@ -11,7 +11,9 @@
 #   stand_in_exec [-i] <command…>    runs the command in the stand-in, as root; -i passes stdin, which
 #                                    the caller always redirects
 #   stand_in_load_image <image>…     copies images of this machine into the stand-in's Docker
-#   stand_in_send <dir>              sends the files of demo/deploy-files.txt into <dir>, as the
+#   stand_in_probe                   the isolation tests' probe (tests/fixtures/0007/probe/: an echo on
+#                                    :7080, curl, nmap, nc) as c4-test/probe in the stand-in's Docker
+#   stand_in_send <dir>             sends the files of demo/deploy-files.txt into <dir>, as the
 #                                    deployment does
 #   stand_in_env <dir>               writes <dir>/.env with demo/write-env.sh, run inside the
 #                                    stand-in (a Linux shell, as the workflow's runner), with a random
@@ -99,6 +101,11 @@ stand_in_load_image() {
     docker save "$image" | stand_in_exec -i docker load -q > /dev/null \
       || { echo "stand_in_load_image: $image not loaded" >&2; return 1; }
   done
+}
+
+stand_in_probe() {
+  (cd "$STAND_IN_ROOT/tests/fixtures/0007/probe" && tar -cf - .) \
+    | stand_in_exec -i docker build -q -t c4-test/probe - > /dev/null
 }
 
 stand_in_send() { # <dir>

@@ -73,10 +73,7 @@ token_from_mcp() {
 
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, turu), the shared stack deployed as c4-infra" stand_in_accounts turu
-build_probe() {
-  (cd tests/fixtures/0007/probe && tar -cf - .) | stand_in_exec -i docker build -q -t "$PROBE" - > /dev/null
-}
-check "the probe image is built in the stand-in" build_probe
+check "the probe image is built in the stand-in" stand_in_probe
 
 check "Turu's files are rsynced to ~turu/turu/ with its key" upload
 as register.log turu "sudo c4-app register --realm turu-realm.json --proxy turu.routes"

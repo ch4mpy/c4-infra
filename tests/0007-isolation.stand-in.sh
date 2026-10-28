@@ -193,10 +193,7 @@ ac3_reachability() { # <label prefix>
 
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, hururaa, faito), the shared stack deployed as c4-infra" stand_in_accounts hururaa faito
-build_probe() {
-  (cd "$FIXTURES/probe" && tar -cf - .) | stand_in_exec -i docker build -q -t "$PROBE" - > /dev/null
-}
-check "the probe image is built in the stand-in ($PROBE)" build_probe
+check "the probe image is built in the stand-in ($PROBE)" stand_in_probe
 
 # Hurura'a, then Faito: uploaded, registered, started; the ups' outcomes are checked after AC-10's
 # first assertion (without a network of its own, an application doesn't start)
