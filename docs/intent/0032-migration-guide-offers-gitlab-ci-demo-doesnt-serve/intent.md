@@ -3,8 +3,8 @@
 - Author: Jérôme Wacongne (product owner, tech lead)
 - Kind: change
 - Source: conversation (the product owner's decision of 2026-10-28, after 0028's delivery)
-- Spec needed: no
-- Status: accepted
+- Spec needed: yes
+- Status: specified
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
