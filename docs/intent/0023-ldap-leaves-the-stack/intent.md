@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-28, planning 0021)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
