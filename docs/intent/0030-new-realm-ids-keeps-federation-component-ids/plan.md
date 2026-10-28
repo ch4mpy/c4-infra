@@ -97,3 +97,28 @@ Proposed by Claude, to confirm by Jérôme Wacongne (engineer) with this plan:
   - (e) everything renewed but one mapper's (sub-component's) id, A's: `Duplicate resource error`.
   - (f) not run: (b) is refused on H2. The plan goes on as written, standard risk.
 - 2026-10-28 — the review round (bootstrap: one; `code-review high`, on 0030's commits, in the batch). Fixed (`fix(0030)`, after 270b332): the refusal named the ids unquoted (a `*` listed the directory's files): each is printed on its own line; a storage id `f:<component>:…` whose component part is neither a UUID nor a short id is refused, as the header says, instead of passing unrenewed; the count computed once. Answered: a hand-written 22-character id taken for a short id (the plan's risk: each renewed id that isn't a UUID is printed, the diff read before the commit); a readable realm id refused (choice 1, approved); a short id present only as a reference, in a users file exported apart (`register-app.sh` imports the realm file alone; the script works per file, as before); one `openssl rand` per short id (a file has one per user federation). The frozen test unchanged: no check of these two cases (the fixes are checked by hand: `{"id":"*"}` and `f:my-ldap:alice` refused, named as they are, the file left as it was). Files: none new.
+
+## Verification
+
+### Verification — b120a0f (integration 205b8eb, which contains it; rerun 13474a8)
+
+- Verification command (batch `batch-0031-0030-0028-0026-0027-0029`, the product owner's decision of 2026-10-28): `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --all` at the integration commit 205b8eb → `verification passed` (`total: 1764.0 s for 72 test(s)`, 2026-10-28; also the milestone before the push); after the verifiers' documentation fixes, `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed 205b8eb --all` at 13474a8 → `verification passed (--changed: 8 of 72 tests)`.
+- Risk tier: standard (a developer's tool rewriting a realm file the developer commits; step 0 found Keycloak refusing, not a silent cross-application link).
+- Reviews: bootstrap mode: 1 round, on 0030's own commits; bugs (`code-review high`) 3 fixed (b120a0f) / 5 answered.
+  - fixed: the refused ids printed unquoted (a `*` listed the directory); a storage id whose component part can't be renewed passed unrenewed; the count computed twice;
+  - answered: a hand-written 22-character id taken for a short id (the plan's risk: printed `id <old> -> <new>`, the diff read before the commit); a readable realm id refused (choice 1); a short id present only as a reference in a users file exported apart (`register-app.sh` imports the realm file alone); one `openssl rand` per short id; no test change (the reproducing test is frozen).
+- Mutation check (bug): `tests/0030-federation-ids.sh` fails at 5f01cff (`new-realm-ids.sh` = `main`'s): `18 check(s) failed` (component not renewed, readable id not refused, B and C `Duplicate resource error`); run by the session and again by the verifier.
+- Verifier: 6/6 criteria OK — table below.
+- Not verifiable here: none.
+- Files outside the plan: none.
+- Pre-existing findings: users aren't listed for an export in jq's layout (`new-realm-ids.sh`'s user listing reads Keycloak's layout only; poc-immo-pf's immo) → a follow-up if a project needs the list.
+- Details left (not KO): the Keycloak part reads one linked user back per realm (the file part checks both); the review round's two fixes have no automated check (frozen test; checked by hand and by the verifier).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Two realms cloned from an export with an LDAP federation, both through the script, both imported, each with its own component | OK | `ok - a and b: their components' ids differ`, `ok - b: imported as verif-0030-b`, `ok - b: verif-0030-b holds its own component` |
+| Its users' links follow | OK | `ok - a: each linked user's federationLink and origin follow it; the local user has none`; `ok - a/b/c: its verif-linked-1 is linked to it` |
+| Every id an import needs unique is renewed, sub-components included; an id the script can't renew is refused | OK | `ok - a: no id of the fixture is left`, `ok - a and b: their mappers' ids differ`, `ok - a readable id: refused, exit 1`, `… named`, `… the file left as it was`, `ok - a storage id: its component part follows the component` |
+| An export the script already rewrote still imports | OK | `ok - c: its component's id renewed again`, `ok - c: imported as verif-0030-c`; `tests/0017-new-realm-ids.sh` → `every check passed` |
+| The file is otherwise unchanged | OK | `ok - a: the layout is kept` (ids masked) |
+| The bug is reproduced | OK | at 5f01cff: exit 1, `18 check(s) failed` |
