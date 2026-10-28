@@ -173,9 +173,9 @@ same for every application:
   the specs (not the dev ports: specs are regenerated while the dev applications run);
 - a management port, if an application sets one, on its port + 1.
 
-The block is the workstation's: on the demo host, the containers keep the ports the routes file
-fixes ("Routes file": the gateway's `7080`, the front ends' `80`, the MCP server's `9080`) and
-publish none.
+The block is the workstation's: on the demo host, the containers keep the ports "Routes file" gives
+their upstreams (the gateway's `7080`, the front ends' `80`, the MCP server's `9080`) and publish
+none.
 
 Windows reserves dynamic port ranges from 49152 on (and some fixed ones: `netsh interface ipv4 show
 excludedportrange protocol=tcp`), so blocks stay below: `n` goes up to 38.

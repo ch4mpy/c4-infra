@@ -60,10 +60,10 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
    Only what runs on the workstation moves. On the demo host the containers keep their ports and
    publish none: its Caddy reaches `<project>.gateway:7080`, `<project>.frontend:80` and
-   `<project>.mcp:9080` (`registry.sh upstream`). So when the default profile held `7080`, the
-   `demo` profile sets it back, whatever the containers run; the same for the REST API's `8080`,
-   which the demo `rest-api-v1` names, and for the management ports the compose file's healthchecks
-   name.
+   `<project>.mcp:9080` (`registry.sh upstream`). So a port the default profile moved is set back
+   for the demo containers, by their `demo` profile or their compose file's environment
+   (`SERVER_PORT`): the gateway's `7080`, the MCP server's `9080`, the REST API's `8080`, which the
+   demo `rest-api-v1` names, and the management ports the compose file's healthchecks name.
 2. **Origin.** The project is served on `https://<project>.dev.localhost/`:
    - gateway: a new `app-uri: https://<project>.dev.localhost` replaces `reverse-proxy-uri` in
      `client-uri`, `post-login-*` and `post-logout-*` (the allowed patterns become
@@ -163,8 +163,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    to its registry (GHCR, GitLab's, any registry `docker login` accepts), or a public one
    (`postgres`…). `sudo c4-app up` pulls the images the host lacks without logging in anywhere: an
    image behind a login comes first through `sudo c4-app pull --registry <host> --registry-user
-   <user>` (step 5 below). No `build:`, which `sudo c4-app up` and `pull` refuse (the demo host builds
-   nothing, intent 0011).
+   <user>` (step 5 below), one registry per pull, which pulls every image under that login: the
+   private ones come from one registry. No `build:`, which `sudo c4-app up` and `pull` refuse (the
+   demo host builds nothing, intent 0011).
    No published port, no `network_mode`, no other network, no alias or container name outside
    `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
    README, "Accounts"):
@@ -246,7 +247,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `up`. `--registry` takes a host name, with an optional `:port` and no path; `--registry-user`
    letters, digits, `.`, `_` and `-`. Without `--registry`, `pull` logs in nowhere, which is enough
    when every image is public. `VPS_HOST`, `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` become secret
-   variables of that platform.
+   variables of that platform, given only to the deployment's protected branch or environment (as
+   `environment: demo` does here), and never printed by the job.
 
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
