@@ -674,7 +674,7 @@ management UI (15672) and Mailpit without credentials.
 | `rabbitmq` | 5672 | AMQP: each application's own user, on its own virtual host | events (RQ-02) |
 | `rabbitmq` | 15692 | Prometheus metrics, without authentication | recorded, no personal data (PA-03) |
 | `grafana-lgtm` | 4317, 4318 | the OTLP receivers (gRPC, HTTP): any telemetry, so an application can write under another's name | Grafana LGTM attached as it is (PA-02, decided 2026-10-21) |
-| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read | Grafana LGTM attached as it is (PA-02) |
+| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read; Loki's deletion API is off (`403`), so that none deletes another's logs (intent 0026) | Grafana LGTM attached as it is (PA-02) |
 | `grafana-lgtm` | 3000 | Grafana, behind its login on the demo host | the dashboards (RQ-02) |
 
 Kept on the containers' loopback, unreachable from any network:
@@ -692,13 +692,15 @@ Kept on the containers' loopback, unreachable from any network:
 Grafana LGTM keeps what it receives **14 days**, in dev as on the demo host (intent 0026), set by the
 `*_EXTRA_ARGS` of [`compose.yml`](compose.yml): logs (Loki's compactor,
 `-compactor.retention-enabled=true -store.retention=336h`, with its delete-request store on the
-filesystem), traces (Tempo's backend worker, `-backend-worker.compaction.block-retention=336h`, its
-default pinned), metrics (Prometheus, `--storage.tsdb.retention.time=336h`) and profiles (Pyroscope,
-`-retention-period=336h`). Loki's compactor deletes what expired about two hours after marking it;
-its volume is bounded by time, not by size: a burst within the 14 days still grows it.
-Dev's older telemetry goes at the first compaction after a `bash up.sh`. An image upgrade must keep
-appending each component's `*_EXTRA_ARGS` and these flags' names: `tests/0026-stack-bounds.sh`
-reads each component's effective configuration, and fails until it does.
+filesystem; its deletion API, which retention would open to every application's network, off:
+`-compactor.deletion-mode=disabled`), traces (Tempo's backend worker,
+`-backend-worker.compaction.block-retention=336h`, its default pinned), metrics (Prometheus,
+`--storage.tsdb.retention.time=336h`) and profiles (Pyroscope, `-retention-period=336h`). Loki's
+compactor deletes what expired about two hours after marking it; its volume is bounded by time, not
+by size: a burst within the 14 days still grows it. Dev's older telemetry goes at the first
+compaction after a `bash up.sh`. An image upgrade must keep appending each component's
+`*_EXTRA_ARGS` and these flags' names: `tests/0026-stack-bounds.sh` reads each component's effective
+configuration, and fails until it does.
 
 ### On the host
 
@@ -726,8 +728,9 @@ docker compose logs -f keycloak    # or reverse-proxy, rabbitmq...
 ```
 
 An application's recent output, as `c4-infra` too (its own account runs no `docker` command):
-`docker logs --tail 100 <app>.<service>`, or `docker compose -p <app> logs --tail 100 <service>` run
-from `~` (in `~/c4-infra`, compose would read the stack's file under the application's name).
+`docker logs --tail 100 <container>` (its `container_name`, `<app>.gateway`…, or
+`<app>-<service>-1` without one), or `docker compose -p <app> logs --tail 100 <service>` run from
+`~` (in `~/c4-infra`, compose would read the stack's file under the application's name).
 Docker keeps 30 MB of each container's output ("Accounts"); an application's history is in Grafana,
 14 days, if it exports its logs ([docs/migration.md](docs/migration.md), "On the demo host").
 

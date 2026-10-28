@@ -65,10 +65,7 @@
 #   - refused by the allowlist (not an application's to set): use_api_socket, post_start/pre_stop
 #     hooks, a provider service, and anything else not listed above.
 #
-# The logs are the host's (intent 0026): once the model is checked, `up` gives every service of it
-# the stack's own bound (LOG_BOUND: json-file, 10 MB × 3, compose.yml's x-logging), so that no
-# container fills the host's disk with its output. A container made before, unbounded, is recreated
-# at the application's next `up`, its files unchanged (compose sees its logging change).
+# `up` gives every service of the checked model the host's bound on its logs (LOG_BOUND, 0026).
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -188,24 +185,32 @@ snapshot_src() {
 # rewrite would miss stays outside it, and check_model refuses it. Root writes the checked model to a
 # new file: the application's process (its compose plugin, under its HOME) never holds it open.
 read_model() {
-  local next=$model.new config=$model.config
+  local config=$model.config
   [ -f "$incoming/compose.yml" ] || fail "$source_dir/compose.yml is missing"
-  rm -f "$model" "$next" "$config"
+  rm -f "$model" "$config"
   if ! runuser -u "$app" -- env -i PATH="$PATH" HOME="/home/$app" \
     docker compose --project-directory "$incoming" -p "$app" -f "$incoming/compose.yml" config --format json > "$config"; then
     rm -f "$config"
     fail "docker compose config refuses $source_dir/compose.yml (above)"
   fi
-  if ! jq --arg from "$incoming" --arg to "$staging" \
-    'walk(if type == "string" and (. == $from or startswith($from + "/")) then $to + .[($from | length):] else . end)' \
-    "$config" > "$next"; then
-    rm -f "$config" "$next"
+  if ! rewrite_model "$config" --arg from "$incoming" --arg to "$staging" \
+    'walk(if type == "string" and (. == $from or startswith($from + "/")) then $to + .[($from | length):] else . end)'; then
+    rm -f "$config"
     fail "the model's paths couldn't be named as $staging's (jq, above)"
   fi
   rm -f "$config"
-  chown root:root "$next"
-  chmod 0640 "$next"
-  mv "$next" "$model"
+}
+
+# jq's output over <source> as the model: a new root-owned file moved into place, or no change
+rewrite_model() { # <source> <jq argument>…
+  local source=$1 next=$model.new
+  shift
+  rm -f "$next"
+  if jq "$@" "$source" > "$next" && chown root:root "$next" && chmod 0640 "$next" && mv "$next" "$model"; then
+    return 0
+  fi
+  rm -f "$next"
+  return 1
 }
 
 # What leaves the application's isolation: an allowlist (the header's list; README's too). The keys
@@ -305,21 +310,13 @@ check_model() {
   fi
 }
 
-# The host's bound on every container's logs: the stack's own (compose.yml's x-logging), as compose
-# writes it (string options)
+# The host's bound on every container's logs: compose.yml's x-logging, as compose writes it
 LOG_BOUND='{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}'
 
-# The checked model's every service gets LOG_BOUND, in a new root-owned file, as read_model writes it
+# The checked model's every service gets LOG_BOUND
 bound_logs() {
-  local next=$model.new
-  rm -f "$next"
-  if ! jq --argjson bound "$LOG_BOUND" '.services[]?.logging = $bound' "$model" > "$next"; then
-    rm -f "$next"
-    fail "the model's logs couldn't be bounded (jq, above)"
-  fi
-  chown root:root "$next"
-  chmod 0640 "$next"
-  mv "$next" "$model"
+  rewrite_model "$model" --argjson bound "$LOG_BOUND" '.services[]?.logging = $bound' \
+    || fail "the model's logs couldn't be bounded (jq, above)"
 }
 
 # root's docker compose, on the model only (no .env read again: the model is interpolated already)

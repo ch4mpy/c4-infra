@@ -4,12 +4,14 @@
 #
 #   - AC-05: each container of the project c4-infra has json-file 10m × 3 (compose.yml's x-logging);
 #   - AC-06, AC-07: in c4-infra.grafana-lgtm, Loki's /config (the compactor's retention on, the
-#     filesystem delete-request store, limits_config's retention_period 2w) and /services (compactor
-#     Running); Prometheus' flag storage.tsdb.retention.time and runtimeinfo's storageRetention, 2w;
-#     Tempo's backend_worker block_retention 336h0m0s (its default too: its command line holds the
-#     flag) and its backend-scheduler and backend-worker Running; Pyroscope's limits retention_period
-#     2w, its metastore the raft leader (where the index cleaner runs); a log posted by OTLP to
-#     127.0.0.1:4318 read back from Loki;
+#     filesystem delete-request store, limits_config's retention_period 2w and deletion_mode
+#     disabled), /services (compactor Running), and its deletion API refusing a request (403: every
+#     application's network reaches it); Prometheus' flag storage.tsdb.retention.time and
+#     runtimeinfo's storageRetention, 2w; Tempo's backend_worker block_retention 336h0m0s (its
+#     default too: its command line holds the flag) and its backend-scheduler and backend-worker
+#     Running; Pyroscope's limits retention_period 2w, its metastore the raft leader (where the index
+#     cleaner runs); a log posted by OTLP to 127.0.0.1:4318, under the tests' one service name with a
+#     marker of its own in its line, read back from Loki;
 #   - AC-06: c4-infra.grafana-lgtm restarted (docker restart): healthy again, every component
 #     checked; the same settings; the earlier log and a new one read back.
 #
@@ -28,6 +30,8 @@ BOUND='{"Type":"json-file","Config":{"max-file":"3","max-size":"10m"}}'
 TEMPO_FLAG=-backend-worker.compaction.block-retention=336h
 PRINTED_WEEKS=2w
 PRINTED_GO=336h0m0s
+# the logs the tests post: one service name, each post's marker in its line
+SERVICE=c4-infra-tests
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -86,13 +90,23 @@ pyroscope_leads() {
   return 1
 }
 
+# A valid request (the tests' stream, a minute of 2001), which Loki accepts (204) with deletion on
+deletion_refused() {
+  local code
+  code=$(in_lgtm curl -s -o /dev/null -w '%{http_code}' -X POST -G --data-urlencode "query={service_name=\"$SERVICE\"}" \
+    --data-urlencode start=1000000000 --data-urlencode end=1000000060 http://127.0.0.1:3100/loki/api/v1/delete)
+  [ "$code" = 403 ] || { echo "POST /loki/api/v1/delete: $code"; return 1; }
+}
+
 check_settings() { # <label>
   local label=$1
   in_lgtm curl -s 127.0.0.1:3100/config > "$work/loki.yaml"
   check "$label Loki's compactor: retention_enabled: true" holds "$work/loki.yaml" compactor '^ +retention_enabled: true$'
   check "$label Loki's compactor: delete_request_store: filesystem" holds "$work/loki.yaml" compactor '^ +delete_request_store: filesystem$'
   check "$label Loki's limits_config: retention_period: $PRINTED_WEEKS" holds "$work/loki.yaml" limits_config "^ +retention_period: $PRINTED_WEEKS\$"
+  check "$label Loki's limits_config: deletion_mode: disabled" holds "$work/loki.yaml" limits_config '^ +deletion_mode: disabled$'
   check "$label Loki's /services: compactor => Running" eval 'in_lgtm curl -s 127.0.0.1:3100/services | grep -x "compactor => Running" > /dev/null'
+  check "$label Loki's deletion API refuses a request (POST /loki/api/v1/delete: 403)" deletion_refused
   check "$label Prometheus' flag storage.tsdb.retention.time: $PRINTED_WEEKS" \
     is "$(in_lgtm curl -s 127.0.0.1:9090/api/v1/status/flags | jq -r '.data["storage.tsdb.retention.time"]')" "$PRINTED_WEEKS"
   check "$label Prometheus' runtimeinfo storageRetention: $PRINTED_WEEKS" \
@@ -107,21 +121,21 @@ check_settings() { # <label>
   check "$label Pyroscope's metastore is the raft leader, where the index cleaner runs" pyroscope_leads
 }
 
-# <service name> <now> <post|read>: a log posted by OTLP to 127.0.0.1:4318 (post), then read back from
-# Loki (60 s at most)
+# <service name> <marker> <now> <post|read>: a log line "marker <marker>" posted by OTLP to
+# 127.0.0.1:4318 (post), then read back from Loki (60 s at most)
 LOG_FLOW=$(cat <<'EOF'
 set -u
-svc=$1 now=$2 mode=$3
+svc=$1 marker=$2 now=$3 mode=$4
 if [ "$mode" = post ]; then
   code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data-binary \
-    '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"'$svc'"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'000000000","severityText":"INFO","body":{"stringValue":"marker '$svc'"}}]}]}]}' \
+    '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"'$svc'"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'000000000","severityText":"INFO","body":{"stringValue":"marker '$marker'"}}]}]}]}' \
     http://127.0.0.1:4318/v1/logs)
   [ "$code" = 200 ] || { echo "POST 127.0.0.1:4318/v1/logs: $code"; exit 1; }
 fi
 for i in $(seq 60); do
-  curl -s -G http://127.0.0.1:3100/loki/api/v1/query_range --data-urlencode "query={service_name=\"$svc\"}" \
+  curl -s -G http://127.0.0.1:3100/loki/api/v1/query_range --data-urlencode "query={service_name=\"$svc\"} |= \"marker $marker\"" \
     --data-urlencode "start=$((now - 300))000000000" --data-urlencode "end=$((now + 300))000000000" > /tmp/c4-0026-read
-  grep -qF "marker $svc" /tmp/c4-0026-read && exit 0
+  grep -qF "marker $marker" /tmp/c4-0026-read && exit 0
   sleep 1
 done
 echo "not read back after 60 s:"
@@ -129,8 +143,8 @@ head -c 600 /tmp/c4-0026-read
 exit 1
 EOF
 )
-log_flow() { # <service name> <now> <post|read>
-  MSYS_NO_PATHCONV=1 docker exec -i "$LGTM" bash -s -- "$@" <<< "$LOG_FLOW"
+log_flow() { # <marker> <now> <post|read>
+  MSYS_NO_PATHCONV=1 docker exec -i "$LGTM" bash -s -- "$SERVICE" "$@" <<< "$LOG_FLOW"
 }
 
 # Docker's health (the image's healthcheck: a component it can't connect to is "not running
@@ -144,9 +158,9 @@ healthy() {
 }
 
 check_settings "AC-06, AC-07:"
-first_svc=c4-infra-0026-$(openssl rand -hex 4)
+first_marker=$(openssl rand -hex 8)
 first_now=$(date +%s)
-check "AC-06: a log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$first_svc" "$first_now" post
+check "AC-06: a log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$first_marker" "$first_now" post
 
 docker restart "$LGTM" > /dev/null
 waited=0
@@ -166,7 +180,7 @@ healthy_again() {
 }
 check "AC-06: $LGTM restarted, healthy again, every component checked (after ${waited} s)" healthy_again
 check_settings "AC-06 (restarted):"
-check "AC-06: the earlier log is read back from Loki" log_flow "$first_svc" "$first_now" read
-second_svc=c4-infra-0026-$(openssl rand -hex 4)
-check "AC-06: a new log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$second_svc" "$(date +%s)" post
+check "AC-06: the earlier log is read back from Loki" log_flow "$first_marker" "$first_now" read
+second_marker=$(openssl rand -hex 8)
+check "AC-06: a new log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$second_marker" "$(date +%s)" post
 finish

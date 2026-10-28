@@ -251,10 +251,8 @@ services:
       # has no flag for its gRPC address: a copy of the image's file, which wins as the second
       # -config.file (grafana-lgtm/tempo-config.yaml, to regenerate with each image upgrade).
       # tests/0007-lgtm.sh checks the ports and that logs, traces, metrics and profiles still flow.
-      # Each signal kept 14 days, 336h (intent 0026): Loki's compactor deletes what is older (it
-      # needs a delete-request store), Prometheus, Tempo's backend worker (its default, pinned) and
-      # Pyroscope too; tests/0026-stack-bounds.sh reads each component's effective setting.
-      LOKI_EXTRA_ARGS: -server.grpc-listen-address=127.0.0.1 -compactor.retention-enabled=true -store.retention=336h -compactor.delete-request-store=filesystem
+      # Each signal kept 14 days, Loki's deletion API off (intent 0026: README, "Reachable from…").
+      LOKI_EXTRA_ARGS: -server.grpc-listen-address=127.0.0.1 -compactor.retention-enabled=true -store.retention=336h -compactor.delete-request-store=filesystem -compactor.deletion-mode=disabled
       PROMETHEUS_EXTRA_ARGS: --storage.tsdb.retention.time=336h
       TEMPO_EXTRA_ARGS: -config.file=/etc/c4-infra/grafana-lgtm/tempo-config.yaml -backend-worker.compaction.block-retention=336h
       PYROSCOPE_EXTRA_ARGS: -server.grpc-listen-address=127.0.0.1 -memberlist.bind-addr=127.0.0.1 -memberlist.advertise-addr=127.0.0.1 -segment-writer.lifecycler.addr=127.0.0.1 -distributor.ring.instance-addr=127.0.0.1 -query-frontend.instance-addr=127.0.0.1 -retention-period=336h

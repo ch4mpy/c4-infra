@@ -1,0 +1,11 @@
+# 0026 fixture (tests/0026-log-bound.stand-in.sh): Faito's gateway alone, as talker.yml's, which prints
+# nothing: the host's bound from its creation
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+networks:
+  c4-infra.faito:
+    external: true

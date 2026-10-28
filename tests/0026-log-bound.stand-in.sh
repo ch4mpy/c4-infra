@@ -7,15 +7,15 @@
 #   - AC-02: tests/fixtures/0026/logging-*.yml (json-file without options, none, local with
 #     options), each sent as ~faito/faito/compose.yml: `sudo c4-app up` and `pull` refused, naming the
 #     service and the key, nothing started, no container of the project faito;
-#   - AC-03: $BEFORE's c4-app (main's head before this change) installed, talker.yml comes up
-#     unbounded (LogConfig's Config {}); the stack's demo/deploy.sh run again as c4-infra installs
-#     this one (`c4-app installed`); `sudo c4-app up` with the same files: new containers, json-file
-#     10m × 3 in their LogConfig and in the model, equal to c4-infra.keycloak's;
+#   - AC-03: talker.yml started as `up` started it before this change (networks.sh ensure, then
+#     root's compose on the project, no bound: LogConfig's Config {}); `sudo c4-app up` with the
+#     same files: new containers, json-file 10m × 3 in their LogConfig and in the model, equal to
+#     c4-infra.keycloak's;
 #   - AC-01: the talker's 60 MiB: its log files at most 3, each at most 10 MB (one entry over at
 #     most); `docker logs` ends on its last line and lacks its first;
 #   - AC-04: as c4-infra, `docker logs --tail 1 faito.talker` and, from ~,
 #     `docker compose -p faito logs --tail 1 --no-log-prefix talker` show its last line;
-#   - `sudo c4-app down`, then `up`: the containers bounded from their creation;
+#   - `sudo c4-app down`, then `up` of gateway.yml (the gateway alone): bounded from its creation;
 #   - AC-08: faito outside the docker group, `sudo -l` listing c4-app only, no container's bind mount
 #     under /var/lib/docker nor of the Docker socket.
 #
@@ -30,8 +30,7 @@ source tests/lib/assert.sh
 source tests/lib/stand-in-host.sh
 
 FIXTURES=tests/fixtures/0026
-# main's head at the plan's step 0: its c4-app refuses logging with the allowlist's line, and bounds nothing
-BEFORE=75d2809
+STAGING=/var/lib/c4-apps/faito
 MODEL=/var/lib/c4-apps/.run.faito/model.json
 BOUND='{"Type":"json-file","Config":{"max-file":"3","max-size":"10m"}}'
 UNBOUNDED='{"Type":"json-file","Config":{}}'
@@ -117,21 +116,21 @@ for file in logging-json-file.yml logging-none.yml logging-local.yml; do
   check "AC-02: $file: it says \"$REFUSAL\"" says "$file-pull.log" "$REFUSAL"
 done
 
-# AC-03: the application's containers started by the former c4-app, unbounded
-git show "$BEFORE:demo/c4-app" > "$work/c4-app-before" 2> "$work/git-show.log"
-check "$BEFORE's demo/c4-app is read" test -s "$work/c4-app-before"
-check "it is installed as /usr/local/sbin/c4-app" eval \
-  'stand_in_exec -i sh -c "cat > /root/c4-app-before" < "$work/c4-app-before" && stand_in_exec install -o root -g root -m 0755 /root/c4-app-before /usr/local/sbin/c4-app'
+# AC-03: the application's containers as `up` started them before this change: its network, then
+# root's compose on the project, with no bound
+up_before() {
+  stand_in_exec sh -c 'set -e
+    bash /home/c4-infra/c4-infra/networks.sh ensure faito < /dev/null
+    install -d -m 0750 -o root -g faito "$1"
+    docker compose --project-directory "$1" -p faito -f /home/faito/faito/compose.yml up -d' sh "$STAGING" \
+    > "$work/up-before.log" 2>&1 || { tail -n 20 "$work/up-before.log"; return 1; }
+}
 check "talker.yml is sent as ~faito/faito/compose.yml" send "$FIXTURES/talker.yml"
-as up-before.log faito "sudo c4-app up"
-check "AC-03: with $BEFORE's c4-app, sudo c4-app up exits 0" exited_0 up-before.log
+check "AC-03: talker.yml started as up started it before this change (root's compose, no bound)" up_before
 check "AC-03: faito.gateway and faito.talker are unbounded ($UNBOUNDED)" log_configs_are "$UNBOUNDED" faito.gateway faito.talker
 gateway_before=$(id_of faito.gateway)
 talker_before=$(id_of faito.talker)
 
-as deploy.log c4-infra "cd ~/c4-infra && bash ./demo/deploy.sh < /dev/null"
-check "AC-03: the stack's demo/deploy.sh, run again as c4-infra, exits 0" exited_0 deploy.log
-check "AC-03: it installs this c4-app" says deploy.log "c4-app installed"
 as up-after.log faito "sudo c4-app up"
 check "AC-03: with the same files, sudo c4-app up exits 0" exited_0 up-after.log
 check "AC-03: faito.gateway is a new container" eval '[ -n "$gateway_before" ] && [ "$(id_of faito.gateway)" != "$gateway_before" ]'
@@ -167,13 +166,14 @@ check "AC-04: as c4-infra, docker logs --tail 1 faito.talker shows its last line
 as compose-logs.log c4-infra "cd ~ && docker compose -p faito logs --tail 1 --no-log-prefix talker"
 check "AC-04: so does docker compose -p faito logs --tail 1 --no-log-prefix talker, from ~" ends_with compose-logs.log "$LAST_LINE"
 
-# bounded from their creation
+# bounded from their creation: the gateway alone (the talker would print another 60 MiB)
 as down.log faito "sudo c4-app down"
 check "sudo c4-app down exits 0" exited_0 down.log
 check "and removes the project faito's containers" no_container
+check "gateway.yml is sent as ~faito/faito/compose.yml" send "$FIXTURES/gateway.yml"
 as up-again.log faito "sudo c4-app up"
 check "sudo c4-app up exits 0" exited_0 up-again.log
-check "AC-01: the new containers have json-file 10m × 3 from their creation" log_configs_are "$BOUND" faito.gateway faito.talker
+check "AC-01: the new faito.gateway has json-file 10m × 3 from its creation" log_configs_are "$BOUND" faito.gateway
 
 # AC-08
 groups=$(stand_in_exec id -nG faito | tr -d '\r')

@@ -11,16 +11,16 @@
 #           (c) under json-file 10m × 3, a container printing 60 MiB of 1 KiB lines: `docker logs`
 #               ends on its last line, lacks its first, holds at most 30 MiB
 #   lgtm    (d) a throwaway of grafana-lgtm's image (no published port, an anonymous volume,
-#               grafana-lgtm/ mounted as compose.yml does), with compose.yml's environment and the
-#               retention flags (RETENTION below: each added unless compose.yml's variable holds it):
-#               every component up; Loki's /config (retention on, its period, the filesystem
-#               delete-request store) and /services (compactor Running); Prometheus' flag and
-#               runtimeinfo; Tempo's /status/config (backend_worker's block_retention) and
+#               grafana-lgtm/ mounted as compose.yml does), with compose.yml's environment, its
+#               retention flags as they are: every component up; Loki's /config (retention on, its
+#               period, the filesystem delete-request store, deletion_mode disabled), /services
+#               (compactor Running), and its deletion API refusing a valid request (403); Prometheus'
+#               flag and runtimeinfo; Tempo's /status/config (backend_worker's block_retention) and
 #               /status/services (backend-scheduler and backend-worker Running), and a Tempo alone
 #               given the flag at another value than its default printing it; Pyroscope's
 #               /api/v1/status/config (limits' retention_period, the metastore's cleanup interval)
 #               and its metastore the raft leader (the index cleaner runs on the leader); a log
-#               posted by OTLP and read back from Loki;
+#               posted by OTLP (the tests' service name, a marker of its own) and read back from Loki;
 #           (e) the throwaway restarted, healthy again (the image's healthcheck, every component
 #               checked: /tmp/ready survives a restart), Pyroscope ready: the same settings, the
 #               earlier log and a new one read back
@@ -40,13 +40,8 @@ TALKER=c4-infra.0026-facts-talker
 LGTM=c4-infra.0026-facts-lgtm
 TEMPO=c4-infra.0026-facts-tempo
 BOUND='{"Type":"json-file","Config":{"max-file":"3","max-size":"10m"}}'
-# the plan's retention flags (Engineer's choices), 14 days
-declare -A RETENTION=(
-  [LOKI_EXTRA_ARGS]='-compactor.retention-enabled=true -store.retention=336h -compactor.delete-request-store=filesystem'
-  [PROMETHEUS_EXTRA_ARGS]='--storage.tsdb.retention.time=336h'
-  [TEMPO_EXTRA_ARGS]='-backend-worker.compaction.block-retention=336h'
-  [PYROSCOPE_EXTRA_ARGS]='-retention-period=336h'
-)
+# the logs the tests post: one service name, each post's marker in its line
+SERVICE=c4-infra-tests
 # how each component prints 336h
 PRINTED_WEEKS=2w
 PRINTED_GO=336h0m0s
@@ -137,20 +132,6 @@ EOF
   check "(c) at most 30 MiB ($size bytes)" test "$size" -le $((30 * 1024 * 1024))
 }
 
-# The variable's value with each retention flag it lacks appended
-with_retention() { # <name> <value>
-  local value=$2 flag
-  for flag in ${RETENTION[$1]}; do
-    if [[ " $value " == *" $flag "* ]]; then
-      echo "# compose.yml's $1 holds $flag" >&2
-    else
-      echo "# added to compose.yml's $1: $flag" >&2
-      value="${value:+$value }$flag"
-    fi
-  done
-  printf '%s' "$value"
-}
-
 # The lines of a top-level section of a YAML file
 section() { # <file> <key>
   awk -v key="$2:" '$0 == key { on = 1; next } /^[^ ]/ { on = 0 } on' "$1"
@@ -177,13 +158,23 @@ pyroscope_leads() {
   return 1
 }
 
+# A valid request (the tests' stream, a minute of 2001), which Loki accepts (204) with deletion on
+deletion_refused() {
+  local code
+  code=$(in_lgtm curl -s -o /dev/null -w '%{http_code}' -X POST -G --data-urlencode "query={service_name=\"$SERVICE\"}" \
+    --data-urlencode start=1000000000 --data-urlencode end=1000000060 http://127.0.0.1:3100/loki/api/v1/delete)
+  [ "$code" = 403 ] || { echo "POST /loki/api/v1/delete: $code"; return 1; }
+}
+
 check_settings() { # <label>
   local label=$1
   in_lgtm curl -s 127.0.0.1:3100/config > "$work/loki.yaml"
   check "$label Loki's compactor: retention_enabled: true" holds "$work/loki.yaml" compactor '^ +retention_enabled: true$'
   check "$label Loki's compactor: delete_request_store: filesystem" holds "$work/loki.yaml" compactor '^ +delete_request_store: filesystem$'
   check "$label Loki's limits_config: retention_period: $PRINTED_WEEKS" holds "$work/loki.yaml" limits_config "^ +retention_period: $PRINTED_WEEKS\$"
+  check "$label Loki's limits_config: deletion_mode: disabled" holds "$work/loki.yaml" limits_config '^ +deletion_mode: disabled$'
   check "$label Loki's /services: compactor => Running" eval 'in_lgtm curl -s 127.0.0.1:3100/services | grep -x "compactor => Running" > /dev/null'
+  check "$label Loki's deletion API refuses a request (POST /loki/api/v1/delete: 403)" deletion_refused
   check "$label Prometheus' flag storage.tsdb.retention.time: $PRINTED_WEEKS" \
     is "$(in_lgtm curl -s 127.0.0.1:9090/api/v1/status/flags | jq -r '.data["storage.tsdb.retention.time"]')" "$PRINTED_WEEKS"
   check "$label Prometheus' runtimeinfo storageRetention: $PRINTED_WEEKS" \
@@ -198,21 +189,21 @@ check_settings() { # <label>
   check "$label Pyroscope's metastore is the raft leader, where the index cleaner runs" pyroscope_leads
 }
 
-# <service name> <now>: a log posted by OTLP to 127.0.0.1:4318, or with "read" only read back, from
-# Loki (60 s at most)
+# <service name> <marker> <now> <post|read>: a log line "marker <marker>" posted by OTLP to
+# 127.0.0.1:4318 (post), then read back from Loki (60 s at most)
 LOG_FLOW=$(cat <<'EOF'
 set -u
-svc=$1 now=$2 mode=$3
+svc=$1 marker=$2 now=$3 mode=$4
 if [ "$mode" = post ]; then
   code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data-binary \
-    '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"'$svc'"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'000000000","severityText":"INFO","body":{"stringValue":"marker '$svc'"}}]}]}]}' \
+    '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"'$svc'"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"'$now'000000000","severityText":"INFO","body":{"stringValue":"marker '$marker'"}}]}]}]}' \
     http://127.0.0.1:4318/v1/logs)
   [ "$code" = 200 ] || { echo "POST 127.0.0.1:4318/v1/logs: $code"; exit 1; }
 fi
 for i in $(seq 60); do
-  curl -s -G http://127.0.0.1:3100/loki/api/v1/query_range --data-urlencode "query={service_name=\"$svc\"}" \
+  curl -s -G http://127.0.0.1:3100/loki/api/v1/query_range --data-urlencode "query={service_name=\"$svc\"} |= \"marker $marker\"" \
     --data-urlencode "start=$((now - 300))000000000" --data-urlencode "end=$((now + 300))000000000" > /tmp/c4-0026-read
-  grep -qF "marker $svc" /tmp/c4-0026-read && exit 0
+  grep -qF "marker $marker" /tmp/c4-0026-read && exit 0
   sleep 1
 done
 echo "not read back after 60 s:"
@@ -220,8 +211,8 @@ head -c 600 /tmp/c4-0026-read
 exit 1
 EOF
 )
-log_flow() { # <service name> <now> <post|read>
-  MSYS_NO_PATHCONV=1 docker exec -i "$LGTM" bash -s -- "$@" <<< "$LOG_FLOW"
+log_flow() { # <marker> <now> <post|read>
+  MSYS_NO_PATHCONV=1 docker exec -i "$LGTM" bash -s -- "$SERVICE" "$@" <<< "$LOG_FLOW"
 }
 
 healthy() {
@@ -233,17 +224,10 @@ healthy() {
 }
 
 part_lgtm() {
-  local config image name value waited first_svc second_svc first_now
+  local config image waited first_marker second_marker first_now
   config=$(docker compose -f compose.yml config --format json) || { check "docker compose -f compose.yml config succeeds" false; return; }
   image=$(jq -r '.services["grafana-lgtm"].image' <<< "$config")
-  jq -r '.services["grafana-lgtm"].environment // {} | to_entries[] | "\(.key)\t\(.value)"' <<< "$config" > "$work/compose-env"
-  : > "$work/env"
-  for name in "${!RETENTION[@]}"; do
-    value=$(awk -F'\t' -v name="$name" '$1 == name { print $2 }' "$work/compose-env")
-    printf '%s=%s\n' "$name" "$(with_retention "$name" "$value")" >> "$work/env"
-  done
-  awk -F'\t' 'BEGIN { split("LOKI_EXTRA_ARGS PROMETHEUS_EXTRA_ARGS TEMPO_EXTRA_ARGS PYROSCOPE_EXTRA_ARGS", n, " "); for (i in n) skip[n[i]] = 1 }
-    !($1 in skip) { print $1 "=" $2 }' "$work/compose-env" >> "$work/env"
+  jq -r '.services["grafana-lgtm"].environment // {} | to_entries[] | "\(.key)=\(.value)"' <<< "$config" > "$work/env"
   local mounts=()
   while IFS=$'\t' read -r type source target read_only; do
     case $type in
@@ -286,9 +270,9 @@ part_lgtm() {
   check "(d) -backend-worker.compaction.block-retention sets it: a Tempo alone, the flag at 335h, prints 335h0m0s" tempo_alone
   docker rm -f -v "$TEMPO" > /dev/null 2>&1
 
-  first_svc=c4-infra-0026-$(openssl rand -hex 4)
+  first_marker=$(openssl rand -hex 8)
   first_now=$(date +%s)
-  check "(d) a log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$first_svc" "$first_now" post
+  check "(d) a log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$first_marker" "$first_now" post
 
   # (e)
   docker restart "$LGTM" > /dev/null
@@ -305,9 +289,9 @@ part_lgtm() {
   }
   check "(e) restarted, healthy again: every component checked, Pyroscope ready (after ${waited} s)" healthy_again
   check_settings "(e)"
-  check "(e) the earlier log is read back from Loki" log_flow "$first_svc" "$first_now" read
-  second_svc=c4-infra-0026-$(openssl rand -hex 4)
-  check "(e) a new log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$second_svc" "$(date +%s)" post
+  check "(e) the earlier log is read back from Loki" log_flow "$first_marker" "$first_now" read
+  second_marker=$(openssl rand -hex 8)
+  check "(e) a new log posted to 127.0.0.1:4318 is read back from Loki" log_flow "$second_marker" "$(date +%s)" post
   docker rm -f -v "$LGTM" > /dev/null 2>&1
 }
 
