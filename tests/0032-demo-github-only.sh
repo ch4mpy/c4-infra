@@ -33,7 +33,8 @@ gitlab_only_in_statement() {
     text=${text//"$GITLAB_NOT_HERE"/}
     grep -qi gitlab <<< "$text" && named+=("$file")
   done < <(git grep -il gitlab -- . ':!docs/intent/' ':!tests/0032-demo-github-only.sh')
-  [ ${#named[@]} -eq 0 ] || { git grep -n -i gitlab -- "${named[@]}" | grep -vF 'A GitLab project (immo)'; return 1; }
+  # the lines naming it, the statement's own aside (wrapped or not)
+  [ ${#named[@]} -eq 0 ] || { git grep -n -i gitlab -- "${named[@]}" | grep -vF 'A GitLab project'; return 1; }
 }
 
 check "(a) README.md's \"Demo host\" opens with the statement" opens_with_statement README.md '## Demo host'

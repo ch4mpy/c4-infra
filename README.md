@@ -596,6 +596,10 @@ next to it):
 
 ## Demo host
 
+The demo host deploys GitHub projects, each from its own GitHub Actions workflow. A GitLab project
+(immo) isn't deployed by this stack: the migration guide's "In dev" applies to it, not its demo
+steps ([docs/migration.md](docs/migration.md)).
+
 The same stack on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:
 the compose base with its demo override, [`compose.demo.yml`](compose.demo.yml), and the same Caddy

@@ -142,6 +142,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 ## On the demo host
 
+The demo host deploys GitHub projects, each from its own GitHub Actions workflow. A GitLab project
+(immo) isn't deployed by this stack: "In dev" applies to it, not these steps.
+
 1. c4-infra runs on the demo host (deployed since 2026-10-23, its README). Its Caddy holds ports 80
    and 443: a project's own Caddy can't run beside it, so a project still deploying one on that
    host moves in one maintenance window.
