@@ -75,4 +75,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0023 | [The stack still documents and tests an LDAP user federation no application needs](0023-ldap-leaves-the-stack/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0024 | [A deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator](0024-database-image-change-under-keycloak/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0025 | [A refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them](0025-refused-deployment-still-staged/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
-| 0031 | [No test proves that a front end's own Permissions-Policy reaches the browser unchanged](0031-front-end-own-permissions-policy-untested/intent.md) | change | planned | 2026-10-28 | 2026-10-28 |
+| 0031 | [No test proves that a front end's own Permissions-Policy reaches the browser unchanged](0031-front-end-own-permissions-policy-untested/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
