@@ -184,7 +184,7 @@ check "keycloak-import imported the master realm" grep -qF "Realm 'master' impor
 check "deploy.sh creates the registration account" says deploy-1.log "Registration account $CLIENT: created"
 check "with the administrator of .env" says deploy-1.log "the bootstrap administrator of .env"
 no_leak() {
-  [ ! -s "$work/leaks" ] || { echo "a password appears in:"; sort "$work/leaks" | uniq -c; return 1; }
+  [ ! -s "$work/leaks" ] || { echo "a password appears in:"; LC_ALL=C sort "$work/leaks" | uniq -c; return 1; }
 }
 read -r samples host_seen keycloak_seen < "$work/samples"
 check "AC-07: ps -eo args saw the deployment at work ($host_seen of $samples samples)" test "${host_seen:-0}" -ge 1

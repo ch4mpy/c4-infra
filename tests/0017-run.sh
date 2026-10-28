@@ -89,7 +89,7 @@ ran_exactly() { # <log> <names>
 # A run with a stand-in test prints each block as its test ends (0022's lanes): the set of tests,
 # and the order of those outside the stand-in lanes
 ran_set() { # <log> <names, sorted>
-  [ "$(ran "$1" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')" = "$2" ] || { cat "$work/$1"; return 1; }
+  [ "$(ran "$1" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" = "$2" ] || { cat "$work/$1"; return 1; }
 }
 
 ran_others_in_order() { # <log> <names>

@@ -59,7 +59,7 @@ kc_admin() { # [-i] <kcadm args…>
       --no-config --server http://localhost:8080/auth --realm master --user "$(value KC_BOOTSTRAP_ADMIN_USERNAME)"' \
     sh "$DIR" "$io" "$@"
 }
-realms() { kc_admin get realms --fields realm < /dev/null 2> /dev/null | jq -r '.[].realm' | sort | paste -sd' ' -; }
+realms() { kc_admin get realms --fields realm < /dev/null 2> /dev/null | jq -r '.[].realm' | LC_ALL=C sort | paste -sd' ' -; }
 master_settings() {
   kc_admin get realms/master < /dev/null 2> /dev/null \
     | jq -cS '{smtpServer: (.smtpServer | del(.password)), verifyEmail, resetPasswordAllowed, bruteForceProtected, failureFactor}'

@@ -9,7 +9,7 @@ c4-infra: the infrastructure the c4-soft applications share on one machine (deve
 - `keycloak-import/` holds the realms the stack imports itself, once, at a start (`master`, and the simulated providers' `simulated-google`, `simulated-facebook`, `simulated-apple`: README, "Simulated social providers").
 - `demo/` holds the demo host's scripts (`write-env.sh` on the workflow's runner, `deploy.sh` and `backup.sh` on the host, `vps-bootstrap.sh`); `.github/workflows/deploy-demo.yml` sends the files of `demo/deploy-files.txt`.
 - The two images built here: `keycloak/` (Keycloak, pinned, its features, and the stack's login themes `keycloak/stack-themes/`, a theme JAR) and `reverse-proxy/` (Caddy with its rate-limit module); in dev `up.sh` builds them (`KC_IMAGE`, `PROXY_IMAGE` in `.env`), the demo workflow pushes them to GHCR tagged by the content of their directory.
-- Scripts run under Git Bash on Windows and bash on Ubuntu: container paths need `MSYS_NO_PATHCONV=1`, host paths given to the docker CLI need `cygpath -w` under Git Bash, and no password goes on a command line.
+- Scripts run under Git Bash on Windows and bash on Ubuntu: container paths need `MSYS_NO_PATHCONV=1`, host paths given to the docker CLI need `cygpath -w` under Git Bash, and no password goes on a command line. The tests sort with `LC_ALL=C sort`, whatever the workstation's locale (`tests/0019-collation.sh`).
 
 ## Verification
 

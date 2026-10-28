@@ -130,7 +130,7 @@ check "(b) --no-config --client with the secret in the environment only: 401" re
 # (c)
 check "(c) holding create-realm only, the account imports Faito's realm" account_in create realms -f - < "$FAITO_REALM"
 roles=$(admin get-roles -r faito --uusername service-account-faito-api --cclientid realm-management 2> "$work/roles.err" \
-  | jq -r '.[].name' | sort | tr '\n' ' ')
+  | jq -r '.[].name' | LC_ALL=C sort | tr '\n' ' ')
 for role in query-users view-users manage-users; do
   check "(c) service-account-faito-api keeps realm-management's $role (it has: ${roles:-none})" \
     grep -qw -- "$role" <<< "$roles"

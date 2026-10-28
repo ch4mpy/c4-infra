@@ -65,11 +65,11 @@ listeners() { # <container>
 }
 # the addresses <port> listens on, sorted, on one line
 addresses_of_port() { # <listeners file> <port>
-  awk -v port="$2" '$2 == port { print $1 }' "$1" | sort -u | paste -sd' ' -
+  awk -v port="$2" '$2 == port { print $1 }' "$1" | LC_ALL=C sort -u | paste -sd' ' -
 }
 # the ports listening elsewhere than on the loopback, sorted, on one line
 public_ports() { # <listeners file>
-  awk '$1 !~ /^127\./ && $1 != "::1" && $1 !~ /^::ffff:127\./ { print $2 }' "$1" | sort -n -u | paste -sd' ' -
+  awk '$1 !~ /^127\./ && $1 != "::1" && $1 !~ /^::ffff:127\./ { print $2 }' "$1" | LC_ALL=C sort -n -u | paste -sd' ' -
 }
 
 # (a)
