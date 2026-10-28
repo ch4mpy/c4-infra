@@ -206,7 +206,8 @@ gh run watch -R ch4mpy/c4-infra
 Each application deploys with its own account, `<app>` (its registry entry's name), outside the
 `docker` group: it sends its files to `~/<app>/` and runs `sudo c4-app` there, which acts on its
 own compose project and registers it with what its registry entry assigns to it, nothing else
-([README](../README.md), "Accounts"). For each application, once:
+([README](../README.md), "Accounts"). For each application, a GitHub project (the host deploys no
+other: [README](../README.md), "Demo host"), once:
 
 1. **Its registry entry** in [`registry.txt`](../registry.txt), committed in c4-infra and deployed
    (step 7: the deployment sends the registry): `c4-app` refuses an application missing from it.
@@ -228,8 +229,9 @@ own compose project and registers it with what its registry entry assigns to it,
    home closed to the other accounts, and ends with
    `Done. <app>'s workflow can now deploy as <app>@<ip>`. It refuses an account it didn't create
    (`ubuntu`, a system user).
-5. **Its secrets**, in the application's repository (its own `demo` environment), read on stdin;
-   on another platform than GitHub, the same three values as its CI's secret variables:
+5. **Its secrets**, in the application's GitHub repository, its own `demo` environment, restricted
+   to the branch it deploys from (the environment's *Deployment branches*), the keys read on stdin;
+   its registry's token too when its images aren't on GHCR:
 
    ```bash
    A=ch4mpy/<app>
