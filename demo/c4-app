@@ -32,6 +32,12 @@
 #   c4-app nightly                  root's cron only (/etc/cron.d/c4-apps-backup, 03:45): backup as
 #                                   each account of the group c4-apps, into its backup.log
 #
+# The backups' time limits (intent 0033), in seconds: ITEM_TIMEOUT (1800) each dump or volume's
+# copy, RESTORE_TIMEOUT (3600) each restore step, NIGHTLY_TIMEOUT (7200) each application's nightly
+# run. One that a limit cuts is stopped where it runs (its processes and sessions in the database's
+# container, or its throwaway container), as one that reaches the floor, then refused, saying what
+# was stopped. Root's own /etc/c4-app/limits may change them (read_limits), for every application.
+#
 # pull, up and register work on a copy of ~/<application>/<application>/ (sent there by the
 # application's workflow), read as the application and written by root into
 # /var/lib/c4-apps/.<application>.incoming/ (root:<application>, mode 0750: the application reads it,
@@ -125,6 +131,10 @@ Usage, from an application's account:
   sudo c4-app backup                    (the services labelled c4-infra.backup: postgres or volumes,
                                         into /var/backups/c4-apps/<app>/, nightly at 03:45 too)
   sudo c4-app restore [<stamp> --yes]
+Time limits, in seconds, the same for every application; root's /etc/c4-app/limits changes them
+(KEY=<seconds>, 1 to 86400): ITEM_TIMEOUT=1800 each dump or volume's copy, RESTORE_TIMEOUT=3600
+each restore step, NIGHTLY_TIMEOUT=7200 each application's nightly run. A cut stops what it
+started, then refuses, saying so.
 EOF
   exit 2
 }

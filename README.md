@@ -660,7 +660,9 @@ application whose account runs it (never an argument), on its own project only:
   project declares, read from the containers that run, never from `~/<app>/` (a deployment not done
   yet or refused changes nothing): they stage nothing and pull nothing, and wait for its other
   `c4-app` commands, as each of them does (one at a time per application, 600 s at most, saying
-  `c4-app: waiting for another c4-app command of <app>`). See "Backups".
+  `c4-app: waiting for another c4-app command of <app>`). Each dump, volume's copy and restore step
+  has a time limit, which only the operator changes, for every application, in `/etc/c4-app/limits`
+  (intent 0033). See "Backups".
 
 `sudo c4-app up` and `pull` check that model before root's compose touches it (intent 0007):
 compose runs a provider's and a hook's executables, so an unchecked model must never reach it. The
@@ -868,8 +870,8 @@ services:
   is written; a declared service with more than one container, a declared database that doesn't
   run, or a `volumes` service that mounts no named volume of the project, too. The project's volumes
   no label covers (but a database's own) are named: `c4-app: not backed up: <app>_cache`. A project
-  with no container, none running, or no label: said, nothing written, exit 0. A dump or a volume's
-  copy that hasn't ended within 1800 s is refused.
+  with no container, none running, or no label: said, nothing written, exit 0. Each dump and each
+  volume's copy has a time limit ("Time limits", below).
 
 Backup and restore select the containers by the project's label, `com.docker.compose.project=<app>`,
 which compose sets itself over any the file sets, and by their name (`<app>.` or `<app>-`), and the
@@ -890,8 +892,35 @@ volumes by that label and the name `<app>_<key>`: nothing of another application
   migrates its database.
 - **How long**: 7 days. Each backup or restore of the application that succeeds removes its backups
   older than that, but never its newest: failed nights remove nothing. `backup.log` stays. Each
-  night is stopped after 2 hours (its log says so), so one application's backup can't hold the
-  others'.
+  application's night has a time limit, 2 hours ("Time limits"), so one application's backup can't
+  hold the others'.
+- **Time limits** (intent 0033), in seconds, the same for every application: `ITEM_TIMEOUT`, 1800
+  by default, for each dump and each volume's copy; `RESTORE_TIMEOUT`, 3600, for each step of a
+  restore that runs a process (reading a file whole, recreating a database, restoring its dump,
+  emptying and refilling a volume), its backup of the state before keeping `ITEM_TIMEOUT`;
+  `NIGHTLY_TIMEOUT`, 7200, for each application's nightly run. An item or a step that outlasts its
+  limit is stopped where it runs: in the database's container, the processes `c4-app` started there
+  (marked by `PGAPPNAME`: never another, and never one whose end the database server would take for
+  a crash of its own) and the sessions they opened (`pg_terminate_backend`, through the official
+  image's `psql` as its `POSTGRES_USER` on the local socket, as the dump); a volume's copy or refill,
+  its throwaway container, removed. An item that reaches the floor (below) is stopped the same way. The command is
+  then refused in one line, naming the item or step, its limit and what was stopped, exit 1: `c4-app:
+  db.dump didn't end within 1800 s: stopped (pg_dump in <app>.db, 1 session of its database), no
+  backup of <app> kept`, or `c4-app: restore of backup <stamp>: refilling <app>_files didn't end
+  within 3600 s: stopped (its throwaway container)`, then the restore's failure as below (before or
+  after it replaced data). A nightly run cut by its limit stops its item the same way and starts the
+  containers it stopped; the log says `c4-app: stopped by a signal during <item>: stopped (…)`, then
+  `== exit 124: stopped after 7200 s`. What `c4-app` can't confirm stopped within 40 s is named with
+  its container (`c4-app: pg_dump (pid <n>) in <app>.db didn't stop within 40 s`), exit 1. Once
+  `c4-app` has ended, nothing it started runs on, and the application's next command doesn't wait.
+- **Who changes a limit**: the operator, as root (from `ubuntu`), for every application, in
+  `/etc/c4-app/limits`: root's own regular file (`root:root`, writable by root only, in a directory of
+  root's), read as data, never run. A line `ITEM_TIMEOUT=<seconds>`, `RESTORE_TIMEOUT=<seconds>` or
+  `NIGHTLY_TIMEOUT=<seconds>`, 1 to 86400; a key left out keeps its default; blank lines and `#`
+  comments. Without the file, the defaults. `backup`, `restore` and the nightly run read it, and a
+  file that breaks these rules refuses them, naming the file and the line (`c4-app:
+  /etc/c4-app/limits, line 2: 'ITEM_TIMEOUT=0': …`), the nightly run into each application's log;
+  `up`, `pull`, `down` and `register` never read it. An application sets no limit.
 - **The disk**: a backup is refused when the free space of `/var/backups/c4-apps` falls under 5 GiB
   or under 10 % of the disk, whichever is larger: checked before each item, each item written at
   most up to that floor (one that reaches it is refused), and after the last. What it wrote is
