@@ -23,16 +23,21 @@
 #
 # Each command but down works on a copy of ~/<application>/<application>/ (sent there by the
 # application's workflow), read as the application and written by root into
-# /var/lib/c4-apps/<application>/ (root:<application>, mode 0750: the application reads it, never
-# writes it); a symbolic link or a special file in it is refused. That copy is only the containers' mount sources at run time; what
+# /var/lib/c4-apps/.<application>.incoming/ (root:<application>, mode 0750: the application reads it,
+# never writes it); a symbolic link or a special file in it is refused. Only up, once its checks have
+# passed, puts it in place in /var/lib/c4-apps/<application>/, the containers' mount sources: a
+# refused command leaves what the running containers read as it was (intent 0025). That copy is only
+# the containers' mount sources at run time; what
 # root itself reads — the compose model, and (for register) the realm, routes and theme files — is a
 # fresh root-only snapshot in /var/lib/c4-apps/.run.<application>/ (mode 0700 root:root), outside
 # anything a container may mount, taken once the checks have passed and used from there. The compose
 # model is read as the application (`docker compose config`: no daemon, and no file its account can't
 # read, such as another application's env_file) into .run.<application>/model.json, which root's
 # `docker compose` runs as the project <application>; root reads nothing of the application's copy on
-# its behalf. The project's name is always the application's: both composes get -p <application>,
-# which wins over a top-level name: of the application's file.
+# its behalf. It is read from the incoming copy, its paths named as /var/lib/c4-apps/<application>/'s:
+# the ones the containers mount once up puts the copy in place. The project's name is always the
+# application's: both composes get -p <application>, which wins over a top-level name: of the
+# application's file.
 #
 # `up` and `pull` check that model first, before root's compose touches it (intent 0007, RQ-09):
 # compose runs a provider's and a hook's executables, so an unchecked model must never reach it.
@@ -113,6 +118,7 @@ registry_entry "$app" || fail "$app is not in the shared stack's registry ($STAC
 
 source_dir=/home/$app/$app
 staging=$STAGING_ROOT/$app
+incoming=$STAGING_ROOT/.$app.incoming
 # root-only, outside anything a container may mount (not inside $staging): the model root's compose
 # runs, and the snapshot of the inputs root reads for register
 snap=$STAGING_ROOT/.run.$app
@@ -123,51 +129,58 @@ model=$snap/model.json
 install -d -m 0755 -o root -g root "$STAGING_ROOT"
 exec 9> "$STAGING_ROOT/.$app.lock"
 flock -w 600 9 || fail "another c4-app command of $app is still running"
+trap 'rm -rf "$incoming"' EXIT
 
-# The staging copy: read as the application (what its account can't read isn't copied), checked for
-# symbolic and special files, then synchronized into the staging directory (0750 root:<app>, the
-# containers' mount sources; the application reads it, never writes it). The root-only snapshot
-# directory is (re)created empty here, holding nothing the application put there.
-stage() {
-  local incoming=$STAGING_ROOT/.$app.incoming found
+# The incoming copy: read as the application (what its account can't read isn't copied), checked for
+# symbolic and special files, root-owned beside the staging directory (0750 root:<app>: the
+# application reads it, never writes it). The root-only snapshot directory is (re)created empty here,
+# holding nothing the application put there.
+copy_in() {
+  local found
   [ -d "$source_dir" ] || fail "$source_dir is missing: the application's workflow sends its files there first"
   rm -rf "$incoming" "$snap"
   install -d -m 0700 -o root -g root "$incoming"
   if ! runuser -u "$app" -- tar -C "$source_dir" -cf - . \
     | tar -C "$incoming" -xf - --no-same-owner --no-same-permissions; then
-    rm -rf "$incoming"
     fail "$source_dir could not be copied (above)"
   fi
   # (head may close the pipe early: its status, not find's)
   found=$(find "$incoming" -mindepth 1 ! -type f ! -type d -printf '%P\n' | head -n 5 || true)
-  if [ -n "$found" ]; then
-    rm -rf "$incoming"
-    fail "$source_dir holds a symbolic link or a special file, refused: ${found//$'\n'/, }"
-  fi
+  [ -z "$found" ] || fail "$source_dir holds a symbolic link or a special file, refused: ${found//$'\n'/, }"
   chown -R "root:$app" "$incoming"
   chmod -R u+rwX,g+rX,g-w,o-rwx "$incoming"
-  install -d -m 0750 -o root -g "$app" "$staging"
-  rsync -a --delete "$incoming/" "$staging/"
-  rm -rf "$incoming"
   # the snapshot directory root reads from: root-only, no container may mount it (not inside $staging)
   install -d -m 0700 -o root -g root "$snap"
 }
 
-# A root-only snapshot of the staging tree, taken after stage()'s checks: register reads the realm,
-# routes and theme files from here, which no container can rewrite (symlink-free: stage refused them)
-snapshot_src() {
-  rm -rf "$snap_src"
-  cp -a "$staging" "$snap_src"
+# The checked copy into the containers' mount sources (0750 root:<app>), in place: a running
+# container's directory mount sees the new files. up only, once its checks have passed.
+place_copy() {
+  install -d -m 0750 -o root -g "$app" "$staging"
+  rsync -a --delete "$incoming/" "$staging/"
 }
 
-# The compose model, read as the application, into the root-only model file root's compose runs. The
+# A root-only snapshot of the incoming copy, taken after copy_in()'s checks: register reads the
+# realm, routes and theme files from here, which no container can rewrite (symlink-free: copy_in
+# refused them)
+snapshot_src() {
+  rm -rf "$snap_src"
+  cp -a "$incoming" "$snap_src"
+}
+
+# The compose model, read as the application from the incoming copy, into the root-only model file
+# root's compose runs. Its paths under the copy are rewritten as the staging directory's, which the
+# containers mount: one the rewrite would miss stays outside it, which check_model refuses. The
 # redirection and the mv are root's, into $snap (root-only): no container can plant a symlink there.
 read_model() {
   local next=$model.new
-  [ -f "$staging/compose.yml" ] || fail "$source_dir/compose.yml is missing"
+  [ -f "$incoming/compose.yml" ] || fail "$source_dir/compose.yml is missing"
   rm -f "$model" "$next"
   if ! runuser -u "$app" -- env -i PATH="$PATH" HOME="/home/$app" \
-    docker compose --project-directory "$staging" -p "$app" -f "$staging/compose.yml" config --format json > "$next"; then
+    docker compose --project-directory "$incoming" -p "$app" -f "$incoming/compose.yml" config --format json \
+    | jq --arg from "$incoming" --arg to "$staging" \
+      'walk(if type == "string" and (. == $from or startswith($from + "/")) then $to + .[($from | length):] else . end)' \
+      > "$next"; then
     rm -f "$next"
     fail "docker compose config refuses $source_dir/compose.yml (above)"
   fi
@@ -304,11 +317,13 @@ cmd_pull() {
       *) usage ;;
     esac
   done
-  stage
+  copy_in
   read_model
   # root's compose never runs an unchecked model, for any command (compose pull reads it, and would
   # run a provider's own fetch)
   check_model
+  # compose's project directory; pulling changes nothing the containers mount
+  install -d -m 0750 -o root -g "$app" "$staging"
   if [ -z "$registry" ]; then
     compose pull --quiet
     return
@@ -328,7 +343,7 @@ cmd_pull() {
 
 cmd_register() {
   local args=() var value
-  stage
+  copy_in
   snapshot_src
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -372,11 +387,12 @@ case "$command" in
   pull) cmd_pull "$@" ;;
   up)
     [ $# -eq 0 ] || usage
-    stage
+    copy_in
     read_model
     # the file compose runs is the one checked: root's, outside anything a container may mount
     check_model
     bash "$STACK/networks.sh" ensure "$app" < /dev/null
+    place_copy
     compose up -d --wait --remove-orphans
     ;;
   down)
