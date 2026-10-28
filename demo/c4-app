@@ -101,6 +101,12 @@ BACKUP_ROOT=/var/backups/c4-apps
 KEEP_DAYS=7
 # PA-05: a backup is refused under 5 GiB free, or under 10 % of the disk when that is more
 FLOOR_MIN=$((5 * 1024 * 1024 * 1024))
+# The time limits (intent 0033), in seconds: a backup's item, a restore's step, an application's
+# nightly run; root's own /etc/c4-app/limits may change them (read_limits)
+LIMITS=/etc/c4-app/limits
+ITEM_TIMEOUT=1800
+RESTORE_TIMEOUT=3600
+NIGHTLY_TIMEOUT=7200
 
 fail() {
   echo "c4-app: $*" >&2
@@ -121,12 +127,37 @@ EOF
   exit 2
 }
 
+# PA-03 B: the limits from root's file, read as data (never sourced), each 1 to 86400 s (a 0 would turn
+# timeout off); without the file, the defaults; anything else refuses, the reason in limits_refusal
+limits_refusal=
+read_limits() {
+  local line number=0 dir=${LIMITS%/*}
+  [ -e "$LIMITS" ] || [ -L "$LIMITS" ] || return 0
+  if [ -L "$LIMITS" ] || [ ! -f "$LIMITS" ] || [ -L "$dir" ] \
+    || [[ ! $(stat -c '%u %g %a' "$LIMITS") =~ ^0\ 0\ [0-7]?[0-7][0145][0145]$ ]] \
+    || [[ ! $(stat -c '%u %a' "$dir") =~ ^0\ [0-7]?[0-7][0145][0145]$ ]]; then
+    limits_refusal="$LIMITS: not root's own regular file (root:root, writable by root only, in a directory of root's): refused"
+    return 1
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    number=$((number + 1))
+    [[ ! $line =~ ^[[:space:]]*(#.*)?$ ]] || continue
+    if [[ $line =~ ^(ITEM_TIMEOUT|RESTORE_TIMEOUT|NIGHTLY_TIMEOUT)=([1-9][0-9]{0,4})$ ]] && [ "${BASH_REMATCH[2]}" -le 86400 ]; then
+      printf -v "${BASH_REMATCH[1]}" %s "${BASH_REMATCH[2]}"
+    else
+      limits_refusal="$LIMITS, line $number: '${line//[^[:print:]]/?}': <KEY>=<seconds>, 1 to 86400, KEY ITEM_TIMEOUT, RESTORE_TIMEOUT or NIGHTLY_TIMEOUT"
+      return 1
+    fi
+  done < "$LIMITS"
+}
+
 [ "$(id -u)" -eq 0 ] || fail "runs as root, through sudo: sudo c4-app <command>"
 
-# Root's cron only (sudo sets SUDO_USER): each account of c4-apps backs up as itself, into its log
-NIGHTLY_TIMEOUT=7200
+# Root's cron only (sudo sets SUDO_USER): each account of c4-apps backs up as itself, into its log; a
+# refused limits file is written into each log
 nightly() {
-  local members member log code status=0
+  local members member log code status=0 refusal=
+  read_limits || refusal="c4-app: $limits_refusal"
   members=$(getent group c4-apps | cut -d: -f4)
   install -d -m 0755 -o root -g root "$BACKUP_ROOT"
   for member in ${members//,/ }; do
@@ -141,8 +172,13 @@ nightly() {
     {
       echo "== $(date -u '+%Y-%m-%d %H:%M:%S') UTC: nightly backup of $member"
       code=0
-      timeout --kill-after=60 "$NIGHTLY_TIMEOUT" runuser -u "$member" -- sudo -n /usr/local/sbin/c4-app backup < /dev/null 2>&1 \
-        || code=$?
+      if [ -n "$refusal" ]; then
+        echo "$refusal"
+        code=1
+      else
+        timeout --kill-after=60 "$NIGHTLY_TIMEOUT" runuser -u "$member" -- sudo -n /usr/local/sbin/c4-app backup < /dev/null 2>&1 \
+          || code=$?
+      fi
       if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
         echo "== exit $code: stopped after $NIGHTLY_TIMEOUT s"
       else
@@ -504,8 +540,6 @@ DUMP='pg_dump --lock-wait-timeout=120s -U "${POSTGRES_USER:-postgres}" -d "${POS
 # A volume's copy: the stack's database image, no network, read-only, tar's 4 capabilities (fact d)
 THROWAWAY=(--rm --pull never --network none --read-only --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE
   --cap-add FOWNER --cap-add FSETID --security-opt no-new-privileges --log-driver none)
-# A dump or a volume's copy that hasn't ended by then is refused
-ITEM_TIMEOUT=1800
 
 iec() { numfmt --to=iec-i --suffix=B "$1"; }
 sorted() { [ $# -eq 0 ] || printf '%s\n' "$@" | sort; }
@@ -796,6 +830,7 @@ take_backup() {
 
 cmd_backup() {
   [ $# -eq 0 ] || usage
+  read_limits || fail "$limits_refusal"
   backup_dir
   select_items backup
   if [ -n "$nothing" ]; then
@@ -886,6 +921,7 @@ cmd_restore() {
   [ -d "$backups/$wanted" ] || fail "no backup $wanted of $app (sudo c4-app restore lists them)"
   [ -n "$yes" ] \
     || fail "restore $wanted replaces $app's databases and volumes with that backup's, once the state before is backed up: sudo c4-app restore $wanted --yes"
+  read_limits || fail "$limits_refusal"
   select_items restore
   [ -z "$nothing" ] || fail "$nothing: restore refused"
   match_backup "$wanted"
