@@ -7,7 +7,9 @@
 #   - AC-07: registration, password reset and brute-force protection off; their users are PA-05's;
 #     no required action enabled, so that a visitor signed in as a public account can't change its
 #     password nor add a second factor: an authorization request asking for one (kc_action), signed
-#     in, comes back to the redirect URI with a code, no form;
+#     in, comes back to the redirect URI with a code, no form; and no account role (an imported user
+#     gets none): the account console's token of a public account reads no session of the visitors
+#     signed in as it (their addresses and browsers), the account API refusing it;
 #   - AC-04 (its refusal): the shared client any-application accepts a broker endpoint of a realm of
 #     the infra host (the login page, 200), and refuses another host, another path, http and a path
 #     climbing out with .. (400);
@@ -123,5 +125,31 @@ no_form_for() { # <kc_action>: alice signs in to simulated-google asking for it,
 }
 for kc_action in UPDATE_PASSWORD CONFIGURE_TOTP webauthn-register; do
   check "AC-07: alice signed in asking for $kc_action: back with a code, no form" no_form_for "$kc_action"
+done
+
+# alice's token of the account console (its browser flow, PKCE), then the account API's devices
+devices_refused() { # <realm>
+  local base=$BASE/auth/realms/$1 redirect verifier challenge action location code token status
+  redirect=$base/account/
+  verifier=$(openssl rand -hex 32)
+  challenge=$(printf '%s' "$verifier" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+  rm -f "$work/jar"
+  kc_curl -c "$work/jar" -b "$work/jar" -o "$work/page.html" -G --data-urlencode client_id=account-console \
+    --data-urlencode "redirect_uri=$redirect" --data-urlencode response_type=code --data-urlencode scope=openid \
+    --data-urlencode "code_challenge=$challenge" --data-urlencode code_challenge_method=S256 "$base/protocol/openid-connect/auth"
+  action=$(grep -o 'action="[^"]*"' "$work/page.html" | head -n 1 | sed 's/^action="//; s/"$//; s/&amp;/\&/g')
+  location=$(kc_curl -c "$work/jar" -b "$work/jar" -o /dev/null -D - -d username=alice -d password=alice-password \
+    -d credentialId= "$action" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')
+  code=$(sed -n 's/.*[?&]code=\([^&]*\).*/\1/p' <<< "$location")
+  [ -n "$code" ] || { echo "alice didn't sign in to the account console: $location"; return 1; }
+  token=$(kc_curl -d grant_type=authorization_code -d client_id=account-console -d "code=$code" -d "code_verifier=$verifier" \
+    --data-urlencode "redirect_uri=$redirect" "$base/protocol/openid-connect/token" | jq -r '.access_token // empty')
+  [ -n "$token" ] || { echo "no token"; return 1; }
+  status=$(kc_curl -o "$work/devices" -w '%{http_code}' -H "Authorization: Bearer $token" -H 'Accept: application/json' \
+    "$base/account/sessions/devices")
+  [ "$status" = 401 ] || [ "$status" = 403 ] || { echo "status $status: $(head -c 200 "$work/devices")"; return 1; }
+}
+for realm in "${REALMS[@]}"; do
+  check "AC-07: $realm: alice's account console token reads no visitor's session (refused)" devices_refused "$realm"
 done
 finish
