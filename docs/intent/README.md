@@ -70,3 +70,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0020 | [The isolation test's probe image fails to build in the stand-in, now and then, on a DNS error](0020-stand-in-probe-build-dns/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0022 | [A full verification runs its stand-in tests one after the other, while nothing else runs](0022-full-verification-runs-sequentially/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0023 | [The stack still documents and tests an LDAP user federation no application needs](0023-ldap-leaves-the-stack/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0024 | [A deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator](0024-database-image-change-under-keycloak/intent.md) | bug | accepted | 2026-10-28 | 2026-10-28 |
