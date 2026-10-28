@@ -574,12 +574,15 @@ application whose account runs it (never an argument), on its own project only:
   temporary Docker configuration removed at once), `sudo c4-app up`: its compose project, named after
   it (`-p <app>`, for the model and for root's compose: a top-level `name:` of its file changes
   nothing). Each of them copies `~/<app>/` (read as the application) into
-  `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
-  symbolic link or a special file; that copy is only the containers' mount sources. The compose
-  model is read as the application (`docker compose config`: no file its account can't read, such as
-  another application's `env_file`) and, once checked, kept with the files root itself reads in a
-  **root-only snapshot**, `/var/lib/c4-apps/.run.<app>/` (mode `0700 root:root`, outside anything a
-  container may mount); root's `docker compose` runs that snapshot model, for both commands;
+  `/var/lib/c4-apps/.<app>.incoming/`, which root owns and the application can read but not write,
+  refusing a symbolic link or a special file. The compose model is read as the application from that
+  copy (`docker compose config`: no file its account can't read, such as another application's
+  `env_file`), its paths named as `/var/lib/c4-apps/<app>/`'s, and, once checked, kept with the files
+  root itself reads in a **root-only snapshot**, `/var/lib/c4-apps/.run.<app>/` (mode `0700
+  root:root`, outside anything a container may mount); root's `docker compose` runs that snapshot
+  model, for both commands. Only `up`, once its checks have passed, puts the copy in place in
+  `/var/lib/c4-apps/<app>/`, the containers' mount sources: a refused command (`up`, `pull`, and
+  `register` below) leaves what the running containers read as it was (intent 0025);
 - `sudo c4-app down`: stops and removes the project's containers and networks by its name
   (`docker compose -p <app> down`), reading no compose file: whatever `~/<app>/compose.yml` holds now
   (refused, or replaced), its account can always stop its project, and nothing that file declares
