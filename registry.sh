@@ -67,12 +67,19 @@ _registry_rabbitmq_admin() {
 # quotes and unquoted, "$$" is a "$"; an unquoted value ends at " #" and loses its final spaces.
 # What compose would read otherwise is refused, saying why, rather than read differently (returns
 # 1): a "$" it interpolates ($NAME, ${NAME}), an escape sequence in double quotes, a quote that
-# doesn't close. Prints nothing (returns 0) when the file or the key is missing.
+# doesn't close. Prints nothing (returns 0) when the file or the key is missing; a file it can't
+# read is an error naming it (returns 1).
 dotenv_value() { # <file> <key>
-  local file=$1 key=$2 line value
+  local file=$1 key=$2 lines line value status=0
   local single="^'((\\\\.|[^\\\\'])*)'" double='^"((\\.|[^\\"])*)"'
   [ -f "$file" ] || return 0
-  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*=" "$file" | tail -n 1) || true
+  # grep: 1 the key is missing, 2 the file can't be read
+  lines=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key[[:space:]]*=" "$file") || status=$?
+  if [ "$status" -gt 1 ]; then
+    echo "registry.sh: $file can't be read (above)" >&2
+    return 1
+  fi
+  line=${lines##*$'\n'}
   [ -n "$line" ] || return 0
   value=${line#*=}
   value=${value%$'\r'}
@@ -216,9 +223,13 @@ registry_check() {
     [ "$rabbitmq_user" != "$rabbitmq_admin" ] \
       || _registry_problem "$file:$number: RabbitMQ user $rabbitmq_user is the broker's administrator (RABBITMQ_ADMIN_USER, the shared stack's): no entry may claim it"
     [ "$rabbitmq_user" = - ] || _registry_claim "RabbitMQ user" "$rabbitmq_user" "$app" "$number"
-    # one namespace for both columns: a demo host can't be another application's dev host
+    # one namespace for both columns: a demo host can't be another application's dev host; nor its
+    # MCP origin, which no other entry may take either, as a host or as an application's name
     _registry_claim "host name" "$dev_host" "$app" "$number"
     _registry_claim "host name" "$demo_host" "$app" "$number"
+    _registry_claim "host name" "$(registry_mcp_host "$dev_host")" "$app's MCP origin" "$number"
+    _registry_claim "host name" "$(registry_mcp_host "$demo_host")" "$app's MCP origin" "$number"
+    _registry_claim application "$app-mcp" "$app's MCP origin" "$number"
   done <<< "$lines"
 
   [ "$problems" -eq 0 ]
@@ -266,6 +277,12 @@ registry_next() {
   return 1
 }
 
+# An application's MCP origin (intent 0013): the first label of its host name suffixed with -mcp,
+# turu.c4-soft.com → turu-mcp.c4-soft.com (one label under the dev certificate's *.dev.localhost)
+registry_mcp_host() { # <host name>
+  printf '%s-mcp.%s\n' "${1%%.*}" "${1#*.}"
+}
+
 # The upstream of a role, for the entry registry_entry set: in dev the port of its block, on the
 # demo host its container on the port the README fixes for that role
 registry_upstream() {
@@ -284,10 +301,7 @@ registry_upstream() {
     'dev en') echo "http://host.docker.internal:${prefix}205" ;;
     'demo gateway') echo "http://$REG_APP.gateway:7080" ;;
     'demo fr' | 'demo ui' | 'demo en') echo "http://$REG_APP.frontend:80" ;;
-    'demo mcp')
-      echo "No upstream for the role mcp on the demo host: the README fixes no container port for the MCP server role yet (README.md, 'What an application's deployment does')" >&2
-      return 2
-      ;;
+    'demo mcp') echo "http://$REG_APP.mcp:9080" ;;
     *)
       echo "Unknown role '$role' (gateway, mcp, fr, en or ui)" >&2
       return 1

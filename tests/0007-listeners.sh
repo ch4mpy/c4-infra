@@ -18,6 +18,9 @@
 # Once each one passes its healthcheck (compose's, else its image's) and listens on every port of
 # its set, its listening TCP sockets (/proc/net/tcp, /proc/net/tcp6) outside the loopback are
 # exactly that set. Everything is removed on exit.
+#
+# covers: compose.yml compose.demo.yml caddy/ keycloak/ reverse-proxy/ rabbitmq/ grafana-lgtm/
+# covers: tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -83,7 +86,8 @@ public_ports() { # <container>
 password=$(openssl rand -hex 12)
 MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
 KC_IMAGE=c4-infra/keycloak
-export MAILPIT_UI_PASSWORD_HASH KC_IMAGE
+PROXY_IMAGE=c4-infra/reverse-proxy
+export MAILPIT_UI_PASSWORD_HASH KC_IMAGE PROXY_IMAGE
 docker compose -f compose.yml -f compose.demo.yml --env-file tests/fixtures/0003/demo.env config --format json \
   > "$work/demo.json" 2> "$work/demo.err"
 check "the demo host's model is read (compose.yml + compose.demo.yml, tests/fixtures/0003/demo.env)" test -s "$work/demo.json"

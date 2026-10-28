@@ -38,7 +38,23 @@ import env/{$INFRA_ENV}.caddy
 	import site
 
 	handle /auth/* {
-		reverse_proxy keycloak:8080
+		# A realm's client registration endpoint, which a realm may open to anonymous clients (an MCP
+		# client's dynamic registration), into the database every application shares: 10 requests a
+		# minute per client address, 429 beyond (intent 0013). Inside a route: in the order written,
+		# with no global option (the rate-limit module of reverse-proxy/Dockerfile).
+		route {
+			rate_limit {
+				zone client_registrations {
+					match {
+						path_regexp ^/auth/realms/[^/]+/clients-registrations(/|$)
+					}
+					key {remote_host}
+					events 10
+					window 1m
+				}
+			}
+			reverse_proxy keycloak:8080
+		}
 	}
 
 	# RFC 8414 discovery, which MCP clients use: the well-known path is inserted before the

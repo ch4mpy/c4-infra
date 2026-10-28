@@ -21,6 +21,10 @@
 #
 # As tests/0006-bootstrap-admin-replaced.stand-in.sh: the Keycloak image is the one up.sh builds here,
 # loaded into the stand-in; Let's Encrypt is kept out; passwords travel in environments and on stdin.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt keycloak/ keycloak-import/
+# covers: docs/demo-setup.md tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -138,7 +142,7 @@ keycloak_healthy() {
 }
 
 check "the stand-in host starts" stand_in_up
-check "the Keycloak image built here is loaded into it" stand_in_load_image c4-infra/keycloak
+check "the Keycloak and proxy images built here are loaded into it" stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" "$APPS"
 check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$DIR"
 check "keycloak-import/master-realm.json is among them" stand_in_exec test -f "$DIR/keycloak-import/master-realm.json"
@@ -268,7 +272,7 @@ rewrite_env() {
     set -e
     cd "$1"
     value() { local line; line=$(grep -m1 "^$1=" .env); line=${line#*=}; printf "%s" "${line//\$\$/\$}"; }
-    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
+    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) PROXY_IMAGE=$(value PROXY_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
     export KC_ADMIN_PASSWORD=$(value KC_BOOTSTRAP_ADMIN_PASSWORD) KC_DB_PASSWORD=$(value KC_DB_PASSWORD)
     export KC_REGISTRATION_CLIENT_SECRET=$(value KC_REGISTRATION_CLIENT_SECRET)
     export RABBITMQ_ADMIN_PASSWORD=$(value RABBITMQ_ADMIN_PASSWORD) MAILPIT_SMTP_PASSWORD=$NEXT_SMTP_PASSWORD

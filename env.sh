@@ -22,6 +22,8 @@ sed -i 's/^COMPOSE_FILE=compose\.yml:compose\.dev\.yml\r\{0,1\}$/COMPOSE_FILE=co
 add "COMPOSE_PATH_SEPARATOR=:"
 # Built here from keycloak/ (compose.dev.yml); the demo host pulls the workflow's image instead
 add "KC_IMAGE=c4-infra/keycloak"
+# The same for the proxy, Caddy with its rate-limit module (reverse-proxy/, intent 0013)
+add "PROXY_IMAGE=c4-infra/reverse-proxy"
 # The proxy was nginx in dev before intent 0003: nothing reads PROXY any more
 sed -i '/^PROXY=/d' .env
 

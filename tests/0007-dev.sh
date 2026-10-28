@@ -10,10 +10,10 @@
 #             distribution (25672) listen on its loopback only
 #   networks  AC-10 (dev): Faito registered, c4-infra.faito holds the five shared services and not
 #             keycloak-db, which is on c4-infra.keycloak-db only; compose's model has them there too
-#   tickee    AC-07: Tickee registered (its network only), an LDAP stand-in on c4-infra.tickee
-#             (osixia/openldap:1.5.0, as tickee.ldap-standin): Keycloak connects to it
-#             (testLDAPConnection), a container on c4-infra.faito doesn't, by name nor by address;
-#             the stand-in removed, and Tickee's network when this test created it
+#   tickee    AC-07 (without LDAP since 0023): Tickee registered (its network only), an HTTP stand-in
+#             on c4-infra.tickee (caddy respond, as tickee.network-standin, a container of Tickee's
+#             there): Keycloak reaches it, a container on c4-infra.faito doesn't, by name nor by
+#             address; the stand-in removed, and Tickee's network when this test created it
 #   guard     compose.apps.yml is the same (cksum) before and after `tests/0001-loopback-ports.sh
 #             resolution`, which runs up.sh with a fake docker; with INFRA_ENV=demo (a scratch copy of
 #             networks.sh, its .env tests/fixtures/0003/demo.env), `networks.sh compose-file` puts the
@@ -24,6 +24,11 @@
 #             compose.apps.yml.new (a directory) doesn't stop it; and in a Linux container (bash:5.2,
 #             which has flock), it waits while another process holds the lock on the stack's
 #             directory, then writes the file
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt compose.demo.yml rabbitmq/
+# covers: tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -32,13 +37,13 @@ source tests/lib/keycloak.sh
 RABBITMQ=c4-infra.rabbitmq
 FAITO_DIR=${FAITO_DIR:-../faito}
 SHARED='c4-infra.grafana-lgtm c4-infra.keycloak c4-infra.mailpit c4-infra.rabbitmq c4-infra.reverse-proxy'
-LDAP_IMAGE=osixia/openldap:1.5.0
-LDAP=tickee.ldap-standin
+STANDIN_IMAGE=caddy:2.11.4-alpine
+STANDIN=tickee.network-standin
 
 work=$(mktemp -d)
 remove_tickee=false
 cleanup() {
-  docker rm -f "$LDAP" > /dev/null 2>&1
+  docker rm -f "$STANDIN" > /dev/null 2>&1
   ! $remove_tickee || bash networks.sh remove tickee > /dev/null
   rm -rf "$work"
 }
@@ -150,33 +155,36 @@ part_networks() {
 }
 
 part_tickee() {
-  local address output
+  local address
   docker network inspect c4-infra.tickee > /dev/null 2>&1 || remove_tickee=true
   register_tickee() { bash register-app.sh --app tickee > "$work/tickee.log" 2>&1 || { cat "$work/tickee.log"; return 1; }; }
   check "Tickee registers (bash register-app.sh --app tickee: its network only)" register_tickee
   check "c4-infra.tickee holds the five shared services, not keycloak-db" holds_shared c4-infra.tickee
-  docker rm -f "$LDAP" > /dev/null 2>&1
-  start_ldap() { docker run -d --name "$LDAP" --network c4-infra.tickee "$LDAP_IMAGE" > /dev/null; }
-  check "Tickee's LDAP stand-in starts on c4-infra.tickee ($LDAP, $LDAP_IMAGE)" start_ldap
-  ldap_connects() {
-    local deadline=$((SECONDS + 90))
-    until output=$(kc_admin create testLDAPConnection -r master -s action=testConnection \
-      -s "connectionUrl=ldap://$LDAP:389" -s authType=none 2>&1); do
-      [ "$SECONDS" -lt "$deadline" ] || { printf '%s\n' "$output" | tail -n 3; return 1; }
-      sleep 2
+  docker rm -f "$STANDIN" > /dev/null 2>&1
+  start_standin() {
+    docker run -d --name "$STANDIN" --network c4-infra.tickee "$STANDIN_IMAGE" \
+      caddy respond --listen :7080 "$STANDIN" > /dev/null
+  }
+  check "Tickee's HTTP stand-in starts on c4-infra.tickee ($STANDIN, $STANDIN_IMAGE)" start_standin
+  keycloak_reaches() { # 30 s at most, while the stand-in starts; the last attempt's error shown
+    local deadline=$((SECONDS + 30)) error
+    until error=$(MSYS_NO_PATHCONV=1 docker exec "$KC_CONTAINER" bash -c "exec 3<>/dev/tcp/$STANDIN/7080" \
+      < /dev/null 2>&1); do
+      [ "$SECONDS" -lt "$deadline" ] || { echo "no answer in 30 s: ${error:-none}"; return 1; }
+      sleep 1
     done
   }
-  check "AC-07: Keycloak connects to ldap://$LDAP:389 (testLDAPConnection)" ldap_connects
-  check "control: from c4-infra.tickee, $LDAP:389 answers" \
-    docker run --rm --network c4-infra.tickee alpine:3 nc -z -w 3 "$LDAP" 389
-  check "AC-07: from c4-infra.faito, $LDAP:389 can't be reached by name" \
-    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$LDAP" 389
-  address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$LDAP" | tr -d '\r')
-  check "$LDAP has an address (${address:-none})" test -n "$address"
-  check "AC-07: from c4-infra.faito, $address:389 can't be reached" \
-    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$address" 389
-  docker rm -f "$LDAP" > /dev/null 2>&1
-  check "the stand-in is removed" test -z "$(docker ps -aq -f "name=^$LDAP\$")"
+  check "AC-07: Keycloak reaches $STANDIN:7080, a container on Tickee's network" keycloak_reaches
+  check "control: from c4-infra.tickee, $STANDIN:7080 answers" \
+    docker run --rm --network c4-infra.tickee alpine:3 nc -z -w 3 "$STANDIN" 7080
+  check "AC-07: from c4-infra.faito, $STANDIN:7080 can't be reached by name" \
+    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$STANDIN" 7080
+  address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$STANDIN" | tr -d '\r')
+  check "$STANDIN has an address (${address:-none})" test -n "$address"
+  check "AC-07: from c4-infra.faito, $address:7080 can't be reached" \
+    fails docker run --rm --network c4-infra.faito alpine:3 nc -z -w 3 "$address" 7080
+  docker rm -f "$STANDIN" > /dev/null 2>&1
+  check "the stand-in is removed" test -z "$(docker ps -aq -f "name=^$STANDIN\$")"
 }
 
 part_guard() {

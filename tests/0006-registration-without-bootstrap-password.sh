@@ -9,6 +9,9 @@
 # Runs a copy of the registration (the root's scripts, registry.txt and .env) from a temporary
 # directory whose .env holds another bootstrap password: the shared Keycloak's administrator is left
 # alone. Realm faito exists (Faito's deploy-dev.sh): one read, nothing changed.
+#
+# covers: register-app.sh registry.sh registry.txt routes.sh networks.sh registration-account.sh
+# covers: tlds-alpha-by-domain.txt env.sh keycloak/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -21,7 +24,7 @@ work=$(mktemp -d)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
 
-cp ./*.sh registry.txt "$work/"
+cp ./*.sh registry.txt tlds-alpha-by-domain.txt "$work/"
 # .env, with another bootstrap password (echo is a builtin: the value is on no command line)
 {
   grep -v '^KC_BOOTSTRAP_ADMIN_PASSWORD=' .env

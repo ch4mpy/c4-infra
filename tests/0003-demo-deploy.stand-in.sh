@@ -2,14 +2,18 @@
 # 0003: the demo deployment on a stand-in demo host (RQ-06, AC-08, AC-09): a host holding only what
 # the deployment sends (demo/deploy-files.txt) and the .env demo/write-env.sh writes, mode 600; the
 # host's side of the deployment (demo/deploy.sh) starts the stack healthy from the compose base and
-# its demo override; then the applications register there: Faito and Hurura'a from their routes
-# files, and Turu refused for its MCP server role, naming the README entry that is missing.
+# its demo override; then the applications register there: Faito, Hurura'a and Turu from their routes
+# files, Turu with its MCP origin (turu-mcp.c4-soft.com, intent 0013).
 #
 #   bash tests/0003-demo-deploy.stand-in.sh      (bash tests/run.sh --all runs it)
 #
 # The workflow's `docker compose pull` is skipped: the Keycloak image is the one up.sh builds here,
 # loaded into the stand-in, and in no registry; `docker compose up` pulls the others itself. Let's
 # Encrypt is kept out (tests/stand-in-host/compose.no-acme.yml).
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt caddy/ keycloak/
+# covers: keycloak-import/ reverse-proxy/ examples/routes/ tests/fixtures/0003/ tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -27,7 +31,7 @@ in_stack() { # <command…>: in the stack's directory on the stand-in, stdin clo
 }
 
 check "the stand-in host starts" stand_in_up
-check "the Keycloak image built here is loaded into it" stand_in_load_image c4-infra/keycloak
+check "the Keycloak and proxy images built here are loaded into it" stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" "$APPS"
 check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$DIR"
 check ".env is written there by demo/write-env.sh" stand_in_env "$DIR"
@@ -104,8 +108,10 @@ register hururaa.log --app hururaa --proxy "$APPS/hururaa.routes"
 check "Hurura'a registers from its routes file" registered hururaa.log
 check "Hurura'a's site names hururaa.c4-soft.com" site_names hururaa 'hururaa.c4-soft.com {'
 register turu.log --app turu --proxy "$APPS/turu.routes"
-check "Turu is refused on the demo host" refused turu.log
-check "Turu's refusal names the README" says turu.log README.md
-check "Turu's refusal names the README section" says turu.log "What an application's deployment does"
-check "no site is left for Turu" stand_in_exec test ! -e "$DIR/caddy/apps/turu.caddy"
+check "0013: Turu registers, its MCP server's role included" registered turu.log
+check "0013: Turu's site names turu.c4-soft.com" site_names turu 'turu.c4-soft.com {'
+check "0013: and its MCP origin, turu-mcp.c4-soft.com" site_names turu 'turu-mcp.c4-soft.com {'
+check "0013: which reaches http://turu.mcp:9080" site_names turu $'\t\t\treverse_proxy http://turu.mcp:9080'
+check "0013: Caddy serves turu-mcp.c4-soft.com (HTTP to HTTPS)" \
+  stand_in_exec sh -c 'curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -H "Host: turu-mcp.c4-soft.com" http://127.0.0.1/mcp | grep -qx "308 https://turu-mcp.c4-soft.com/mcp"'
 finish

@@ -31,6 +31,11 @@
 # into the stand-in; Let's Encrypt is kept out (tests/stand-in-host/compose.no-acme.yml). The
 # applications' images are the stand-in's caddy (no registry login: `pull --registry` needs a real
 # one). Passwords and markers travel on stdin, never on a command line.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt caddy/ keycloak/
+# covers: keycloak-import/ reverse-proxy/ docs/demo-setup.md docs/migration.md tests/fixtures/0002/
+# covers: tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

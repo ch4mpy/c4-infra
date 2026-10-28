@@ -9,6 +9,11 @@
 #
 # Never runs up.sh nor docker compose up: Caddy keeps the rules it was started with. .env and
 # Faito's site are put back as they were by a trap, whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt examples/routes/
+# covers: tests/fixtures/stand-in-upstream/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -23,6 +23,15 @@
 #   kc_throwaway_ready <container> [<s>]
 #                            waits until it answers its readiness probe, at most <s> seconds (default
 #                            240); returns 1, with its last log lines, when it stops or isn't by then
+#
+# and, for any Keycloak:
+#
+#   kc_curl <curl args…>     curl, silent, trusting the dev CA (certs/ca.crt), for the shared proxy's
+#                            HTTPS
+#   kc_claims <JWT>          the token's payload (JSON)
+#   kc_features <Preview|Experimental> <log>
+#                            the features of that kind the log's last start enabled, sorted, on one
+#                            line ("a:v1,b:v1")
 
 KC_CONTAINER=c4-infra.keycloak
 KC_INFRA_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -105,4 +114,21 @@ kc_throwaway_ready() {
     sleep 2
     waited=$((waited + 2))
   done
+}
+
+kc_curl() {
+  local ca=$KC_INFRA_DIR/certs/ca.crt
+  ! command -v cygpath > /dev/null || ca=$(cygpath -w "$ca")
+  curl --ssl-no-revoke --cacert "$ca" -s "$@"
+}
+
+kc_claims() {
+  local payload
+  payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+  while [ $((${#payload} % 4)) -ne 0 ]; do payload="${payload}="; done
+  printf '%s' "$payload" | base64 -d
+}
+
+kc_features() {
+  grep -oE "$1 features enabled: .*" <<< "$2" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
 }

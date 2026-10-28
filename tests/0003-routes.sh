@@ -4,6 +4,9 @@
 # (AC-09), a project without i18n (AC-11), and the files refused, a host or a port first (0004's AC-02).
 #
 #   bash tests/0003-routes.sh
+#
+# covers: routes.sh registry.sh registry.txt register-app.sh examples/routes/ tests/fixtures/0003/
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -23,6 +26,14 @@ generate() { # <registry file, "" for registry.txt> <routes file> <app> <env>
     bash routes.sh generate "$@" > "$work/out" 2> "$work/err"
   fi
   status=$?
+  cp "$work/out" "$work/all"
+}
+
+# 0013: $work/out becomes the site of <host>, out of the whole output ($work/all), which may hold an
+# application's site and its MCP origin's
+site() { # <host>
+  awk -v opening="$1 {" '$0 == opening { on = 1 } on { print } on && $0 == "}" { exit }' "$work/all" > "$work/out"
+  [ -s "$work/out" ] || { echo "no site $1 in:"; cat "$work/all"; return 1; }
 }
 
 exited() { # <status>
@@ -149,26 +160,36 @@ check "hururaa demo: /gateway/* reaches http://hururaa.gateway:7080" \
 # --- Turu (AC-09) ---
 generate "" examples/routes/turu.routes turu dev
 check "turu dev: exits 0" exited 0
-check "turu dev: on turu.dev.localhost" holds 'turu.dev.localhost {'
+check "turu dev: Turu's site, on turu.dev.localhost" site turu.dev.localhost
 check "turu dev: a named matcher for the regex route" \
   holds '@route1 path_regexp "^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$"'
-check "turu dev: the regex route first, then the others in the file's order" \
-  handles_are @route1 '/gateway/*' /mcp /.well-known/oauth-protected-resource/mcp '/fr/*' '/en/*' '/assets/*' / \
-  /gateway /fr /en /assets '(any)'
+check "turu dev: the regex route first, then the others but the mcp ones, in the file's order" \
+  handles_are @route1 '/gateway/*' '/fr/*' '/en/*' / /gateway /fr /en '(any)'
 check "turu dev: the upload accepts 64 MB" block_holds @route1 'max_size 64MB'
 check "turu dev: the upload reaches the gateway" https_upstream @route1 https://host.docker.internal:11080
 check "turu dev: /gateway/* has no body limit" block_lacks '/gateway/*' max_size
+check "0013, turu dev: Turu's site reaches no MCP server" lacks 11280
+check "0013, turu dev: no /assets/* (Turu's front end has no absolute /assets/ path)" lacks /assets
+check "0013, turu dev: its MCP origin, turu-mcp.dev.localhost" site turu-mcp.dev.localhost
+check "0013, turu dev: the MCP origin serves /mcp and its protected-resource document only" \
+  handles_are /mcp /.well-known/oauth-protected-resource/mcp '(any)'
 check "turu dev: /mcp reaches https://host.docker.internal:11280" https_upstream /mcp https://host.docker.internal:11280
 check "turu dev: the protected-resource document reaches the MCP server" \
   https_upstream /.well-known/oauth-protected-resource/mcp https://host.docker.internal:11280
-check "turu dev: /assets/* is prefixed with /fr" block_holds '/assets/*' 'rewrite * /fr{uri}'
+check "0013, turu dev: no single-page-app headers on the MCP origin" lacks spa-headers
 check "turu dev: no redirect for /mcp (no /mcp/* route)" block_lacks /mcp redir
 generate "" examples/routes/turu.routes turu demo
-check "turu demo: exits non-zero" exited_non_zero
-check "turu demo: refused at the mcp routes' lines" says 'turu.routes:7: '
-check "turu demo: names the README" says README.md
-check "turu demo: names the README section" says "What an application's deployment does"
-check "turu demo: prints no site" test ! -s "$work/out"
+check "0013, turu demo: exits 0 (the mcp role has its upstream)" exited 0
+check "0013, turu demo: Turu's site, on turu.c4-soft.com" site turu.c4-soft.com
+check "0013, turu demo: /gateway/* reaches http://turu.gateway:7080" \
+  block_holds '/gateway/*' 'reverse_proxy http://turu.gateway:7080'
+check "0013, turu demo: Turu's site reaches no MCP server" lacks turu.mcp
+check "0013, turu demo: its MCP origin, turu-mcp.c4-soft.com" site turu-mcp.c4-soft.com
+check "0013, turu demo: /mcp reaches http://turu.mcp:9080" block_holds /mcp 'reverse_proxy http://turu.mcp:9080'
+check "0013, turu demo: so does the protected-resource document" \
+  block_holds /.well-known/oauth-protected-resource/mcp 'reverse_proxy http://turu.mcp:9080'
+check "0013, turu demo: nothing else on the MCP origin" \
+  handles_are /mcp /.well-known/oauth-protected-resource/mcp '(any)'
 
 # --- without i18n (AC-11) ---
 generate "$FIXTURES/registry.txt" "$FIXTURES/verif-ui.routes" verif-ui dev
@@ -188,6 +209,8 @@ refused to-other-host 3 "routes name neither a host nor a port: 'to=//evil.examp
 # outside the grammar
 refused unknown-target 3 "unknown target 'admin'"
 refused unknown-option 3 "unknown option 'timeout=5s'"
+# an option with an empty key (intent 0011, AC-11)
+refused empty-option-key 3 "unknown option '=x'"
 refused to-on-role 3 'to= is for a redirect only'
 refused redirect-without-to 3 'redirect needs to=<path>'
 refused regex-brace 3 "path '~^/gateway/{path}\$' is not"

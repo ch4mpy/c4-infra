@@ -9,6 +9,9 @@
 #   bash tests/0009-master-realm.sh
 #
 # Needs the dev stack running (Mailpit), the image c4-infra/keycloak (up.sh builds it) and jq.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ demo/write-env.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -182,7 +185,7 @@ check "RQ-06: keycloak-import/master-realm.json holds the passwords' names, not 
 
 # demo/write-env.sh (the demo host's .env) refuses what the import can't take, naming it
 write_env() { # <NAME=value>…: the demo environment's settings with dummy values, overridden
-  env INFRA_HOST=infra.c4-soft.com KC_IMAGE=dummy KC_ADMIN_PASSWORD=dummy KC_DB_PASSWORD=dummy \
+  env INFRA_HOST=infra.c4-soft.com KC_IMAGE=dummy PROXY_IMAGE=dummy KC_ADMIN_PASSWORD=dummy KC_DB_PASSWORD=dummy \
     KC_REGISTRATION_CLIENT_SECRET=dummy RABBITMQ_ADMIN_PASSWORD=dummy MAILPIT_SMTP_PASSWORD=dummy \
     MAILPIT_UI_PASSWORD_HASH=dummy GRAFANA_ADMIN_PASSWORD=dummy "$@" bash demo/write-env.sh "$work/demo.env"
 }

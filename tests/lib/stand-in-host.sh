@@ -11,6 +11,8 @@
 #   stand_in_exec [-i] <command…>    runs the command in the stand-in, as root; -i passes stdin, which
 #                                    the caller always redirects
 #   stand_in_load_image <image>…     copies images of this machine into the stand-in's Docker
+#   stand_in_probe                   the isolation tests' probe (tests/fixtures/0007/probe/: an echo on
+#                                    :7080, curl, nmap, nc) as c4-test/probe in the stand-in's Docker
 #   stand_in_send <dir>              sends the files of demo/deploy-files.txt into <dir>, as the
 #                                    deployment does
 #   stand_in_env <dir>               writes <dir>/.env with demo/write-env.sh, run inside the
@@ -101,6 +103,24 @@ stand_in_load_image() {
   done
 }
 
+# Built on this machine, when it lacks the image or the fixture changed (the label c4-infra.fixture holds
+# its content's hash: a build would ask the registry for the base image even then), then copied in unless
+# the stand-in's volume already holds it: the stand-in's own Docker fails to resolve a name now and then
+# (intent 0020)
+stand_in_probe() {
+  local fixture=$STAND_IN_ROOT/tests/fixtures/0007/probe hash
+  hash=$(cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
+    echo "$file"
+    cat "$file"
+  done | cksum | cut -d' ' -f1)
+  if [ "$(docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null)" != "$hash" ]; then
+    docker build -q --label "c4-infra.fixture=$hash" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
+      || { echo "stand_in_probe: c4-test/probe doesn't build on this machine (above)" >&2; return 1; }
+  fi
+  [ "$(stand_in_exec docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null \
+    | tr -d '\r')" = "$hash" ] || stand_in_load_image c4-test/probe
+}
+
 stand_in_send() { # <dir>
   stand_in_exec mkdir -p "$1" || return 1
   (cd "$STAND_IN_ROOT" && tar -cf - -T demo/deploy-files.txt) \
@@ -123,9 +143,9 @@ stand_in_env() ( # <dir>
     # -e NAME, without a value: docker exec takes it from this environment, not the command line
     options+=(-e "$name")
   done
-  export INFRA_HOST=infra.c4-soft.com KC_IMAGE=c4-infra/keycloak
+  export INFRA_HOST=infra.c4-soft.com KC_IMAGE=c4-infra/keycloak PROXY_IMAGE=c4-infra/reverse-proxy
   stand_in_exec -i sh -c 'cat > /tmp/write-env.sh' < "$STAND_IN_ROOT/demo/write-env.sh" || exit 1
-  MSYS_NO_PATHCONV=1 docker exec "${options[@]}" -e INFRA_HOST -e KC_IMAGE "$STAND_IN_NAME" \
+  MSYS_NO_PATHCONV=1 docker exec "${options[@]}" -e INFRA_HOST -e KC_IMAGE -e PROXY_IMAGE "$STAND_IN_NAME" \
     bash /tmp/write-env.sh "$dir/.env" || exit 1
   stand_in_exec rm -f /tmp/write-env.sh
   stand_in_exec -i sh -c 'cat > "$1"' sh "$dir/compose.no-acme.yml" \
@@ -196,7 +216,7 @@ stand_in_accounts() { # <app>…
       done
     } > "$log" 2>&1 || { tail -n 20 "$log"; exit 1; }
     rm -f /tmp/vps-bootstrap.sh' sh "$STAND_IN_KEYS" "$log" "$@" || return 1
-  stand_in_load_image c4-infra/keycloak || return 1
+  stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy || return 1
   # the shared stack, as the workflow deploys it: its files and .env rsynced as c4-infra (rsync -a
   # keeps .env's mode 600), then demo/deploy.sh run there as c4-infra
   stand_in_exec rm -rf /root/c4-infra-upload
