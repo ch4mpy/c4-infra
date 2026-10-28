@@ -1,0 +1,10 @@
+# 0015 fixture (tests/0015-headers.sh): front-end routes with and without headers=app, two with a
+# body limit, and a gateway that doesn't answer (no verif.gateway)
+/fr/upload/*   fr       headers=app  max-body=1KB
+/fr/*          fr       headers=app
+/en/*          en       headers=app
+/report-only/* fr       headers=app
+/ui-upload/*   ui       max-body=1KB
+/ui/*          ui
+/gateway/*     gateway
+/              redirect to=/fr/
