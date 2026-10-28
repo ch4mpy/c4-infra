@@ -183,9 +183,11 @@ applications sharing a number, a name, a realm, a theme, a RabbitMQ user or a ho
 naming the two lines, and `register-app.sh` registers nothing for an application missing from it.
 An entry's MCP origins (`<first label>-mcp.<rest>` of each host name, intent 0013) are its host
 names too, and no application may be named `<other>-mcp`.
-No entry may claim what the shared stack itself owns: Keycloak's `master` realm, RabbitMQ's
+No entry may claim what the shared stack itself owns: Keycloak's `master` realm and the simulated
+providers' realms (`simulated-google`, `simulated-facebook`, `simulated-apple`), RabbitMQ's
 administrator (`RABBITMQ_ADMIN_USER` of `.env`, `admin`), since a registration may reset its
-entry's realms and set its RabbitMQ user's password.
+entry's realms and set its RabbitMQ user's password; nor a theme built into Keycloak or one of the
+stack's (`simulated-<provider>`), which a registered theme of that name would replace.
 A new application takes the number `bash registry.sh next` prints, and adds its line to
 `registry.txt` first, in a commit of its own, before anything registers.
 
@@ -384,6 +386,79 @@ lock the account for a minute, whatever their count.
   knows an account's user name can keep it locked for as long as they keep failing its logins (each
   lock at most 15 minutes): on the demo host, the shared demo accounts (their passwords are public)
   included. Accepted (PA-02).
+
+### Simulated social providers
+
+Three realms of the stack play Google, Facebook and Apple, in dev and on the demo host (intent
+0016), so that an application tries its "Sign in with …" flows without any external service or real
+account: `simulated-google`, `simulated-facebook`, `simulated-apple`, imported by `keycloak-import`
+from [`keycloak-import/`](keycloak-import/) as the master realm is (on an empty database, or at the
+next start of a stack without them; one that exists is never imported again). Their issuers are
+`https://<INFRA_HOST>/auth/realms/simulated-<provider>` (`host.docker.internal` in dev,
+`infra.c4-soft.com` on the demo host).
+
+- **Their login pages** recall each provider's colours, layout and type, with no logo, trademark or
+  image, and every page's header says "Simulated <provider> — c4-infra test provider. Never type
+  your real <provider> password." (themes of the stack, in its Keycloak image:
+  [`keycloak/stack-themes/`](keycloak/stack-themes/); a change there rebuilds the image and, on the
+  demo host, restarts Keycloak after its pre-upgrade dump). Such pages on the demo host's public
+  origin may be flagged as deceptive by a browser's safe-browsing list, which would block every
+  application's login there: accepted (PA-04). Should it happen, set these realms' login theme to
+  `keycloak.v2` in the console.
+- **Their accounts**, the same in both environments; the passwords are public (no registration, no
+  password reset, no brute-force protection: a lockout would only let anyone lock them):
+
+  | Realm | User | Password | Address | Particularity |
+  | --- | --- | --- | --- | --- |
+  | `simulated-google` | `alice`, `bob` | `alice-password`, `bob-password` | `<user>@simulated-google.test`, verified | names, `picture` |
+  | `simulated-facebook` | `alice`, `bob` | `alice-password`, `bob-password` | `<user>@simulated-facebook.test`, verified | names |
+  | `simulated-facebook` | `carol` | `carol-password` | none | an account without an address |
+  | `simulated-apple` | `alice`, `bob` | `alice-password`, `bob-password` | `<user>@simulated-apple.test`, verified | no name in the tokens, `is_private_email` false |
+  | `simulated-apple` | `relay` | `relay-password` | `x7k2p9qr4m@privaterelay.simulated-apple.test` | a private relay address, `is_private_email` true |
+
+- **Their one client**, `any-application`, shared by every application realm of the infra host: its
+  secret is public, `simulated-<provider>-public-secret`; its redirect URIs, any broker endpoint of a
+  realm of the infra host (`https://<INFRA_HOST>/auth/realms/*`), nothing else (another host, `http`
+  or a path climbing out are refused). No registration changes these realms, nor gives an
+  application access to them (`registry.sh` refuses an entry claiming one, or one of their themes).
+- **What differs from the real providers** (PA-03): an application's realm declares a simulated one
+  as a generic OpenID Connect provider (`providerId: oidc`), where it declares the real ones as
+  `google` or `facebook`, with their own client and secret (and Apple through an extension). The
+  claims: Google's `email`, `email_verified`, the names and `picture`; Facebook's names and `email`
+  when the account has one; Apple's `email`, `email_verified` and `is_private_email`, no name (the
+  real Apple posts it once, at the first authorization, outside the token). Request
+  `openid profile email` from the simulated Google and Facebook, `openid email` from the simulated
+  Apple (it has no `profile` scope).
+- **Never let these accounts link to a local account by address** (*Trust Email*, automatic linking):
+  on the demo host anyone signs in as them (PA-06).
+- **A change to a realm's file** reaches an existing stack only once that realm is deleted (from the
+  console, as an administrator of the master realm): `keycloak-import` then imports it again at the
+  next start (`up.sh`, the deployment).
+
+An application's realm export declares, for instance, the simulated Google (dev; on the demo host,
+`infra.c4-soft.com` in place of `host.docker.internal`: the back-channel URLs stay on
+`http://keycloak:8080`, Keycloak's name on every application's network):
+
+```json
+"identityProviders": [ {
+  "alias": "google", "providerId": "oidc", "enabled": true, "trustEmail": false,
+  "config": {
+    "issuer": "https://host.docker.internal/auth/realms/simulated-google",
+    "authorizationUrl": "https://host.docker.internal/auth/realms/simulated-google/protocol/openid-connect/auth",
+    "tokenUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/token",
+    "userInfoUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/userinfo",
+    "jwksUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/certs",
+    "useJwksUrl": "true", "validateSignature": "true",
+    "clientId": "any-application", "clientSecret": "simulated-google-public-secret",
+    "clientAuthMethod": "client_secret_post", "defaultScope": "openid profile email"
+  }
+} ]
+```
+
+The claims Keycloak doesn't map by itself (`picture`, `is_private_email`) reach the user's attributes
+through an attribute importer mapper (`oidc-user-attribute-idp-mapper`), the attribute declared in the
+realm's user profile (or its unmanaged attributes enabled); an account without an address, or without
+a name, gets the realm's first-login form when its user profile requires them.
 
 ### Routes file
 
