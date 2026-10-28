@@ -10,6 +10,10 @@
 # login theme is verif-theme, and that theme, its login page printing a stamp each registration
 # changes. The INFRA_ENV=demo part restarts the dev Keycloak once. Never runs up.sh nor docker
 # compose up; .env is put back by a trap, the realm and the theme removed, whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0005/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -130,7 +134,8 @@ changed_since() { # <start time>
 
 # AC-04's setting: dev, with Caddy as the proxy
 check "INFRA_ENV=dev in .env" set_env dev
-check "the reverse proxy is Caddy" bash -c "docker inspect -f '{{.Config.Image}}' c4-infra.reverse-proxy | grep -q '^caddy:'"
+check "the reverse proxy is the stack's Caddy (c4-infra/reverse-proxy, intent 0013)" \
+  bash -c "docker inspect -f '{{.Config.Image}}' c4-infra.reverse-proxy | grep -qx 'c4-infra/reverse-proxy'"
 check "Keycloak is healthy" kc_wait_healthy 60
 started=$(kc_started_at)
 

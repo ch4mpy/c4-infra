@@ -15,6 +15,23 @@
 #   kc_started_at            when the container last started (State.StartedAt)
 #   kc_wait_healthy [<s>]    waits until the container is healthy, at most <s> seconds (default
 #                            300); returns 1, with its last status, when it isn't by then
+#
+# and, for a throwaway Keycloak of the stack's image (on a file database, no published port):
+#
+#   kc_import_args           the arguments compose.yml gives keycloak-import (the dev model), one per
+#                            line, for a throwaway: without --optimized, on --db=dev-file (intent 0012)
+#   kc_throwaway_ready <container> [<s>]
+#                            waits until it answers its readiness probe, at most <s> seconds (default
+#                            240); returns 1, with its last log lines, when it stops or isn't by then
+#
+# and, for any Keycloak:
+#
+#   kc_curl <curl args…>     curl, silent, trusting the dev CA (certs/ca.crt), for the shared proxy's
+#                            HTTPS
+#   kc_claims <JWT>          the token's payload (JSON)
+#   kc_features <Preview|Experimental> <log>
+#                            the features of that kind the log's last start enabled, sorted, on one
+#                            line ("a:v1,b:v1")
 
 KC_CONTAINER=c4-infra.keycloak
 KC_INFRA_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -75,4 +92,43 @@ kc_wait_healthy() {
     fi
     sleep 1
   done
+}
+
+kc_import_args() {
+  local command
+  command=$( (cd "$KC_INFRA_DIR" && docker compose config --format json) \
+    | jq -r '.services["keycloak-import"].command // [] | .[]' | tr -d '\r' | grep -vx -- --optimized) || true
+  [ -n "$command" ] || { echo "kc_import_args: no keycloak-import command in the dev model" >&2; return 1; }
+  printf '%s\n' "$command" --db=dev-file
+}
+
+kc_throwaway_ready() {
+  local container=$1 limit=${2:-240} waited=0
+  until MSYS_NO_PATHCONV=1 docker exec "$container" java -cp /opt/keycloak/healthcheck HealthCheck \
+    http://localhost:9000/auth/health/ready > /dev/null 2>&1; do
+    if [ -z "$(docker ps -q -f "name=^$container$")" ] || [ "$waited" -ge "$limit" ]; then
+      echo "not ready ($waited s); its log:"
+      docker logs --tail 5 "$container" 2>&1
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+}
+
+kc_curl() {
+  local ca=$KC_INFRA_DIR/certs/ca.crt
+  ! command -v cygpath > /dev/null || ca=$(cygpath -w "$ca")
+  curl --ssl-no-revoke --cacert "$ca" -s "$@"
+}
+
+kc_claims() {
+  local payload
+  payload=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+  while [ $((${#payload} % 4)) -ne 0 ]; do payload="${payload}="; done
+  printf '%s' "$payload" | base64 -d
+}
+
+kc_features() {
+  grep -oE "$1 features enabled: .*" <<< "$2" | tail -n 1 | sed 's/^[^:]*: //' | tr -d ' ' | tr ',' '\n' | sort | paste -sd, -
 }

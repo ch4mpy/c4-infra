@@ -2,9 +2,10 @@
 # 0006: the registration account on the workstation (AC-02 to AC-06).
 #
 #   AC-02  it may change neither the master realm nor a realm no registry entry assigns (403);
-#   AC-03  it holds every role of faito-realm, granted by up.sh to the realm the bootstrap administrator
-#         created, and Faito's deploy-dev.sh (up.sh, then its registration) finds realm faito, with
-#         no administrator;
+#   AC-03  a realm the bootstrap administrator created (verif-granted, made here, in the fixture
+#         registry tests/fixtures/0006/registry-granted.txt): up.sh's ensure grants it, and the account
+#         holds every role of verif-granted-realm; Faito's deploy-dev.sh (up.sh, then its
+#         registration) finds realm faito, with no administrator;
 #   AC-04  a realm it may not manage (verif-hidden, created by an administrator, in the fixture registry
 #         tests/fixtures/0006/registry.txt but never granted): the registration exits 1, says so, and
 #         changes nothing, with --reset-realms too;
@@ -19,6 +20,10 @@
 # Needs the dev stack (up.sh) and Faito's repository (FAITO_DIR, default ../faito): its deploy-dev.sh
 # and its realm export. Rotates the registration secret of .env (twice): the account keeps working.
 # The fixture realms are removed whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0006/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -40,6 +45,7 @@ for app in verif-hidden faito; do
 done
 remove_fixtures() {
   kc_admin delete realms/verif-unassigned > /dev/null 2>&1
+  kc_admin delete realms/verif-granted > /dev/null 2>&1
   kc_admin delete realms/verif-hidden > /dev/null 2>&1
 }
 cleanup() {
@@ -109,7 +115,18 @@ granted() { # <realm>: every role of the master client <realm>-realm is the acco
   grep -qx manage-realm <<< "$direct" && [ -z "$available" ] \
     || { echo "holds: $(echo $direct)"; echo "not granted: $(echo $available)"; return 1; }
 }
-check "AC-03: the account holds every role of faito-realm" granted faito
+# Its Given made here, whatever this workstation's history: a realm the bootstrap administrator
+# created, which the account may not manage yet (verif-granted, tests/fixtures/0006/registry-granted.txt).
+# Realm faito can't serve: Faito's registration creates it as the account on a Keycloak started
+# since 0006 (0012 re-created this workstation's), and Keycloak gives a realm's creator every role
+# of <realm>-realm but impersonation, which ensure leaves as it is (no administrator needed).
+check "an administrator creates realm verif-granted, which the account may not manage yet" \
+  kc_admin create realms -s realm=verif-granted -s enabled=true
+run grant.log env REGISTRY_FILE="$PWD/$FIXTURE/registry-granted.txt" bash registration-account.sh ensure
+check "AC-03: up.sh's ensure exits 0" exited 0 grant.log
+check "AC-03: it grants realm verif-granted to the account" says grant.log "Registration account $CLIENT: realm verif-granted granted"
+check "AC-03: the account holds every role of verif-granted-realm" granted verif-granted
+kc_admin delete realms/verif-granted > /dev/null 2>&1
 run deploy.log bash "$FAITO_DIR/deploy-dev.sh"
 check "AC-03: Faito's deploy-dev.sh exits 0" exited 0 deploy.log
 check "AC-03: its up.sh finds the account up to date" says deploy.log "Registration account $CLIENT: up to date"

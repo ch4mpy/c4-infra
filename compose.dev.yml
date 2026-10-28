@@ -5,6 +5,8 @@
 # applications' processes on the host through the same name (extra_hosts).
 services:
   reverse-proxy:
+    # Caddy's version is the Dockerfile's; tagged ${PROXY_IMAGE} (c4-infra/reverse-proxy)
+    build: ./reverse-proxy
     ports:
       - 127.0.0.1:80:80
       - 127.0.0.1:443:443
@@ -14,6 +16,17 @@ services:
       - ./certs/:/certs/:ro
     extra_hosts:
       - host.docker.internal:host-gateway
+
+  keycloak-import:
+    # the image Keycloak's build tags (the same context: a cached build), never pulled
+    build: ./keycloak
+    environment:
+      # the master realm, when keycloak-import creates it (keycloak-import/master-realm.json, intents
+      # 0009, 0012): Mailpit with STARTTLS (it requires it in dev) under the name the local leaf
+      # holds, and "Forgot password" on
+      C4_MASTER_SMTP_HOST: host.docker.internal
+      C4_MASTER_SMTP_STARTTLS: 'true'
+      C4_MASTER_RESET_PASSWORD_ALLOWED: 'true'
 
   keycloak:
     # the Keycloak version is the Dockerfile's; tagged ${KC_IMAGE} (c4-infra/keycloak)
@@ -27,12 +40,6 @@ services:
       KC_SPI_THEME__STATIC_MAX_AGE: '-1'
       KC_SPI_THEME__CACHE_THEMES: 'false'
       KC_SPI_THEME__CACHE_TEMPLATES: 'false'
-      # the master realm, when Keycloak creates it (keycloak-import/master-realm.json, intent 0009):
-      # Mailpit with STARTTLS (it requires it in dev) under the name the local leaf holds, and
-      # "Forgot password" on
-      C4_MASTER_SMTP_HOST: host.docker.internal
-      C4_MASTER_SMTP_STARTTLS: 'true'
-      C4_MASTER_RESET_PASSWORD_ALLOWED: 'true'
     volumes:
       - ./certs/ca.crt:/opt/keycloak/certs/ca.crt:ro
     extra_hosts:

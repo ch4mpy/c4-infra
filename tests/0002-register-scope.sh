@@ -15,6 +15,9 @@
 # register-app.sh then refuses before any docker call.
 #
 #   bash tests/0002-register-scope.sh
+#
+# covers: register-app.sh registry.sh registry.txt routes.sh networks.sh registration-account.sh
+# covers: tlds-alpha-by-domain.txt keycloak/ tests/fixtures/0002/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -177,7 +180,7 @@ check "dotenv_value: saying compose would interpolate it" says "compose interpol
 # compose.apps.yml (networks.sh compose-file) and out of the attachment to a new network (ensure).
 stack=$work/stack
 mkdir -p "$stack" "$work/fake"
-cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh registry.txt "$stack/"
+cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh registry.txt tlds-alpha-by-domain.txt "$stack/"
 cat > "$work/fake/docker" <<'EOF'
 #!/usr/bin/env bash
 # A running daemon: c4-infra.faito labelled, but missing until created; the shared services running,
@@ -188,7 +191,9 @@ case " $* " in
   *" network ls "*) echo "c4-infra.faito faito" ;;
   *" network inspect "*) exit 1 ;;
   *State.Running*) echo true ;;
-  *" --client "*) [ "${FAKE_ACCOUNT_LOGIN:-}" != fails ] || exit 1 ;;
+  *" --client "*)
+    # as kcadm 26.8.1 says it (intent 0024)
+    [ "${FAKE_ACCOUNT_LOGIN:-}" != fails ] || { echo "Invalid client or Invalid client credentials [unauthorized_client]" >&2; exit 1; } ;;
 esac
 exit 0
 EOF

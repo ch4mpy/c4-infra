@@ -43,7 +43,7 @@ REGISTRY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REGISTRY_FILE=${REGISTRY_FILE:-$REGISTRY_DIR/registry.txt}
 
 # The shared stack's own names (its services, and the stack itself): an application can't take one
-REGISTRY_RESERVED=(c4-infra keycloak keycloak-db mailpit rabbitmq grafana-lgtm reverse-proxy)
+REGISTRY_RESERVED=(c4-infra keycloak keycloak-db keycloak-import mailpit rabbitmq grafana-lgtm reverse-proxy)
 REGISTRY_MAX=38
 # The themes built into Keycloak 26 (its theme jars' META-INF/keycloak-themes.json): a registered
 # theme directory of that name would replace it for every realm, master included. The dotted ones
@@ -216,9 +216,13 @@ registry_check() {
     [ "$rabbitmq_user" != "$rabbitmq_admin" ] \
       || _registry_problem "$file:$number: RabbitMQ user $rabbitmq_user is the broker's administrator (RABBITMQ_ADMIN_USER, the shared stack's): no entry may claim it"
     [ "$rabbitmq_user" = - ] || _registry_claim "RabbitMQ user" "$rabbitmq_user" "$app" "$number"
-    # one namespace for both columns: a demo host can't be another application's dev host
+    # one namespace for both columns: a demo host can't be another application's dev host; nor its
+    # MCP origin, which no other entry may take either, as a host or as an application's name
     _registry_claim "host name" "$dev_host" "$app" "$number"
     _registry_claim "host name" "$demo_host" "$app" "$number"
+    _registry_claim "host name" "$(registry_mcp_host "$dev_host")" "$app's MCP origin" "$number"
+    _registry_claim "host name" "$(registry_mcp_host "$demo_host")" "$app's MCP origin" "$number"
+    _registry_claim application "$app-mcp" "$app's MCP origin" "$number"
   done <<< "$lines"
 
   [ "$problems" -eq 0 ]
@@ -266,6 +270,12 @@ registry_next() {
   return 1
 }
 
+# An application's MCP origin (intent 0013): the first label of its host name suffixed with -mcp,
+# turu.c4-soft.com → turu-mcp.c4-soft.com (one label under the dev certificate's *.dev.localhost)
+registry_mcp_host() { # <host name>
+  printf '%s-mcp.%s\n' "${1%%.*}" "${1#*.}"
+}
+
 # The upstream of a role, for the entry registry_entry set: in dev the port of its block, on the
 # demo host its container on the port the README fixes for that role
 registry_upstream() {
@@ -284,10 +294,7 @@ registry_upstream() {
     'dev en') echo "http://host.docker.internal:${prefix}205" ;;
     'demo gateway') echo "http://$REG_APP.gateway:7080" ;;
     'demo fr' | 'demo ui' | 'demo en') echo "http://$REG_APP.frontend:80" ;;
-    'demo mcp')
-      echo "No upstream for the role mcp on the demo host: the README fixes no container port for the MCP server role yet (README.md, 'What an application's deployment does')" >&2
-      return 2
-      ;;
+    'demo mcp') echo "http://$REG_APP.mcp:9080" ;;
     *)
       echo "Unknown role '$role' (gateway, mcp, fr, en or ui)" >&2
       return 1

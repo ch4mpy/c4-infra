@@ -18,6 +18,10 @@
 # As tests/0003-demo-deploy.stand-in.sh: the Keycloak image is the one up.sh builds here, loaded into
 # the stand-in; Let's Encrypt is kept out (tests/stand-in-host/compose.no-acme.yml). The passwords
 # and secrets travel in environments (docker exec -e NAME) and on stdin, never on a command line.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt keycloak/ keycloak-import/
+# covers: tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -112,7 +116,7 @@ secret_into() { # <file>
 }
 
 check "the stand-in host starts" stand_in_up
-check "the Keycloak image built here is loaded into it" stand_in_load_image c4-infra/keycloak
+check "the Keycloak and proxy images built here are loaded into it" stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" "$APPS"
 check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$DIR"
 check "registration-account.sh is among them" stand_in_exec test -f "$DIR/registration-account.sh"
@@ -208,7 +212,7 @@ rewrite_env() {
     set -e
     cd "$1"
     value() { local line; line=$(grep -m1 "^$1=" .env); line=${line#*=}; printf "%s" "${line//\$\$/\$}"; }
-    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
+    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) PROXY_IMAGE=$(value PROXY_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
     export KC_ADMIN_PASSWORD=$(value KC_BOOTSTRAP_ADMIN_PASSWORD) KC_DB_PASSWORD=$(value KC_DB_PASSWORD)
     export RABBITMQ_ADMIN_PASSWORD=$(value RABBITMQ_ADMIN_PASSWORD) MAILPIT_SMTP_PASSWORD=$(value MAILPIT_SMTP_PASSWORD)
     export MAILPIT_UI_PASSWORD_HASH=$(value MAILPIT_UI_PASSWORD_HASH) GRAFANA_ADMIN_PASSWORD=$(value GRAFANA_ADMIN_PASSWORD)

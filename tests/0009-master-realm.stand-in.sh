@@ -21,6 +21,10 @@
 #
 # As tests/0006-bootstrap-admin-replaced.stand-in.sh: the Keycloak image is the one up.sh builds here,
 # loaded into the stand-in; Let's Encrypt is kept out; passwords travel in environments and on stdin.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt keycloak/ keycloak-import/
+# covers: docs/demo-setup.md tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -31,7 +35,7 @@ APPS=/root/apps
 CLIENT=c4-infra-registration
 HOST=infra.c4-soft.com
 # docs/demo-setup.md's re-creation of Keycloak's database, run here in the stack's directory
-RECREATE='docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db'
+RECREATE='docker compose rm -sf keycloak keycloak-import keycloak-db && docker volume rm c4-infra_keycloak_db'
 
 umask 077
 work=$(mktemp -d)
@@ -138,7 +142,7 @@ keycloak_healthy() {
 }
 
 check "the stand-in host starts" stand_in_up
-check "the Keycloak image built here is loaded into it" stand_in_load_image c4-infra/keycloak
+check "the Keycloak and proxy images built here are loaded into it" stand_in_load_image c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" "$APPS"
 check "the deployment's files are sent (demo/deploy-files.txt)" stand_in_send "$DIR"
 check "keycloak-import/master-realm.json is among them" stand_in_exec test -f "$DIR/keycloak-import/master-realm.json"
@@ -176,7 +180,7 @@ touch "$work/sample.stop"
 wait "${samplers[@]}"
 samplers=()
 check "the first deployment, on an empty database, exits 0" exited 0 deploy-1.log
-check "Keycloak imported the master realm" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
+check "keycloak-import imported the master realm" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak-import 2>&1)
 check "deploy.sh creates the registration account" says deploy-1.log "Registration account $CLIENT: created"
 check "with the administrator of .env" says deploy-1.log "the bootstrap administrator of .env"
 no_leak() {
@@ -188,6 +192,8 @@ check "AC-07: docker top saw Keycloak's JVM ($keycloak_seen of $samples samples)
 check "AC-07: neither password in ps -eo args nor docker top" no_leak
 check "AC-07: nor in deploy.sh's output" test -z "$(grep -F -f "$work/secrets" "$work/deploy-1.log")"
 check "AC-07: nor in Keycloak's log" test -z "$(stand_in_exec docker logs c4-infra.keycloak 2>&1 | grep -F -f "$work/secrets")"
+check "AC-07: nor in keycloak-import's log (0012: it reads them)" \
+  test -z "$(stand_in_exec docker logs c4-infra.keycloak-import 2>&1 | grep -F -f "$work/secrets")"
 
 # AC-02, AC-09
 check "AC-02: SMTP mailpit:1025 without TLS, Mailpit's user" master_is \
@@ -220,9 +226,15 @@ check "AC-03: a second deployment exits 0" exited 0 deploy-2.log
 check "AC-03: with no administrator's login" never_says deploy-2.log "Logged in as"
 check "AC-03: the master realm's SMTP host changed by the administrator" \
   kc_as admin update realms/master -s smtpServer.host=other.example < /dev/null
-stand_in_exec docker restart c4-infra.keycloak > /dev/null
-check "AC-03: Keycloak restarted is healthy" keycloak_healthy
-check "AC-03: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
+# since 0012 the import is keycloak-import's, which each start of the stack runs: a deployment
+skipped_imports() {
+  stand_in_exec docker logs c4-infra.keycloak-import 2>&1 | grep -cF "Realm 'master' already exists. Import skipped"
+}
+skipped_before=$(skipped_imports)
+in_stack deploy-2b.log bash ./demo/deploy.sh
+check "AC-03: another deployment exits 0 (keycloak-import runs again)" exited 0 deploy-2b.log
+check "AC-03: Keycloak is healthy" keycloak_healthy
+check "AC-03: it skipped the import" test "$(skipped_imports)" -gt "$skipped_before"
 check "AC-03: the master realm keeps the changed host" master_is .smtpServer.host '"other.example"'
 kc_as admin update realms/master -s smtpServer.host=mailpit < /dev/null > /dev/null 2>&1
 
@@ -260,7 +272,7 @@ rewrite_env() {
     set -e
     cd "$1"
     value() { local line; line=$(grep -m1 "^$1=" .env); line=${line#*=}; printf "%s" "${line//\$\$/\$}"; }
-    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
+    export INFRA_HOST=$(value INFRA_HOST) KC_IMAGE=$(value KC_IMAGE) PROXY_IMAGE=$(value PROXY_IMAGE) KC_ADMIN_USERNAME=$(value KC_BOOTSTRAP_ADMIN_USERNAME)
     export KC_ADMIN_PASSWORD=$(value KC_BOOTSTRAP_ADMIN_PASSWORD) KC_DB_PASSWORD=$(value KC_DB_PASSWORD)
     export KC_REGISTRATION_CLIENT_SECRET=$(value KC_REGISTRATION_CLIENT_SECRET)
     export RABBITMQ_ADMIN_PASSWORD=$(value RABBITMQ_ADMIN_PASSWORD) MAILPIT_SMTP_PASSWORD=$NEXT_SMTP_PASSWORD
@@ -296,7 +308,7 @@ in_stack recreate.log bash -c "$RECREATE"
 check "AC-04: Keycloak's database is removed" exited 0 recreate.log
 in_stack deploy-7.log bash ./demo/deploy.sh
 check "AC-04: the next deployment exits 0" exited 0 deploy-7.log
-check "AC-04: Keycloak imported the master realm again" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak 2>&1)
+check "AC-04: keycloak-import imported the master realm again" grep -qF "Realm 'master' imported" <(stand_in_exec docker logs c4-infra.keycloak-import 2>&1)
 check "AC-04: deploy.sh creates the registration account again" says deploy-7.log "Registration account $CLIENT: created"
 check "AC-04: the master realm has its SMTP settings" master_is .smtpServer.host '"mailpit"'
 check "AC-04: and delivers with the current password" test_connection admin

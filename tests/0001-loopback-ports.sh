@@ -9,6 +9,8 @@
 #               127.0.0.1
 #   resolution  up.sh with fake docker, getent and powershell.exe: answering a LAN address, it stops,
 #               says how to fix it and calls no docker; answering 127.0.0.1, it gets past the check
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

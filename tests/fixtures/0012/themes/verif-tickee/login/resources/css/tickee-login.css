@@ -1,0 +1,140 @@
+:root {
+  --tickee-primary: #4268ff;
+  --tickee-primary-hover: #3457e6;
+  --tickee-ink: #061023;
+  --tickee-muted: #6b7280;
+  --tickee-surface: #ffffff;
+  --tickee-line: #e5e7eb;
+  --tickee-radius: 16px;
+  --tickee-card-width: 440px;
+}
+
+.login-pf body,
+body {
+  background:
+    radial-gradient(900px circle at -10% -20%, rgba(66, 104, 255, 0.20), transparent 45%),
+    radial-gradient(800px circle at 110% 115%, rgba(230, 86, 189, 0.16), transparent 50%),
+    linear-gradient(180deg, #f7f9ff 0%, #ffffff 100%);
+  color: var(--tickee-ink);
+  font-family: Manrope, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+#kc-header {
+  margin-bottom: 10px;
+}
+
+#kc-header-wrapper {
+  color: transparent;
+  text-indent: -9999px;
+  width: 220px;
+  height: 42px;
+  margin: 24px auto 8px;
+  background-image: url("../img/logo-tickee-official.png");
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: center;
+}
+
+/* theme.properties replaces the parent's login.css (which caps the card at 500px),
+   so the card would otherwise span the page with PatternFly 3's negative margins */
+.login-pf-page .card-pf,
+.card-pf {
+  max-width: var(--tickee-card-width);
+  margin: 0 auto 20px;
+  border: 1px solid rgba(66, 104, 255, 0.16);
+  border-radius: var(--tickee-radius);
+  box-shadow: 0 18px 48px rgba(6, 16, 35, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+h1,
+#kc-page-title,
+#kc-header-wrapper + div,
+#kc-content-wrapper h1 {
+  color: var(--tickee-ink);
+  font-family: Manrope, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 700;
+}
+
+#kc-form input[type="text"],
+#kc-form input[type="password"],
+#kc-form input[type="email"],
+#kc-form input[type="tel"],
+#kc-form select,
+#kc-form textarea {
+  border: 1px solid var(--tickee-line);
+  border-radius: 12px;
+  box-shadow: none;
+  color: var(--tickee-ink);
+}
+
+#kc-form input:focus,
+#kc-form select:focus,
+#kc-form textarea:focus {
+  border-color: rgba(66, 104, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(66, 104, 255, 0.16);
+}
+
+input.pf-c-form-control,
+button,
+.btn,
+#kc-form-buttons .btn-primary,
+input[type="submit"] {
+  border-radius: 12px;
+}
+
+#kc-form-buttons .btn-primary,
+.btn-primary,
+input[type="submit"] {
+  background-color: var(--tickee-primary);
+  border-color: var(--tickee-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+#kc-form-buttons .btn-primary:hover,
+#kc-form-buttons .btn-primary:focus,
+.btn-primary:hover,
+.btn-primary:focus,
+input[type="submit"]:hover,
+input[type="submit"]:focus {
+  background-color: var(--tickee-primary-hover);
+  border-color: var(--tickee-primary-hover);
+}
+
+a {
+  color: var(--tickee-primary);
+}
+
+a:hover,
+a:focus {
+  color: var(--tickee-primary-hover);
+}
+
+#kc-info,
+#kc-info-wrapper,
+#kc-social-providers {
+  color: var(--tickee-muted);
+}
+
+.alert,
+.alert-error,
+.alert-warning,
+.alert-success,
+.alert-info {
+  border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+  #kc-header-wrapper {
+    width: 180px;
+    height: 36px;
+  }
+
+  .login-pf-page .card-pf,
+  .card-pf {
+    margin: 12px auto;
+    border-radius: 14px;
+  }
+}

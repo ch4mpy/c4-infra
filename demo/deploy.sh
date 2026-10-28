@@ -26,6 +26,28 @@ chmod -R a+rX keycloak-import
 # compose.apps.yml (COMPOSE_FILE): the shared services stay on each registered application's network
 # when compose recreates them (intent 0007)
 bash ./networks.sh compose-file
+# Keycloak's database first, on its own: recreated (a new image under the same tag, intent 0024) or
+# started again, it gets a running Keycloak restarted on it below, which would keep stale connections
+source ./registry.sh
+database_state() { docker inspect -f '{{.Id}} {{.State.StartedAt}}' c4-infra.keycloak-db 2> /dev/null | tr -d '\r' || true; }
+database_before=$(database_state)
+docker compose up -d --wait --wait-timeout 300 keycloak-db < /dev/null || { docker compose ps; exit 1; }
+# A new Keycloak image (intent 0013): its first start migrates Keycloak's database, with no way back
+# but a restore. Its database dumped first (demo/backup.sh --before-upgrade), then Keycloak stopped,
+# so that the new version's import and migration never run under the old one. The workflow tags the
+# image with the content of keycloak/: another reference is another version. A first deployment, or
+# the same image, dumps nothing.
+stack_env_read keycloak_image KC_IMAGE
+running_image=$(docker inspect -f '{{.Config.Image}}' c4-infra.keycloak 2> /dev/null | tr -d '\r' || true)
+if [ -n "$running_image" ] && [ "$running_image" != "$keycloak_image" ]; then
+  echo "Keycloak's image changes ($running_image → $keycloak_image): its database dumped, Keycloak stopped first"
+  bash ./demo/backup.sh --before-upgrade < /dev/null
+  docker compose stop keycloak < /dev/null
+elif [ -n "$database_before" ] && [ "$(database_state)" != "$database_before" ] \
+  && [ "$(docker inspect -f '{{.State.Running}}' c4-infra.keycloak 2> /dev/null | tr -d '\r')" = true ]; then
+  echo "Keycloak's database recreated or started again: Keycloak restarted on it"
+  docker compose restart keycloak < /dev/null
+fi
 # --wait: fails, with the state printed, unless every service with a healthcheck reports healthy
 # within the timeout
 docker compose up -d --remove-orphans --wait --wait-timeout 300 || { docker compose ps; exit 1; }

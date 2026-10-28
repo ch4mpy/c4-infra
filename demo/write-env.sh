@@ -7,7 +7,7 @@
 #   bash demo/write-env.sh <file>      fails, naming each one, when a setting or a secret is missing
 #   bash demo/write-env.sh --required  the names of the secrets it requires, one per line
 #
-# Reads INFRA_HOST and KC_IMAGE (required), KC_ADMIN_USERNAME (default admin), and the secrets that
+# Reads INFRA_HOST, KC_IMAGE and PROXY_IMAGE (required), KC_ADMIN_USERNAME (default admin), and the secrets that
 # --required prints.
 set -euo pipefail
 
@@ -29,7 +29,7 @@ file=$1
 # fail here, by name, rather than deploy a Grafana without admin password or a Caddy basic_auth
 # with an empty hash because one secret was never created
 missing=()
-for name in INFRA_HOST KC_IMAGE "${SECRETS[@]}"; do
+for name in INFRA_HOST KC_IMAGE PROXY_IMAGE "${SECRETS[@]}"; do
   [ -n "${!name:-}" ] || missing+=("$name")
 done
 if [ ${#missing[@]} -gt 0 ]; then
@@ -37,9 +37,10 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
-# Keycloak writes these into the master realm's JSON as they are (keycloak-import/master-realm.json):
-# a double quote, a backslash or a control character breaks the import, and Keycloak doesn't start
-# (intent 0009); INFRA_HOST is a host name there (the administrator's address, the sender's)
+# The master realm's import (keycloak-import, intent 0012) writes these into its JSON as they are
+# (keycloak-import/master-realm.json): a double quote, a backslash or a control character breaks it,
+# keycloak-import exits 1 and Keycloak doesn't start (intent 0009); INFRA_HOST is a host name there
+# (the administrator's address, the sender's)
 KC_ADMIN_USERNAME=${KC_ADMIN_USERNAME:-admin}
 for name in KC_ADMIN_USERNAME KC_ADMIN_PASSWORD MAILPIT_SMTP_PASSWORD; do
   case "${!name}" in
@@ -68,6 +69,7 @@ umask 077
   echo "INFRA_HOST=$INFRA_HOST"
   echo "TZ=Pacific/Tahiti"
   echo "KC_IMAGE=$KC_IMAGE"
+  echo "PROXY_IMAGE=$PROXY_IMAGE"
   echo "KC_LOG_LEVEL=INFO"
   echo "KC_BOOTSTRAP_ADMIN_USERNAME=$(esc KC_ADMIN_USERNAME)"
   echo "KC_BOOTSTRAP_ADMIN_PASSWORD=$(esc KC_ADMIN_PASSWORD)"

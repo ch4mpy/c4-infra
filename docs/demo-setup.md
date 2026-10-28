@@ -24,7 +24,8 @@ Markdown. The applications deploy themselves on top of it afterwards
 1. Order an Ubuntu LTS VPS (8 GB of RAM for the shared stack and a few applications) and note its
    IP address.
 2. DNS: an `A` record pointing at that IP for `infra.c4-soft.com`, and one per application host
-   (`faito.c4-soft.com`, `hururaa.c4-soft.com`…). Caddy needs them to get its Let's Encrypt
+   (`faito.c4-soft.com`, `hururaa.c4-soft.com`…), and one per application with an MCP server for
+   its MCP origin (`turu-mcp.c4-soft.com`: intent 0013). Caddy needs them to get its Let's Encrypt
    certificates.
 3. If OVH's network firewall is enabled for the VPS, open ports 80 and 443 there (SSH, 22, too).
 
@@ -149,8 +150,9 @@ gh workflow run deploy-demo.yml -R ch4mpy/c4-infra   # or push to main
 gh run watch -R ch4mpy/c4-infra
 ```
 
-- The `build` job builds the Keycloak image and pushes it to GHCR, tagged with the content of
-  `keycloak/` (skipped when that tag exists).
+- The `build` job builds the Keycloak image and the reverse proxy's (Caddy with its rate-limit
+  module, intent 0013) and pushes each to GHCR, tagged with the content of `keycloak/` and of
+  `reverse-proxy/` (skipped when that tag exists).
 - The `deploy` job pins the host's key first ([`demo/trust-host-key.sh`](../demo/trust-host-key.sh):
   it fails there without `VPS_KNOWN_HOSTS`), writes the host's `.env` on the runner with
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
@@ -191,7 +193,7 @@ own compose project and registers it with what its registry entry assigns to it,
 
 1. **Its registry entry** in [`registry.txt`](../registry.txt), committed in c4-infra and deployed
    (step 7: the deployment sends the registry): `c4-app` refuses an application missing from it.
-2. **Its DNS record**, `<app>.c4-soft.com` (step 1).
+2. **Its DNS record**, `<app>.c4-soft.com`, and `<app>-mcp.c4-soft.com` for an MCP server (step 1).
 3. **Its key pair**, for its workflow only:
 
    ```bash
@@ -241,26 +243,26 @@ The former secret no longer logs in. Once the bootstrap administrator no longer 
 
 ## 11. Re-creating Keycloak's database
 
-Keycloak creates its master realm pre-configured ([README](../README.md), "The master realm") on an
+The one-shot `keycloak-import` creates the master realm pre-configured ([README](../README.md), "The master realm") on an
 empty database only. A host deployed before intent 0009 (the first one, deployed on 2026-10-23)
 gets that configuration once its database is re-created, which loses everything Keycloak holds:
 the master realm's other administrators, the registration account and the applications' realms.
 As `ubuntu`:
 
 ```bash
-ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker compose rm -sf keycloak keycloak-db && docker volume rm c4-infra_keycloak_db'"
+ssh -t ubuntu@<vps-ip> "sudo -u c4-infra -H bash -c 'cd ~/c4-infra && docker compose rm -sf keycloak keycloak-import keycloak-db && docker volume rm c4-infra_keycloak_db'"
 gh workflow run deploy-demo.yml -R ch4mpy/c4-infra
 ```
 
-The deployment starts Keycloak on an empty database: it creates the master realm, with the
+The deployment runs `keycloak-import` on an empty database: it creates the master realm, with the
 administrator of the `demo` environment (`KC_ADMIN_USERNAME`, `KC_ADMIN_PASSWORD`), and
 `demo/deploy.sh` creates the registration account again. Each application imports its realm again
 at its next deployment.
 
 ## 12. Changing Mailpit's SMTP password
 
-A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and Keycloak's
-containers are recreated with it (Keycloak restarts). The master realm keeps the former password:
+A new `MAILPIT_SMTP_PASSWORD` in the `demo` environment, then a deployment: Mailpit and `keycloak-import`'s
+containers are recreated with it (Keycloak doesn't restart). The master realm keeps the former password:
 in the console, realm master, *Realm settings* → *Email*, type the new one, save, then *Test
 connection*. So does every application realm already in Keycloak (a registration leaves a realm
 that exists as it is): the same in each one's *Email* settings; only a realm imported again

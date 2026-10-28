@@ -16,7 +16,8 @@
 #       manages a realm;
 #   (f) restarted with another import file, the master realm stays as it was ("Import skipped");
 #   (g) with verifyEmail on, an administrator without an address still logs in with the admin CLI;
-#       one with an address not verified is refused, and keeps the VERIFY_EMAIL action once verified;
+#       one with an address not verified is refused, and logs in once it is verified (26.8.1 stores no
+#       required action on the refusal; 26.7 did, to remove by hand);
 #   (h) a value holding a double quote breaks the import: Keycloak doesn't start;
 #   (i) a master realm Keycloak creates has accessTokenLifespan 60, displayName Keycloak, and a user
 #       profile where email, firstName and lastName aren't required.
@@ -25,6 +26,8 @@
 #
 # Needs the image c4-infra/keycloak (up.sh builds it). The throwaway containers are removed whatever
 # happens.
+#
+# covers: keycloak/ keycloak-import/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -197,15 +200,14 @@ ops_id=$(admin imported get users -q username=ops --fields id 2> /dev/null | jq 
 check "(g) its address set, not verified" admin imported update "users/$ops_id" -s email=ops@facts.test -s emailVerified=false
 check "(g) its admin CLI login is refused" \
   refused_with "Account is not fully set up" as imported ops "$KC_CLI_PASSWORD" get realms/master --fields realm
-check "(g) its address then verified" admin imported update "users/$ops_id" -s emailVerified=true
-keeps_action() {
-  [ "$(admin imported get "users/$ops_id" 2> /dev/null | jq -c .requiredActions)" = '["VERIFY_EMAIL"]' ]
+# Keycloak 26.8.1 (intent 0013): the refused login stores no required action (26.7 stored
+# VERIFY_EMAIL, which stayed once the address was verified, until removed by hand)
+no_action() {
+  [ "$(admin imported get "users/$ops_id" 2> /dev/null | jq -c .requiredActions)" = '[]' ]
 }
-check "(g) it keeps the VERIFY_EMAIL action, which the refused login stored" keeps_action
-check "(g) and is still refused until the action is removed" \
-  refused_with "Account is not fully set up" as imported ops "$KC_CLI_PASSWORD" get realms/master --fields realm
-check "(g) the action removed" admin imported update "users/$ops_id" -s 'requiredActions=[]'
-check "(g) it logs in" as imported ops "$KC_CLI_PASSWORD" get realms/master --fields realm
+check "(g) the refused login stored no required action" no_action
+check "(g) its address then verified" admin imported update "users/$ops_id" -s emailVerified=true
+check "(g) it logs in, nothing to remove" as imported ops "$KC_CLI_PASSWORD" get realms/master --fields realm
 
 # (f)
 sed -i 's/"displayName": "${FACT_NAME}"/"displayName": "another"/' "$work/created-profile/master-realm.json"

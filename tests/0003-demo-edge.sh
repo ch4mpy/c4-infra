@@ -3,15 +3,22 @@
 # running caddy/ with INFRA_ENV=demo (wrapped with local_certs, no Let's Encrypt) in front of echo
 # stand-ins of the shared services, and of Mailpit itself with the demo's MP_UI_AUTH (since 0007,
 # Mailpit asks for its credentials, not Caddy). /mailpit/ asks for them and RabbitMQ has no route
-# (AC-03), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-06).
+# (AC-03), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-06). Since intent 0013,
+# Turu's MCP origin (turu-mcp.c4-soft.com) reaches an echo stand-in of its MCP server (turu.mcp:9080)
+# with X-Forwarded-Host and -Proto, without the single-page-app headers.
 #
 #   bash tests/0003-demo-edge.sh
+#
+# covers: caddy/ reverse-proxy/ routes.sh registry.sh registry.txt examples/routes/ rabbitmq/
+# covers: tests/fixtures/0013/ tests/fixtures/stand-in-upstream/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 
 # the reverse proxy's image (compose.yml)
 CADDY_IMAGE=caddy:2.11.4-alpine
+# the stack's proxy, built by up.sh: Caddy with the rate-limit module the Caddyfile uses (intent 0013)
+PROXY_IMAGE=c4-infra/reverse-proxy
 NAME=c4-infra-test-edge
 HOST=infra.c4-soft.com
 PORT=48443
@@ -46,6 +53,11 @@ for service in keycloak:8080 grafana-lgtm:3000 rabbitmq:15672; do
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
     "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null
 done
+# Turu's MCP server, under its demo name (intent 0013), and Turu's site as register-app.sh generates it
+MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-turu-mcp" --network "$NAME" --network-alias turu.mcp \
+  -e PORT=9080 -e STAND_IN_NAME=turu-mcp -v "$(host_path "$PWD/tests/fixtures/0013"):/stand-in:ro" \
+  "$CADDY_IMAGE" caddy run --config /stand-in/forwarded-upstream.caddy --adapter caddyfile > /dev/null
+bash routes.sh generate examples/routes/turu.routes turu demo > "$work/apps/turu.caddy"
 # Mailpit, the stack's image (compose.yml), under its web root as on the demo host
 MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
   -e MP_WEBROOT=/mailpit/ -e MP_UI_AUTH axllent/mailpit:v1.31.0 > /dev/null
@@ -56,15 +68,18 @@ MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.
   -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \
-  "$CADDY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
+  "$PROXY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
 
-# Requests https://$HOST:$PORT<path>: sets $work/code, $work/headers (no \r) and $work/body
-fetch() { # <path> [curl option…]
-  local path=$1
-  shift
-  curl --ssl-no-revoke -sk --resolve "$HOST:$PORT:127.0.0.1" -D "$work/headers.raw" -o "$work/body" \
-    -w '%{http_code}' "$@" "https://$HOST:$PORT$path" > "$work/code"
+# Requests https://<host>:$PORT<path>: sets $work/code, $work/headers (no \r) and $work/body
+fetch_on() { # <host> <path> [curl option…]
+  local host=$1 path=$2
+  shift 2
+  curl --ssl-no-revoke -sk --resolve "$host:$PORT:127.0.0.1" -D "$work/headers.raw" -o "$work/body" \
+    -w '%{http_code}' "$@" "https://$host:$PORT$path" > "$work/code"
   tr -d '\r' < "$work/headers.raw" > "$work/headers"
+}
+fetch() { # <path> [curl option…]: on $HOST
+  fetch_on "$HOST" "$@"
 }
 
 answered() { # <status>
@@ -132,4 +147,20 @@ check "realm discovery (openid-configuration): rewritten for Keycloak" \
 fetch /.well-known/oauth-authorization-server/auth/realms/faito
 check "realm discovery (oauth-authorization-server): rewritten for Keycloak" \
   body_is 'upstream=keycloak host=infra.c4-soft.com uri=/auth/realms/faito/.well-known/oauth-authorization-server'
+
+# AC-06 (intent 0013): Turu's MCP origin, its MCP server only, with the headers it derives its
+# protected resource's URL from
+fetch_on turu-mcp.c4-soft.com /mcp
+check "0013: turu-mcp.c4-soft.com/mcp: answered by Turu's MCP server (turu.mcp:9080)" answered 200
+check "0013: sent the client's Host, X-Forwarded-Host and X-Forwarded-Proto" \
+  body_is "upstream=turu-mcp host=turu-mcp.c4-soft.com uri=/mcp x-forwarded-host=turu-mcp.c4-soft.com:$PORT x-forwarded-proto=https"
+check "0013: HSTS on the MCP origin" header_is Strict-Transport-Security 'max-age=31536000; includeSubDomains'
+check "0013: no single-page-app CSP on the MCP origin" no_header Content-Security-Policy
+fetch_on turu-mcp.c4-soft.com /.well-known/oauth-protected-resource/mcp
+check "0013: its protected resource's document, from Turu's MCP server" \
+  body_holds 'upstream=turu-mcp host=turu-mcp.c4-soft.com uri=/.well-known/oauth-protected-resource/mcp '
+fetch_on turu-mcp.c4-soft.com /fr/
+check "0013: the MCP origin serves no front end (404)" answered 404
+fetch_on turu.c4-soft.com /mcp
+check "0013: turu.c4-soft.com serves no MCP route (404)" answered 404
 finish

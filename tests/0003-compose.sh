@@ -6,6 +6,9 @@
 # host 80 and 443 only (AC-10); what the demo host doesn't expose stays dev's (RQ-02).
 #
 #   bash tests/0003-compose.sh
+#
+# covers: compose.yml compose.dev.yml compose.demo.yml env.sh keycloak/ rabbitmq/ reverse-proxy/
+# covers: grafana-lgtm/ tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -31,9 +34,10 @@ images() { # <config file>: "<service> <image>", one per line, sorted
 
 same_images() {
   local dev demo
-  # Keycloak's is KC_IMAGE in both: built here, pulled from GHCR on the demo host
-  dev=$(images "$work/dev.json" | grep -v '^keycloak ')
-  demo=$(images "$work/demo.json" | grep -v '^keycloak ')
+  # Keycloak's (and keycloak-import's) is KC_IMAGE in both, the proxy's PROXY_IMAGE (0013): built here,
+  # pulled from GHCR on the demo host
+  dev=$(images "$work/dev.json" | grep -vE '^(keycloak(-import)?|reverse-proxy) ')
+  demo=$(images "$work/demo.json" | grep -vE '^(keycloak(-import)?|reverse-proxy) ')
   [ "$dev" = "$demo" ] && [ -n "$dev" ] || { echo "dev:"; echo "$dev"; echo "demo:"; echo "$demo"; return 1; }
 }
 
@@ -93,8 +97,19 @@ check "no image: in compose.dev.yml nor compose.demo.yml" no_image_in_overrides
 check "dev: Keycloak is the image built here, c4-infra/keycloak" keycloak_image_is "$work/dev.json" c4-infra/keycloak
 check "dev: Keycloak is built from keycloak/" test "$(jq -r '.services.keycloak.build.context // empty' "$work/dev.json")" != ""
 check "demo: Keycloak is KC_IMAGE, pulled" keycloak_image_is "$work/demo.json" ghcr.io/ch4mpy/c4-infra-keycloak:000000000000
+# 0012: the master realm's one-shot import runs the very Keycloak that serves the database
+import_image_is_keycloaks() { # <config file>
+  jq -e '.services["keycloak-import"].image == .services.keycloak.image' "$1" > /dev/null \
+    || { jq -r '"keycloak-import: \(.services["keycloak-import"].image), keycloak: \(.services.keycloak.image)"' "$1"; return 1; }
+}
+check "0012, dev: keycloak-import runs Keycloak's image" import_image_is_keycloaks "$work/dev.json"
+check "0012, dev: keycloak-import is built from keycloak/ too" \
+  test "$(jq -r '.services["keycloak-import"].build.context // empty' "$work/dev.json")" = "$(jq -r '.services.keycloak.build.context' "$work/dev.json")"
+check "0012, demo: keycloak-import runs Keycloak's image" import_image_is_keycloaks "$work/demo.json"
 check "demo: nothing is built" test -z "$(jq -r '.services[].build // empty' "$work/demo.json")"
-check "dev: the proxy is Caddy" value_is "$work/dev.json" '.services["reverse-proxy"].image' caddy:2.11.4-alpine
+check "0013, dev: the proxy is the image built here, c4-infra/reverse-proxy" value_is "$work/dev.json" '.services["reverse-proxy"].image' c4-infra/reverse-proxy
+check "0013, dev: the proxy is built from reverse-proxy/" test "$(jq -r '.services["reverse-proxy"].build.context // empty' "$work/dev.json")" != ""
+check "0013, demo: the proxy is PROXY_IMAGE, pulled" value_is "$work/demo.json" '.services["reverse-proxy"].image' ghcr.io/ch4mpy/c4-infra-reverse-proxy:000000000000
 
 # RQ-09, AC-10
 check "no ports: in compose.yml" no_ports_in_base
