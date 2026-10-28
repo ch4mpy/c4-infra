@@ -82,4 +82,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0030 | [new-realm-ids.sh leaves a user federation component's id as it was](0030-new-realm-ids-keeps-federation-component-ids/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0031 | [No test proves that a front end's own Permissions-Policy reaches the browser unchanged](0031-front-end-own-permissions-policy-untested/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0032 | [The migration guide offers a GitLab CI job the demo host doesn't serve](0032-migration-guide-offers-gitlab-ci-demo-doesnt-serve/intent.md) | change | planned | 2026-10-28 | 2026-10-28 |
-| 0034 | [tests/0007-dev.sh's isolation checks pass when the application's network doesn't exist](0034-isolation-checks-pass-without-network/intent.md) | bug | specified | 2026-10-28 | 2026-10-28 |
+| 0034 | [tests/0007-dev.sh's isolation checks pass when the application's network doesn't exist](0034-isolation-checks-pass-without-network/intent.md) | bug | planned | 2026-10-28 | 2026-10-28 |
