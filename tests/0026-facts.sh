@@ -156,7 +156,7 @@ section() { # <file> <key>
   awk -v key="$2:" '$0 == key { on = 1; next } /^[^ ]/ { on = 0 } on' "$1"
 }
 holds() { # <file> <section> <extended regex of a line>
-  section "$1" "$2" | grep -qE "$3" || { echo "$2: no line matches $3 in:"; section "$1" "$2" | grep -E 'retention|delete_request|cleanup' | head -n 10; return 1; }
+  section "$1" "$2" | grep -E "$3" > /dev/null || { echo "$2: no line matches $3 in:"; section "$1" "$2" | grep -E 'retention|delete_request|cleanup' | head -n 10; return 1; }
 }
 in_lgtm() { MSYS_NO_PATHCONV=1 docker exec "$LGTM" "$@" < /dev/null | tr -d '\r'; }
 # the scheduler emits the retention jobs, the worker runs them
@@ -166,13 +166,24 @@ tempo_backend_runs() {
     || { cat "$work/tempo-services"; return 1; }
 }
 
+# after a start, once its raft election is over (60 s at most)
+pyroscope_leads() {
+  local i
+  for i in $(seq 60); do
+    in_lgtm curl -s 127.0.0.1:4040/metrics | grep -F 'pyroscope_metastore_raft_state{state="Leader"} 1' > /dev/null && return 0
+    sleep 1
+  done
+  in_lgtm curl -s 127.0.0.1:4040/metrics | grep -F pyroscope_metastore_raft_state
+  return 1
+}
+
 check_settings() { # <label>
   local label=$1
   in_lgtm curl -s 127.0.0.1:3100/config > "$work/loki.yaml"
   check "$label Loki's compactor: retention_enabled: true" holds "$work/loki.yaml" compactor '^ +retention_enabled: true$'
   check "$label Loki's compactor: delete_request_store: filesystem" holds "$work/loki.yaml" compactor '^ +delete_request_store: filesystem$'
   check "$label Loki's limits_config: retention_period: $PRINTED_WEEKS" holds "$work/loki.yaml" limits_config "^ +retention_period: $PRINTED_WEEKS\$"
-  check "$label Loki's /services: compactor => Running" eval 'in_lgtm curl -s 127.0.0.1:3100/services | grep -qx "compactor => Running"'
+  check "$label Loki's /services: compactor => Running" eval 'in_lgtm curl -s 127.0.0.1:3100/services | grep -x "compactor => Running" > /dev/null'
   check "$label Prometheus' flag storage.tsdb.retention.time: $PRINTED_WEEKS" \
     is "$(in_lgtm curl -s 127.0.0.1:9090/api/v1/status/flags | jq -r '.data["storage.tsdb.retention.time"]')" "$PRINTED_WEEKS"
   check "$label Prometheus' runtimeinfo storageRetention: $PRINTED_WEEKS" \
@@ -184,8 +195,7 @@ check_settings() { # <label>
   in_lgtm curl -s 127.0.0.1:4040/api/v1/status/config > "$work/pyroscope.yaml"
   check "$label Pyroscope's limits: retention_period: $PRINTED_WEEKS" holds "$work/pyroscope.yaml" limits "^ +retention_period: $PRINTED_WEEKS\$"
   check "$label Pyroscope's metastore cleans its index (cleanup_interval not 0s)" holds "$work/pyroscope.yaml" metastore '^ +cleanup_interval: [1-9]'
-  check "$label Pyroscope's metastore is the raft leader, where the index cleaner runs" \
-    eval 'in_lgtm curl -s 127.0.0.1:4040/metrics | grep -qF "pyroscope_metastore_raft_state{state=\"Leader\"} 1"'
+  check "$label Pyroscope's metastore is the raft leader, where the index cleaner runs" pyroscope_leads
 }
 
 # <service name> <now>: a log posted by OTLP to 127.0.0.1:4318, or with "read" only read back, from
