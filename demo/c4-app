@@ -21,10 +21,10 @@
 #                                   relative to ~/<application>/, and --rabbitmq-password-env <VAR>
 #                                   takes VAR from ~/<application>/.env
 #
-# Each command works on a copy of ~/<application>/<application>/ (sent there by the application's
-# workflow), read as the application and written by root into /var/lib/c4-apps/<application>/
-# (root:<application>, mode 0750: the application reads it, never writes it); a symbolic link or a
-# special file in it is refused. That copy is only the containers' mount sources at run time; what
+# Each command but down works on a copy of ~/<application>/<application>/ (sent there by the
+# application's workflow), read as the application and written by root into
+# /var/lib/c4-apps/<application>/ (root:<application>, mode 0750: the application reads it, never
+# writes it); a symbolic link or a special file in it is refused. That copy is only the containers' mount sources at run time; what
 # root itself reads — the compose model, and (for register) the realm, routes and theme files — is a
 # fresh root-only snapshot in /var/lib/c4-apps/.run.<application>/ (mode 0700 root:root), outside
 # anything a container may mount, taken once the checks have passed and used from there. The compose
@@ -118,7 +118,6 @@ staging=$STAGING_ROOT/$app
 snap=$STAGING_ROOT/.run.$app
 snap_src=$snap/src
 model=$snap/model.json
-[ -d "$source_dir" ] || fail "$source_dir is missing: the application's workflow sends its files there first"
 
 # One command at a time per application
 install -d -m 0755 -o root -g root "$STAGING_ROOT"
@@ -131,6 +130,7 @@ flock -w 600 9 || fail "another c4-app command of $app is still running"
 # directory is (re)created empty here, holding nothing the application put there.
 stage() {
   local incoming=$STAGING_ROOT/.$app.incoming found
+  [ -d "$source_dir" ] || fail "$source_dir is missing: the application's workflow sends its files there first"
   rm -rf "$incoming" "$snap"
   install -d -m 0700 -o root -g root "$incoming"
   if ! runuser -u "$app" -- tar -C "$source_dir" -cf - . \

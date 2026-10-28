@@ -5,7 +5,8 @@
 #       the project's containers and networks and keeps its volumes; on a project that doesn't exist,
 #       it exits 0 (c4-app down, RQ-04);
 #   (b) the same down, handed tests/fixtures/0011/down-hook.yml unchecked, runs its provider's
-#       executable: AC-04's "no marker" means c4-app down handed compose no model;
+#       executable: AC-04's "no marker" means c4-app down handed compose no model (on Linux only:
+#       Windows' compose runs no shell script as a provider);
 #   (c) in a throwaway Caddy, the admin API probe of the proxy's healthcheck (compose.yml) answers
 #       while a refused `caddy reload` fails, and fails once the container is stopped (up.sh, RQ-05).
 #
@@ -32,6 +33,8 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$work/empty"
+# MSYS_NO_PATHCONV: the docker CLI of Windows gets the host paths in Windows' form from here
+host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
 # (a) a project of a container, a network and a volume of its own, then down by name only
 cat > "$work/compose.yml" <<EOF
@@ -51,7 +54,7 @@ gone() { # <project>
   [ -z "$(project_containers "$1")" ] || { echo "containers of $1 left: $(project_containers "$1")"; return 1; }
   ! docker network inspect "${1}_internal" > /dev/null 2>&1 || { echo "${1}_internal left"; return 1; }
 }
-docker compose -p "$PROJECT" -f "$work/compose.yml" up -d > "$work/up.log" 2>&1
+docker compose -p "$PROJECT" -f "$(host_path "$work/compose.yml")" up -d > "$work/up.log" 2>&1
 check "(a) the project starts (a container, ${PROJECT}_internal, ${PROJECT}_cache)" test -n "$(project_containers "$PROJECT")"
 (cd "$work/empty" && docker compose -p "$PROJECT" down --remove-orphans) > "$work/down.log" 2>&1
 status=$?
@@ -63,11 +66,15 @@ status=$?
 check "(a) on a project that doesn't exist, it exits 0 (exit $status)" test "$status" -eq 0
 
 # (b) down handed the hook's model: compose runs the provider's executable
-cp tests/fixtures/0011/hook.sh "$work/hook.sh"
-sed "s#/var/lib/c4-apps/faito/hook.sh#$work/hook.sh#" tests/fixtures/0011/down-hook.yml > "$work/down-hook.yml"
-docker compose -p "$HOOK_PROJECT" -f "$work/down-hook.yml" down > "$work/hook.log" 2>&1
-hook_ran() { [ -f "$work/hook-ran" ] || { echo "compose said:"; tail -n 5 "$work/hook.log"; return 1; }; }
-check "(b) down of down-hook.yml, unchecked, runs its provider (the marker hook-ran)" hook_ran
+if command -v cygpath > /dev/null; then
+  echo "# (b) not measured under Git Bash: Windows' compose runs no shell script as a provider"
+else
+  cp tests/fixtures/0011/hook.sh "$work/hook.sh"
+  sed "s#/var/lib/c4-apps/faito/hook.sh#$work/hook.sh#" tests/fixtures/0011/down-hook.yml > "$work/down-hook.yml"
+  docker compose -p "$HOOK_PROJECT" -f "$work/down-hook.yml" down > "$work/hook.log" 2>&1
+  hook_ran() { [ -f "$work/hook-ran" ] || { echo "compose said:"; tail -n 5 "$work/hook.log"; return 1; }; }
+  check "(b) down of down-hook.yml, unchecked, runs its provider (the marker hook-ran)" hook_ran
+fi
 
 # (c) the admin API probe of compose.yml's healthcheck, against a refused reload, then a stopped container
 probe() { docker exec "$CADDY" wget -q -O /dev/null http://127.0.0.1:2019/config/; }
