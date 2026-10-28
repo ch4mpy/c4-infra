@@ -80,8 +80,11 @@ every time it deploys.
   containers, which reach `keycloak:8080` without the proxy, aren't limited either.
 - **One network per application** (intent 0007). An application's containers join
   `c4-infra.<app>` (named after its registry entry), in dev as on the demo host (in dev, those the
-  shared services must reach, such as Tickee's LDAP server), which no other application's
-  container joins: two applications never reach each other's containers. Its registration
+  shared services must reach, such as its gateway, which Keycloak calls for back-channel logout),
+  which no other application's container joins: two applications never reach each other's
+  containers. The stack provides, runs and monitors no directory: a realm that federates its users
+  does so with a directory its application runs and maintains itself, one of its containers on
+  that network (intent 0023). Its registration
   ([`networks.sh`](networks.sh) `ensure`, run by `register-app.sh`) creates it and attaches the
   shared services to it under their usual names (`reverse-proxy`, `keycloak`, `mailpit`,
   `rabbitmq`, `grafana-lgtm`, and on the demo host the shared host's name, Caddy's), so that Caddy

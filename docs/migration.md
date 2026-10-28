@@ -117,7 +117,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `compose-observability.yml`, `compose-rabbitmq.yml`, `compose-reverse-proxy.yml`,
    `nginx-reverse-proxy/`, `keycloak/Dockerfile`, `keycloak/HealthCheck.java` and the Keycloak and
    mail entries of `.env` and `secrets/`. Another container of the project that the shared
-   Keycloak must reach (an LDAP server of a user federation) joins the project's own network
+   services must reach (its gateway, which Keycloak calls for back-channel logout; a directory a
+   realm federates, which the project runs and maintains itself, the stack providing none) joins
+   the project's own network
    `c4-infra.<project>` as an external one, never `c4-infra` (the shared services' own), under a
    unique container name: `deploy-dev.sh`'s registration creates that network and attaches the
    shared services to it (c4-infra's README, "One network per application").
@@ -142,9 +144,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    variables compose interpolates, and the RabbitMQ password), its routes file, its rendered realm
    file(s) and its themes, if any; nothing that is a symbolic link (`c4-app` refuses it). In
    `compose.yml`: drop `caddy`, `keycloak`, `mailpit`, `rabbitmq` and `grafana-lgtm`; the services
-   that need the shared ones (gateway, API, frontend, an LDAP server) join the project's own network
-   `c4-infra.<project>` as an external one (its registration creates it and attaches the shared
-   services to it, under their usual names), never `c4-infra`, and keep their unique
+   that need the shared ones (gateway, API, frontend, a directory a realm federates) join the
+   project's own network `c4-infra.<project>` as an external one (its registration creates it and
+   attaches the shared services to it, under their usual names), never `c4-infra`, and keep their unique
    `container_name` (`<project>.gateway`…); the databases stay on the project's network only; every
    file it mounts or reads (`env_file`) is inside `~/<project>/`, relative to it (the model is read
    as the project's account: it can't read any other). Its data go in named volumes: what is
@@ -275,13 +277,15 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
   it in dev, edit it, run `bash ../c4-infra/register-app.sh --app tickee --themes keycloak/themes`
   (or `deploy-dev.sh`), then reload the login page: the dev Keycloak caches no theme and isn't
   restarted, so the other applications' sessions stay valid.
-- `tenant2` federates the LDAP server `ldap://tickee.ldap-tenant2:389`, now started by the
-  project's own compose (move `ldap2` out of `compose-keycloak.yml`), on Tickee's own network
-  `c4-infra.tickee` (external), in dev as in the demo: Keycloak, attached to it by Tickee's
-  registration, federates it, and no other application's container reaches it.
+- `tenant2` federates Tickee's own LDAP server, `ldap://tickee.ldap-tenant2:389`: its `ldap2`
+  container, now started by the project's own compose (move `ldap2` out of `compose-keycloak.yml`),
+  on Tickee's own network `c4-infra.tickee` (external), in dev as in the demo. Tickee runs,
+  monitors and upgrades it: the stack provides no directory (intent 0023). Keycloak, attached to
+  that network by Tickee's registration, federates it, and no other application's container
+  reaches it.
 - The realm `tickee` has two BFF clients with back-channel logout (`gateway` and `tickee-bff`):
   both URLs move to the gateway's port.
-- Demo: steps above (the LDAP container joins `c4-infra.tickee`).
+- Demo: steps above (Tickee's `ldap2` container joins `c4-infra.tickee`).
 
 ### Faito (n° 4, ports 14xxx, realm `faito`)
 
