@@ -173,11 +173,11 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    Grafana LGTM, `http://grafana-lgtm:4318/v1/logs`, `/v1/traces` and `/v1/metrics` on
    `c4-infra.<project>` (in dev, `http://host.docker.internal:4318/v1/…`), which keeps them 14 days.
    Every application's network can read them (c4-infra's README, "Reachable from an application's
-   network"): nothing secret in them. With Spring Boot 4, as Faito's backend does
+   network"): nothing secret in them. With Spring Boot 4, as Faito's backend exports them in dev
    (`spring-boot-starter-opentelemetry`, and OpenTelemetry's Logback appender,
    `opentelemetry-logback-appender-1.0`, declared in its `logback-spring.xml` and installed by its
-   `OpenTelemetryConfiguration`: Spring Boot ships none), its `application.yml` sets the dev
-   endpoints, and its `demo` profile the demo host's:
+   `OpenTelemetryConfiguration`: Spring Boot ships none), the `application.yml` sets the dev
+   endpoints, and the `demo` profile the demo host's (Faito's doesn't yet):
 
    ```yaml
    management:
