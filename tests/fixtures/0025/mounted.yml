@@ -1,0 +1,13 @@
+# 0025 fixture (tests/0025-refused-stage.stand-in.sh): Faito's gateway mounting a directory of its own,
+# ./content, read-only: what it reads changes with the files sudo c4-app up copies into place
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+    volumes:
+      - ./content:/srv/content:ro
+networks:
+  c4-infra.faito:
+    external: true
