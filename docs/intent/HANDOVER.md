@@ -8,11 +8,12 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 
 ## Next, in this order
 
-1. **0011** — planned (spec v2; plan approved 2026-10-23, step 1 done). Next: `/sdlc-plan implement 0011` on its branch, its step 0 merging `main`.
-2. **0015** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0015`.
-3. **0016** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0016`.
+1. **0024** — a deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator (deploy-demo run 40636936869, 2026-10-28). Accepted, no spec. Next: `/sdlc-plan draft 0024`, in plan mode.
+2. **0011** — planned (spec v2; plan approved 2026-10-23, step 1 done). Next: `/sdlc-plan implement 0011` on its branch, its step 0 merging `main`.
+3. **0015** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0015`.
+4. **0016** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0016`.
    - **Milestone:** 0011, 0015 and 0016 merged, then a full `--all`, then push.
-4. **0019** — the stand-in deployment test fails on a workstation whose locale isn't C. Accepted, no spec. Until it is delivered, run the proofs with `LC_ALL=C`.
+5. **0019** — the stand-in deployment test fails on a workstation whose locale isn't C. Accepted, no spec. Until it is delivered, run the proofs with `LC_ALL=C`.
 
 ## The workstation
 
