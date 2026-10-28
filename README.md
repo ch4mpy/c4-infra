@@ -401,6 +401,9 @@ installs.
   options: to=<path>          redirect only, required: a path on the same host (not //...)
            max-body=<n>KB|MB  request body limit (413 beyond)
            prefix=<path>      prepended to the request's path before proxying (not / alone)
+           headers=app        fr, en or ui only: the front end's Content-Security-Policy, X-Frame-Options
+                              and Permissions-Policy are the application's (the shared values for a
+                              response without them)
 ```
 
 Faito's, [`examples/routes/faito.routes`](examples/routes/faito.routes) (Hurura'a's and Turu's are
@@ -439,10 +442,23 @@ next to it):
 - **Headers.** The front ends (`fr`, `en`, `ui`) get the single-page-app headers
   (Content-Security-Policy, `X-Frame-Options`, `Permissions-Policy`: the `spa-headers` snippet of
   [`caddy/Caddyfile`](caddy/Caddyfile)); every response gets `X-Content-Type-Options` and
-  `Referrer-Policy`, and no `Server`; `Strict-Transport-Security` on the demo host only.
+  `Referrer-Policy`, and no `Server`; `Strict-Transport-Security` on the demo host only. The
+  responses the proxy makes itself (a `413` of `max-body=`, a `502` when an upstream doesn't
+  answer, the rate limit's `429`) carry them too (intent 0015), and the proxy logs each of them
+  with its cause (`docker compose logs reverse-proxy`: an access log of those responses only).
+- **`headers=app`** (intent 0015), on a front-end route only: the application's front end owns its
+  pages' Content-Security-Policy, `X-Frame-Options` and `Permissions-Policy`. Each one its response
+  carries reaches the browser once, unchanged; each one it lacks gets the shared value, header by
+  header, the proxy's own `413` and `502` included (a response with only
+  `Content-Security-Policy-Report-Only` gets the shared policy enforced beside it). The other headers
+  stay the stack's (`X-Content-Type-Options`, `Referrer-Policy`, no `Server`, HSTS). The application
+  then sends its policy on **every** response of that route, static assets and error pages
+  included, or those get the shared one. Without the option, a front end's own headers are added to
+  the shared ones, as before (a browser then enforces both policies).
 - **Refused**, as `<file>:<line>: …`, before anything is registered: a line outside the notation,
   and any host name, scheme or port (`routes name neither a host nor a port: '<token>'`): an
-  application's routes reach its own processes only.
+  application's routes reach its own processes only; `headers=` on a gateway, an MCP route or a
+  redirect, with another value than `app`, or twice.
 
 ## Demo host
 

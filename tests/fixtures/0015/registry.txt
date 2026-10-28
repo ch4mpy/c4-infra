@@ -1,0 +1,4 @@
+# 0015 fixture (tests/0015-headers.sh): verif, whose front end answers, and verif-down, whose front
+# end and gateway don't
+37 verif - - - verif.dev.localhost verif.c4-soft.com
+38 verif-down - - - verif-down.dev.localhost verif-down.c4-soft.com
