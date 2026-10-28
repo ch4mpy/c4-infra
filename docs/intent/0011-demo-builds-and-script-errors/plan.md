@@ -86,3 +86,6 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — step 0. `main` merged (45f9dda): 0012, 0013 and every later intent are in; the conflicts were the identifiers' renaming (ee97ed3), which `main` holds already: `main`'s side taken, the branch then differs from `main` by 0011's documents only. No new `--all` baseline: that tree is `main`'s, verified by 0024's `--changed --all` (26 tests) and the last milestone's `--all` (product owner's compression of 2026-10-27). Docker Compose is v5.3.0 here now.
+- 2026-10-28 — step 3a. AC-09 can't be "a refused `INFRA_HOST` no longer stops `c4-app up`": `networks.sh ensure`, which `up` runs, reads `INFRA_HOST` on the demo host on purpose (the proxy's alias) and refuses it. The test asserts what the spec's AC-09 says, that c4-app's check reads no `INFRA_HOST` (its message `c4-app: INFRA_HOST of … can't be read` absent), and that `networks.sh` is then the one refusing it. The hook of AC-04 is staged by the earlier `up` (hook.sh sent first), so that the provider's executable exists where `down-hook.yml` names it: "no marker" then means compose wasn't handed the file. Steps 3b and 3c were committed before 3a (its stand-in run took longer). No impact on files.
