@@ -209,6 +209,8 @@ refused to-other-host 3 "routes name neither a host nor a port: 'to=//evil.examp
 # outside the grammar
 refused unknown-target 3 "unknown target 'admin'"
 refused unknown-option 3 "unknown option 'timeout=5s'"
+# an option with an empty key (intent 0011, AC-11)
+refused empty-option-key 3 "unknown option '=x'"
 refused to-on-role 3 'to= is for a redirect only'
 refused redirect-without-to 3 'redirect needs to=<path>'
 refused regex-brace 3 "path '~^/gateway/{path}\$' is not"

@@ -5,8 +5,8 @@
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts faito);
 #   - each file of tests/fixtures/0007/hostile/ but valid.yml and name-other-app.yml, sent as
 #     ~faito/faito/compose.yml over ssh as faito: sudo c4-app up exits non-zero, its output names the
-#     service, network or volume and the rule, no container of the project faito exists, and no
-#     network c4-infra.faito either;
+#     service, network or volume and the rule (the build-*.yml: one rule, a service that builds,
+#     intent 0011), no container of the project faito exists, and no network c4-infra.faito either;
 #   - name-other-app.yml (valid.yml with name: hururaa) starts as the project faito, never hururaa,
 #     and down removes it;
 #   - valid.yml (its network c4-infra.faito and one of the project's own, an alias and a container
@@ -29,6 +29,8 @@ source tests/lib/stand-in-host.sh
 
 FIXTURES=tests/fixtures/0007/hostile
 STAGING=/var/lib/c4-apps/faito
+# a service that builds, whatever it builds (intent 0011, RQ-01)
+BUILD='build: the demo host runs the images the application'"'"'s CI pushes to a registry (README.md, "Accounts")'
 # what each refusal says (c4-app: refused: <this>)
 declare -A REFUSAL=(
   [network-mode.yml]='service gateway: network_mode container:c4-infra.keycloak'
@@ -46,24 +48,24 @@ declare -A REFUSAL=(
   [devices.yml]='service gateway: devices'
   [external-volume.yml]='volume data: external (hururaa_rest_api_data)'
   [volume-bind-driver.yml]='volume data: driver_opts'
-  [build-outside.yml]="service gateway: build context /var/lib/c4-apps/hururaa, outside $STAGING/"
+  [build-outside.yml]="service gateway: $BUILD"
   # review round 1 (2026-10-22): the escapes that passed the former denylist, now the allowlist's
   [use-api-socket.yml]='service gateway: use_api_socket is not allowed'
   [post-start-privileged.yml]='service gateway: post_start is not allowed'
   [provider.yml]='service helper: provider is not allowed'
   [seccomp-file.yml]="service gateway: security_opt seccomp=$STAGING/compose.yml (only no-new-privileges)"
   [service-dotted-name.yml]='service faito.gateway: its name is outside a-z 0-9 _ -'
-  [build-network.yml]='service gateway: build.network is not allowed'
-  [build-ssh.yml]='service gateway: build.ssh is not allowed'
-  [build-dockerfile-dotdot.yml]="service gateway: Dockerfile ../../c4-app.model.json resolves outside $STAGING/"
+  [build-network.yml]="service gateway: $BUILD"
+  [build-ssh.yml]="service gateway: $BUILD"
+  [build-dockerfile-dotdot.yml]="service gateway: $BUILD"
   [bind-rw.yml]="service gateway: a read-write bind mount of $STAGING/compose.yml"
   [bind-staging-root.yml]="service gateway: a bind mount of the staging root $STAGING itself"
   [deploy-devices.yml]='service gateway: deploy reserves host devices'
-  # review round 2 (2026-10-22): a built image named after another application's, which root's
-  # compose would replace in the shared daemon (compose names a built image <project>-<service>)
-  [build-with-image.yml]='service gateway: image hururaa-gateway with build (a service that builds takes no image: compose names it faito-gateway)'
-  [build-tags.yml]='service gateway: build.tags is not allowed (outside the isolation allowlist)'
-  [build-name-collision.yml]="service demo-gateway: a service that builds has no - in its name (faito-demo-gateway would also be the image of an application faito-demo's service gateway)"
+  # review round 2 (2026-10-22): a built image named after another application's; since 0011, any
+  # service that builds is refused, whatever it builds
+  [build-with-image.yml]="service gateway: $BUILD"
+  [build-tags.yml]="service gateway: $BUILD"
+  [build-name-collision.yml]="service demo-gateway: $BUILD"
 )
 
 umask 077
