@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (the alignment analyses of Tickee and poc-immo-pf on c4-infra, 2026-10-28)
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
