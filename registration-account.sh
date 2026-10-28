@@ -12,7 +12,8 @@
 #                                         to repair it: the bootstrap administrator of .env while it
 #                                         works, else KC_SETUP_ADMIN_USERNAME and
 #                                         KC_SETUP_ADMIN_PASSWORD from the environment, else, on a
-#                                         terminal, the one it asks for; exit 1 when none logs in
+#                                         terminal, the one it asks for; exit 1 when none logs in,
+#                                         or when Keycloak doesn't answer for 60 s (no one blamed)
 #   bash registration-account.sh rotate   dev: a new secret into .env, then ensure (on the demo
 #                                         host, the secret of the demo environment: docs/demo-setup.md)
 #
@@ -59,17 +60,48 @@ account_login() {
     < /dev/null 2>&1)
 }
 
+# kcadm's output when Keycloak refuses a login (26.8.1, intent 0024): a wrong secret
+# [unauthorized_client], an unknown client [invalid_client], a wrong password or an account not fully
+# set up [invalid_grant]. Any other failure is a Keycloak that doesn't answer, or not yet.
+refused() { # <kcadm's output>
+  case "$1" in
+    *"[unauthorized_client]"* | *"[invalid_client]"* | *"[invalid_grant]"*) return 0 ;;
+  esac
+  return 1
+}
+
+# <login command…> (account_login, admin_try): retried while Keycloak doesn't answer, for
+# ANSWER_TIMEOUT seconds, then exit 1 saying so, never blaming the account or an administrator;
+# returns 1 when Keycloak refuses the login
+ANSWER_TIMEOUT=60
+until_answered() {
+  local deadline=$((SECONDS + ANSWER_TIMEOUT))
+  until "$@"; do
+    refused "$login_output" && return 1
+    if [ $SECONDS -ge $deadline ]; then
+      printf '%s\n' "$login_output" | tail -n 3 >&2
+      echo "Keycloak doesn't answer ($SERVER in $KEYCLOAK, for $ANSWER_TIMEOUT s): its administrators aren't at fault (above). docker compose ps and docker logs $KEYCLOAK tell why (its database away, a start that failed…); run this again once it answers." >&2
+      exit 1
+    fi
+    sleep 2
+  done
+}
+
+# One login as an administrator, kcadm's output in $login_output
+admin_try() { # <user> <password>
+  login_output=$(KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
+    config credentials --config "$ADMIN_CONFIG" --server "$SERVER" --realm master --user "$1" \
+    < /dev/null 2>&1)
+}
+
 # Logs in as an administrator; one that Keycloak refuses for a pending required action ("Account is
 # not fully set up": an address to verify with the master realm's Verify email, intent 0009, a
 # temporary password to update…) is added to $not_set_up, for the message of login_administrator
 not_set_up=()
 admin_login() { # <user> <password>
-  local output
   [ -n "$1" ] && [ -n "$2" ] || return 1
-  output=$(KC_CLI_PASSWORD=$2 docker exec -e KC_CLI_PASSWORD "$KEYCLOAK" "$KCADM" \
-    config credentials --config "$ADMIN_CONFIG" --server "$SERVER" --realm master --user "$1" \
-    < /dev/null 2>&1) && return 0
-  case "$output" in
+  until_answered admin_try "$1" "$2" && return 0
+  case "$login_output" in
     *"Account is not fully set up"*) not_set_up+=("$1") ;;
   esac
   return 1
@@ -221,7 +253,7 @@ ensure() {
   mapfile -t registry_realm_list < <(registry_realms)
 
   local realm
-  if account_login; then
+  if until_answered account_login; then
     probe_registry
     if [ ${#ungranted[@]} -eq 0 ]; then
       echo "Registration account $client_id: up to date"
@@ -233,7 +265,7 @@ ensure() {
     login_administrator "create the registration account $client_id, or set its secret to .env's"
     write_client
     grant_create_realm
-    if ! account_login; then
+    if ! until_answered account_login; then
       printf '%s\n' "$login_output" | tail -n 3 >&2
       echo "Registration account $client_id: still doesn't log in after its repair (above)" >&2
       exit 1
