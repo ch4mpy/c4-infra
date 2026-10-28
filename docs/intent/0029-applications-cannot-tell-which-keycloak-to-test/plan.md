@@ -145,11 +145,6 @@ Not changed: `keycloak/` (C2), `compose*.yml`, `env.sh`, `demo/deploy.sh`, `demo
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
-
-## Verification
-
-<!-- sdlc-verify's evidence block (bootstrap mode), then "After deployment" (steps 6 to 9) -->
-
 - 2026-10-28 — step 0, facts (on the workstation; `c4-infra/keycloak` built from `keycloak/` at `33909cd89858`):
   - (a) `docker run --env-file <admin> -e KC_DB=dev-file c4-infra/keycloak start-dev`: ready on `:9000/auth/health/ready`; `GET /auth/realms/master` → `HTTP/1.0 200 OK` over plain HTTP from inside; the log's `Preview features enabled: parameterized-scopes:v1, token-exchange-delegation:v1` and `Experimental features enabled: cimd:v1`. The label `org.opencontainers.image.version` is `26.8.1` (and `version`); the environment as the Dockerfile sets it, no credential. The local image also carries compose's build labels (`com.docker.compose.project`, `…service: keycloak-import`), which an image built by `build-push-action` doesn't: the facts test reads no `com.docker.compose.*` label.
   - (b) `git rev-parse --short=12 HEAD:keycloak` → `33909cd89858`. A temporary index and object directory (`GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY` created first, the repository's objects as `GIT_ALTERNATE_OBJECT_DIRECTORIES`; `git add -- keycloak`, `git write-tree --prefix=keycloak/`): `33909cd89858` on a clean `keycloak/`, `a4395e5cee63` after an uncommitted edit of `HealthCheck.java`, `33909cd89858` once restored; `git count-objects -v` identical before and after. Without the object directory created first, git refuses (`not a git repository`).
@@ -163,3 +158,30 @@ Not changed: `keycloak/` (C2), `compose*.yml`, `env.sh`, `demo/deploy.sh`, `demo
   - The workflow sets buildx up on every run (the references' check uses its `imagetools`), not only when an image is missing.
   - The README said the package was public before the product owner's step: it says it is public once its owner made it so (`docs/demo-setup.md`, step 7, which now gives that step, once, for any new owner), a login with `read:packages` until then. It no longer suggests `set -a` on the description, which would export the stack's `KC_DB=postgres` into the environment that starts Keycloak.
   Answered: `host_path` defined again in the facts test, as in a dozen tests (pre-existing; a helper in `tests/lib/` would be its own change). Files: none new.
+
+## Verification
+
+### Verification — e52b4fd (integration 13474a8, which contains it; the full run at 205b8eb held its code, e527fe1)
+
+- Verification command (batch `batch-0031-0030-0028-0026-0027-0029`, the product owner's decision of 2026-10-28): `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --all` at the integration commit 205b8eb → `verification passed` (`total: 1764.0 s for 72 test(s)`, 2026-10-28; also the milestone before the push); after the verifiers' documentation fixes, `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed 205b8eb --all` at 13474a8 → `verification passed (--changed: 8 of 72 tests)`.
+- Risk tier: standard; the security pass run too (C9: publication can't be undone).
+- Reviews: bootstrap mode: 1 round, on 0029's own commits; bugs (`code-review high`) 9 fixed (e527fe1) / 1 answered; security (`security-review`): no finding (the workflow's triggers and permissions unchanged, outputs through `env:`, a copy only from an index; every `keycloak/` version and its provenance hold no secret).
+  - answered: `host_path` defined again in the facts test (pre-existing, as in a dozen tests).
+- After the verifier: `CLAUDE.md` called the package public before the product owner's step; `docs/demo-setup.md` said 0029 had checked each version (step 7 does, before publication) (e52b4fd).
+- Mutation checks (the plan's; throw-away worktree): `,cimd` removed from `keycloak/Dockerfile` → `tests/0029-description.sh` `2 check(s) failed` (KC_FEATURES named both ways, the reference); a comment in `keycloak/HealthCheck.java` → `1 check(s) failed` (the reference); the same with the reference updated, no changelog entry → `no changelog entry for 26.8.1-c0e38e668069` (AC-08); another hash in the description, the workflow's block by hand → `::error::keycloak-image.properties names …-0123456789ab, keycloak/ gives …-33909cd89858`, exit 1 (C4). The verifier re-ran the AC-08 chain (and exit 0 once an entry is added).
+- Verifier: 8/8 criteria OK for what runs before delivery — table below.
+- Not verifiable here: AC-01 under Git Bash (no Windows workstation: the form check stands in); AC-03, AC-05 and AC-06 on the published image: after delivery, the plan's steps 6 to 9 (the push's run, the product owner's GHCR checks, the package made public, the anonymous checks).
+- Files outside the plan: none (`docs/demo-setup.md`'s visibility step: Deviations, the review round).
+- Pre-existing findings: none.
+- Details left (not KO): whether GHCR's `:33909cd89858` is an index is seen at the first run (the tag step refuses otherwise).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 | OK (bash); Git Bash not verifiable here | `ok - (a) … no CR`, `ok - (b) sourced by bash, each value is its line's text`; LF by `.gitattributes` |
+| AC-02 | OK | `(c)` both ways, on copies; `,cimd` removed → named |
+| AC-03 | OK before delivery (the local image); the published one after | `ok - (a) c4-infra/keycloak: org.opencontainers.image.version is 26.8.1`, its KC_* the description's |
+| AC-04 | OK | `started with KC_DB=dev-file and start-dev: ready`, `/auth` 200, the three features enabled, no other preview/experimental one, the three login themes |
+| AC-05 | OK before delivery; the published versions at step 7 | no credential, the files listed (505, 519), only the expected ones, no realm |
+| AC-06 | OK before delivery; the run after it | the deployment keeps the tree's tag (`…:33909cd89858`); the workflow's block run as it is |
+| AC-07 | OK | `(g)` and the README section read against AC-07's list; `docs/migration.md` step 7 |
+| AC-08 | OK | the chain above: reference KO, then `no changelog entry for …` |
