@@ -32,6 +32,7 @@ bash ./networks.sh compose-file
 # image with the content of keycloak/: another reference is another version. A first deployment, or
 # the same image, dumps nothing.
 source ./registry.sh
+database_before=$(docker inspect -f '{{.Id}}' c4-infra.keycloak-db 2> /dev/null | tr -d '\r' || true)
 stack_env_read keycloak_image KC_IMAGE
 running_image=$(docker inspect -f '{{.Config.Image}}' c4-infra.keycloak 2> /dev/null | tr -d '\r' || true)
 if [ -n "$running_image" ] && [ "$running_image" != "$keycloak_image" ]; then
@@ -39,6 +40,16 @@ if [ -n "$running_image" ] && [ "$running_image" != "$keycloak_image" ]; then
   docker compose up -d --wait keycloak-db < /dev/null
   bash ./demo/backup.sh --before-upgrade < /dev/null
   docker compose stop keycloak < /dev/null
+fi
+# A new image of Keycloak's database under the same tag (postgres:18.6 republished upstream, intent
+# 0024), or new settings, recreate it: it comes up first, on its own, and a running Keycloak is
+# restarted on it, before anything meets a Keycloak still holding the former database's connections
+docker compose up -d --wait keycloak-db < /dev/null
+if [ -n "$database_before" ] \
+  && [ "$(docker inspect -f '{{.Id}}' c4-infra.keycloak-db | tr -d '\r')" != "$database_before" ] \
+  && [ "$(docker inspect -f '{{.State.Running}}' c4-infra.keycloak 2> /dev/null | tr -d '\r')" = true ]; then
+  echo "Keycloak's database recreated (its image or its settings changed): Keycloak restarted on it"
+  docker compose restart keycloak < /dev/null
 fi
 # --wait: fails, with the state printed, unless every service with a healthcheck reports healthy
 # within the timeout
