@@ -21,6 +21,7 @@ work=$(mktemp -d)
 repo=$work/repo
 other=$work/other
 export SUITE_LOCK_NAME=c4-infra.suite-lock-0017-$$
+export STAND_IN_NAME=c4-infra-stand-in-0017-$$ STAND_IN_VOLUME=c4-infra-stand-in-0017-$$-docker
 cleanup() { # the tests of the runs killed or interrupted below, and their sleep
   local pid
   for pid in $(cat "$work"/pid-kill-9-* "$work"/pid-interrupted-* 2> /dev/null); do
@@ -85,6 +86,17 @@ ran_exactly() { # <log> <names>
   [ "$(ran "$1")" = "$2" ] || { echo "ran: $(ran "$1")"; cat "$work/$1"; return 1; }
 }
 
+# A run with a stand-in test prints each block as its test ends (0022's lanes): the set of tests,
+# and the order of those outside the stand-in lanes
+ran_set() { # <log> <names, sorted>
+  [ "$(ran "$1" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//')" = "$2" ] || { cat "$work/$1"; return 1; }
+}
+
+ran_others_in_order() { # <log> <names>
+  [ "$(ran "$1" | tr ' ' '\n' | grep -v '\.stand-in$' | tr '\n' ' ' | sed 's/ $//')" = "$2" ] \
+    || { cat "$work/$1"; return 1; }
+}
+
 skipped_for() { # <log> <name> <reason>
   grep -qxF "== tests/$2.sh: skipped ($3)" "$work/$1" || { cat "$work/$1"; return 1; }
 }
@@ -118,7 +130,8 @@ check "AC-01: each test's duration, then the total" has_durations plain.log
 check "AC-01: the slowest first" slowest_order plain.log "0001-alpha 0002-beta"
 check "plain: its last line" test "$(tail -n 1 "$work/plain.log")" = "verification passed"
 suite all.log --all
-check "--all: runs every test, in order" ran_exactly all.log "0001-alpha 0002-beta 0003-gamma-facts 0004-delta.stand-in"
+check "--all: runs every test" ran_set all.log "0001-alpha 0002-beta 0003-gamma-facts 0004-delta.stand-in"
+check "--all: those outside the stand-in lanes in order" ran_others_in_order all.log "0001-alpha 0002-beta 0003-gamma-facts"
 check "AC-01: --all, the slowest first" slowest_order all.log "0001-alpha 0003-gamma-facts 0002-beta 0004-delta.stand-in"
 
 touch "$work/fail-0002-beta"
@@ -145,7 +158,7 @@ check "AC-02: the others skipped, not concerned" skipped_for unstaged.log 0002-b
 check "AC-02: the stand-in one declaring it, for --all" skipped_for unstaged.log 0004-delta.stand-in "--all runs it"
 check "AC-02: its last line says so" test "$(tail -n 1 "$work/unstaged.log")" = "verification passed (--changed: 1 of 4 tests)"
 suite unstaged-all.log --all --changed
-check "AC-02: with --all, the stand-in one too" ran_exactly unstaged-all.log "0001-alpha 0004-delta.stand-in"
+check "AC-02: with --all, the stand-in one too" ran_set unstaged-all.log "0001-alpha 0004-delta.stand-in"
 git_ checkout -q a.sh
 
 git_ switch -q -c work
