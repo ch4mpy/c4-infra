@@ -14,7 +14,8 @@
 #                                   container starts, a project that leaves its isolation (below),
 #                                   then makes sure of the application's network c4-infra.<application>
 #                                   (networks.sh ensure)
-#   sudo c4-app down                stops and removes the project's containers (its volumes stay)
+#   sudo c4-app down                stops and removes the project's containers and networks by the
+#                                   project's name, reading no compose file (its volumes stay)
 #   sudo c4-app register <option>…  bash /home/c4-infra/c4-infra/register-app.sh --app <application>
 #                                   with register-app.sh's options (README.md) but --app: paths are
 #                                   relative to ~/<application>/, and --rabbitmq-password-env <VAR>
@@ -33,34 +34,32 @@
 # its behalf. The project's name is always the application's: both composes get -p <application>,
 # which wins over a top-level name: of the application's file.
 #
-# `up`, `down` and `pull` all check that model first, before root's compose touches it (intent 0007,
-# RQ-09): compose runs a provider's and a hook's executables, so an unchecked model must never reach
-# it. The check is an allowlist — the top-level keys, the service keys, and the sub-keys/values of
-# the nested objects that can escape (build, deploy, security_opt, volumes and networks entries) that
-# an application may use; anything else is refused, naming the service (or network/volume) and the
-# key (CHECKS below; the list is also in README.md, "Accounts"). What is allowed, in short:
+# `up` and `pull` check that model first, before root's compose touches it (intent 0007, RQ-09):
+# compose runs a provider's and a hook's executables, so an unchecked model must never reach it.
+# `down` hands compose no model at all (intent 0011): it stops the project by its name, whatever the
+# file holds now. The check is an allowlist — the top-level keys, the service keys, and the
+# sub-keys/values of the nested objects that can escape (deploy, security_opt, volumes and networks
+# entries) that an application may use; anything else is refused, naming the service (or
+# network/volume) and the key (CHECKS below; the list is also in README.md, "Accounts"). What is
+# allowed, in short:
 #   - top level: services, networks, volumes, secrets, configs;
-#   - a service: its image or its build (not both), container_name and network aliases under
+#   - a service: its image (the demo host builds none: the application's CI pushes its images to a
+#     registry, intent 0011), container_name and network aliases under
 #     <application>., its command/entrypoint/environment/env_file, expose (never ports), its own
 #     networks and named volumes, read-only bind mounts inside /var/lib/c4-apps/<application>/,
 #     healthcheck, depends_on, resource limits, and the usual hardening (read_only, cap_drop, user,
 #     tmpfs, init, security_opt: no-new-privileges). A service name is [a-z0-9_-]+ (no dot: a dotted
 #     name would be an alias on the shared network).
-#   - refused with their own clearer message: a service named after a shared service (keycloak,
-#     mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db) or the shared host (INFRA_HOST); a
+#   - refused with their own clearer message: a service that builds; a service named after a shared
+#     service (keycloak, mailpit, rabbitmq, grafana-lgtm, reverse-proxy, keycloak-db); a
 #     published port; privileged, cap_add, devices, device_cgroup_rules, a deploy reservation of host
 #     devices; network_mode, links, external_links, volumes_from; pid/ipc/uts/userns_mode/cgroup set
 #     to host or another container;
 #     a read-write bind mount, or one of the staging root or outside it (the Docker socket, another
 #     application's files…); an external network or volume, one with a name or driver of its own, or
-#     driver_opts; a build context or Dockerfile outside the staging tree; a service that builds and
-#     sets an image, or whose name has a -. Compose names a built image <project>-<service>, in the
-#     daemon every application shares: an image name of the application's choosing could be another
-#     application's, which root's build would replace for that application's next up; and with a -
-#     in a service's name, application a's b-c and application a-b's c would both build a-b-c.
+#     driver_opts.
 #   - refused by the allowlist (not an application's to set): use_api_socket, post_start/pre_stop
-#     hooks, a provider service, build.network/privileged/entitlements/ssh/tags (tags names the image
-#     too), and anything else not listed above.
+#     hooks, a provider service, and anything else not listed above.
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -179,26 +178,22 @@ read_model() {
 
 # What leaves the application's isolation: an allowlist (the header's list; README's too). The keys
 # an application may set — top-level, per service, and the sub-keys/values of the nested objects that
-# can escape (build, deploy, security_opt, volumes and networks entries) — are listed; anything else
+# can escape (deploy, security_opt, volumes and networks entries) — are listed; anything else
 # is refused, naming the service (or network/volume) and the key. The escapes a specific message
 # reads more clearly keep that message. One line per refusal.
 CHECKS=$(cat <<'JQ'
 def inside: . as $p | (($p == $root) or ($p | startswith($root + "/"))) and (($p | test("(^|/)[.][.](/|$)")) | not);
-def remote: test("^(https?://|git://|git@|docker-image://|service:)");
-def reserved: ["keycloak", "mailpit", "rabbitmq", "grafana-lgtm", "reverse-proxy", "keycloak-db"]
-  + (if $host == "" then [] else [$host] end);
+def reserved: ["keycloak", "mailpit", "rabbitmq", "grafana-lgtm", "reverse-proxy", "keycloak-db"];
 def svc_allowed: [
   "image", "container_name", "command", "entrypoint", "environment", "env_file", "expose",
   "networks", "volumes", "depends_on", "healthcheck", "restart", "labels", "annotations", "user",
   "working_dir", "hostname", "read_only", "cap_drop", "init", "tmpfs", "stop_grace_period",
   "stop_signal", "stop_timeout", "mem_limit", "mem_reservation", "memswap_limit", "cpus", "cpuset",
-  "cpu_shares", "shm_size", "pids_limit", "ulimits", "deploy", "build", "secrets", "configs",
+  "cpu_shares", "shm_size", "pids_limit", "ulimits", "deploy", "secrets", "configs",
   "pull_policy", "platform", "stdin_open", "tty", "security_opt"];
-def svc_refused: ["network_mode", "links", "external_links", "ports", "privileged", "cap_add",
+def svc_refused: ["build", "network_mode", "links", "external_links", "ports", "privileged", "cap_add",
   "devices", "device_cgroup_rules", "pid", "ipc", "uts", "userns_mode", "cgroup", "volumes_from"];
 def top_allowed: ["name", "services", "networks", "volumes", "secrets", "configs"];
-def build_allowed: ["context", "dockerfile", "additional_contexts", "args", "target", "labels",
-  "cache_from", "no_cache", "pull", "platforms"];
 def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "update_config",
   "rollback_config", "placement", "mode", "endpoint_mode"];
 
@@ -232,6 +227,8 @@ def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "updat
   (if ($s | IN(reserved[])) then "service \($s): named after a shared service" else empty end),
   ($v | keys[] | select(IN(svc_allowed[]) or IN(svc_refused[]) | not)
     | "service \($s): \(.) is not allowed (outside the isolation allowlist: README, \"What an application's deployment does\")"),
+  (if $v.build != null
+   then "service \($s): build: the demo host runs the images the application's CI pushes to a registry (README.md, \"Accounts\")" else empty end),
   (if $v.network_mode != null then "service \($s): network_mode \($v.network_mode)" else empty end),
   (if ($v.links // []) != [] then "service \($s): links" else empty end),
   (if ($v.external_links // []) != [] then "service \($s): external_links" else empty end),
@@ -259,34 +256,14 @@ def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "updat
   (if ($v.deploy.resources.reservations.devices // []) != []
    then "service \($s): deploy reserves host devices" else empty end),
   (if $v.deploy != null then ($v.deploy | keys[] | select(IN(deploy_allowed[]) | not)
-    | "service \($s): deploy.\(.) is not allowed") else empty end),
-  (if $v.build != null then
-     # the image a service builds is compose's <project>-<service>, in the daemon every application
-     # shares: no name of its own (image, build.tags: another application's, which its next up would
-     # run), and no - in the service's name (app a's b-c and app a-b's c would both be a-b-c)
-     (if $v.image != null
-      then "service \($s): image \($v.image) with build (a service that builds takes no image: compose names it \($app)-\($s))" else empty end),
-     (if ($s | contains("-"))
-      then "service \($s): a service that builds has no - in its name (\($app)-\($s) would also be the image of an application \($app)-\($s | sub("-.*$"; ""))'s service \($s | sub("^[^-]*-"; "")))" else empty end),
-     ($v.build | keys[] | select(IN(build_allowed[]) | not)
-       | "service \($s): build.\(.) is not allowed (outside the isolation allowlist)"),
-     (($v.build.context // empty) | select(remote | not) | select(inside | not)
-       | "service \($s): build context \(.), outside \($root)/"),
-     (($v.build.additional_contexts // {}) | to_entries[] | .value | select(remote | not) | select(inside | not)
-       | "service \($s): build context \(.), outside \($root)/"),
-     (($v.build.dockerfile // empty) as $df | ($v.build.context // $root) as $ctx |
-       if ($df | startswith("/")) then (if ($df | inside) then empty else "service \($s): Dockerfile \($df), outside \($root)/" end)
-       elif ($ctx | remote) or (($ctx | inside) | not) then empty
-       else (($ctx + "/" + $df) | if inside then empty else "service \($s): Dockerfile \($df) resolves outside \($root)/" end) end)
-   else empty end))
+    | "service \($s): deploy.\(.) is not allowed") else empty end))
 JQ
 )
 
 # The model refused, before any container starts, when it leaves the application's isolation
 check_model() {
-  local host refusals
-  host=$(dotenv_value "$STACK/.env" INFRA_HOST) || fail "INFRA_HOST of $STACK/.env can't be read (above)"
-  if ! refusals=$(jq -r --arg app "$app" --arg root "$staging" --arg host "$host" "$CHECKS" "$model"); then
+  local refusals
+  if ! refusals=$(jq -r --arg app "$app" --arg root "$staging" "$CHECKS" "$model"); then
     fail "the model of $source_dir/compose.yml can't be checked (above): refused"
   fi
   if [ -n "$refusals" ]; then
