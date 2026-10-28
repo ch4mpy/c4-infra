@@ -1,11 +1,11 @@
 # Spec: The demo host doesn't bound the logs of an application's containers
 
 - Intent: [0026](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: the isolation between applications, the change touches `demo/c4-app`'s model check, 0007's gate, and PA-03 B would put every container's output within every application's reach; personal data, how long Loki keeps logs that carry user ids (README, "Reachable from an application's network"); tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README design (one compose base, dev and demo alike) and "Accounts", 0002 (accounts outside the `docker` group, one root-owned command), 0007 (one network per application, the allowlist; PA-02 C, Grafana LGTM attached as it is), 0011's accepted risk (a leaked deployment key)
-- Approved: —
+- Approved: 2026-10-28, Jérôme Wacongne (product owner, and tech lead for the high risk; every point of attention decided as recommended)
 
 ## Summary
 
@@ -81,7 +81,7 @@ None.
 - Options: A the daemon's default: `vps-bootstrap.sh` writes `daemon.json` and restarts Docker; bounds every container created afterwards, any account's; on a running host, the operator re-runs it, every container stops, and existing ones stay unbounded until recreated (RQ-03 then needs `c4-app` to force it); no systemd in the stand-in / B allowed per service: `c4-app` accepts a bounded `logging`; a service without one is still unbounded, so B alone fails RQ-01 / C imposed by `c4-app`: `logging` stays refused and `c4-app` sets the bound on every service of the model it runs; reaches a host with the stack's next deployment (`demo/deploy.sh:14-17` installs `c4-app`), recreates the containers at the next `up` (to measure: compose's config hash), no Docker restart, provable on the stand-in; covers only what `c4-app` starts, the only way an application starts anything / D A and C
 - Recommendation: C: enforced at the one gate an application goes through, no restart of the host's Docker, RQ-03 met; A would add only what `c4-infra` starts by hand, which RQ-05 covers.
 - Decides: tech lead
-- Decision: to decide
+- Decision: C, as recommended (tech lead, Jérôme Wacongne, 2026-10-28)
 
 ### PA-02: The bound's driver and size
 
@@ -89,7 +89,7 @@ None.
 - Options: A `json-file`, 10m × 3 (30 MB), the stack's own / B `local`, Docker's defaults 20m × 5, compressed (100 MB) / C `local`, 10m × 3, compressed
 - Recommendation: A: one value on the host, the stack's; files a collector can read if PA-03 B ever comes; `docker logs` reads both drivers.
 - Decides: PO
-- Decision: to decide
+- Decision: A, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-03: The applications' logs in Loki
 
@@ -97,7 +97,7 @@ None.
 - Options: A each application exports its logs by OTLP to `grafana-lgtm` on its network, as it chooses; docs/migration.md says how; the stack reads no Docker file / B the collector reads every container's Docker files (`/var/lib/docker/containers` mounted into `grafana-lgtm`, `json-file` required): every container's output in Loki, the stack's and the databases' included, readable from every application's network: against RQ-08 and the intent's constraint / C neither: today, undocumented
 - Recommendation: A: each application keeps choosing what it puts where every other can read; B widens 0007's accepted exposure to everything every container prints.
 - Decides: PO (B: tech lead too)
-- Decision: to decide
+- Decision: A, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-04: Loki's retention, and the other signals'
 
@@ -105,7 +105,7 @@ None.
 - Options: value: A 7 days (the Keycloak dumps' rotation) / B 14 days (Tempo's default) / C 30 days. Scope: X logs only, the others recorded at their defaults / Y the same value pinned for logs, traces and metrics (Pyroscope's if the plan finds a setting). Where: the compose base, dev too / the demo override only
 - Recommendation: B, Y, the compose base: a request's logs and traces expire together, a pinned value survives an upgrade, dev behaves as the demo.
 - Decides: PO
-- Decision: to decide
+- Decision: B, Y, the compose base, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-05: The stack's own services
 
@@ -113,7 +113,7 @@ None.
 - Options: A keep `default-logging`, aligned on PA-02's value / B drop it on the demo host, the daemon's default applying (PA-01 A or D only; dev keeps it)
 - Recommendation: A: `compose.yml` stays self-sufficient, the workstation's Docker Desktop is never configured by the stack.
 - Decides: tech lead
-- Decision: to decide
+- Decision: A, as recommended (tech lead, Jérôme Wacongne, 2026-10-28)
 
 ## Acceptance criteria
 
@@ -135,3 +135,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-28 — first version
+- v1 — 2026-10-28 — approved: every point of attention decided as recommended (Jérôme Wacongne, PO and tech lead)
