@@ -295,7 +295,9 @@ or theirs).
   the account and probes every realm of the registry. Only when the account is missing, its secret
   isn't `.env`'s, or a realm that exists isn't granted to it, does it log in as an administrator to
   repair it: the bootstrap administrator of `.env` while it works, else `KC_SETUP_ADMIN_USERNAME` /
-  `KC_SETUP_ADMIN_PASSWORD` from the environment, else, on a terminal, the one it asks for;
+  `KC_SETUP_ADMIN_PASSWORD` from the environment, else, on a terminal, the one it asks for. A
+  Keycloak that doesn't answer (starting, its database away) is retried for 60 s, then reported as
+  such, exit 1: only a login Keycloak refuses leads to an administrator (intent 0024);
 - `rotate` (dev): a new secret into `.env`, then `ensure`. On the demo host, the secret is the
   `demo` environment's ([docs/demo-setup.md](docs/demo-setup.md), "Rotating the registration
   secret").
@@ -642,3 +644,10 @@ above, which leave none of the tables the migration added (not
 merge that brought the new one), whose import and Keycloak read the restored database (neither
 reads one the newer version migrated). In dev, `up.sh` stops Keycloak when its image changed, and
 dumps nothing.
+
+**A new image of Keycloak's database** (another tag, or the same tag published again upstream, as
+`postgres:18.6` was on 2026-10-28: intent 0024) recreates its container on the same volume.
+`demo/deploy.sh` brings the database up first, on its own, and restarts a running Keycloak on it
+("Keycloak's database recreated…: Keycloak restarted on it"), before the rest of the stack and the
+registration account: Keycloak would otherwise keep the former container's connections. Logins fail
+during that restart; sessions survive it (persisted in the database).
