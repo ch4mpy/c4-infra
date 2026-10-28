@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (verification of 0017, 2026-10-28)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
