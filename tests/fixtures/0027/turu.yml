@@ -1,0 +1,10 @@
+# 0027 fixture (tests/0027-isolation.stand-in.sh): Turu's project, declaring nothing to back up
+services:
+  web:
+    image: caddy:2.11.4-alpine
+    container_name: turu.web
+    command: [caddy, respond, --listen, ':7080', turu]
+    networks: [c4-infra.turu]
+networks:
+  c4-infra.turu:
+    external: true

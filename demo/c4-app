@@ -108,6 +108,40 @@ EOF
 }
 
 [ "$(id -u)" -eq 0 ] || fail "runs as root, through sudo: sudo c4-app <command>"
+
+# The nightly backup of every application (/etc/cron.d/c4-apps-backup, demo/vps-bootstrap.sh): root's
+# cron only (sudo always sets SUDO_USER); each member of c4-apps backs up as its own account, through
+# its own sudo rule, into its log (0640 root:<app>), between a dated header and the exit status
+nightly() {
+  local members member log code status=0
+  members=$(getent group c4-apps | cut -d: -f4)
+  install -d -m 0755 -o root -g root "$BACKUP_ROOT"
+  for member in ${members//,/ }; do
+    if ! [[ $member =~ ^[a-z][a-z0-9-]*$ ]] || ! getent group "$member" > /dev/null; then
+      echo "c4-app: nightly: $(printf %q "$member") is not an application's account: skipped" >&2
+      status=1
+      continue
+    fi
+    install -d -m 0750 -o root -g "$member" "$BACKUP_ROOT/$member"
+    log=$BACKUP_ROOT/$member/backup.log
+    [ -e "$log" ] || install -m 0640 -o root -g "$member" /dev/null "$log"
+    {
+      echo "== $(date -u '+%Y-%m-%d %H:%M:%S') UTC: nightly backup of $member"
+      code=0
+      runuser -u "$member" -- sudo -n /usr/local/sbin/c4-app backup < /dev/null 2>&1 || code=$?
+      echo "== exit $code"
+    } >> "$log"
+    [ "$code" -eq 0 ] || status=1
+  done
+  return "$status"
+}
+if [ "${1:-}" = nightly ]; then
+  [ -z "${SUDO_USER:-}" ] || fail "nightly is root's cron's (/etc/cron.d/c4-apps-backup), not an application's"
+  [ $# -eq 1 ] || usage
+  nightly
+  exit
+fi
+
 app=${SUDO_USER:-}
 case "$app" in
   '') fail "runs through sudo, from an application's account: sudo c4-app <command>" ;;

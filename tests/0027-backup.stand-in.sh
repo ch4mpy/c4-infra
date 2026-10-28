@@ -20,8 +20,9 @@
 #   - AC-07: slow-up.yml's up running, a backup waits for it, saying so, its stamp no earlier than
 #     up's end;
 #   - AC-08: the tmpfs remounted at 4 GiB, under the floor: the backup is refused, naming the free
-#     space and the floor, the earlier stamps kept, no .partial left, the containers running; so is
-#     `restore <stamp> --yes`, the containers still running.
+#     space and the floor, the earlier stamps kept, no .partial left, the containers running; root's
+#     nightly run (`c4-app nightly`) names the refusal in Faito's log; `restore <stamp> --yes` is
+#     refused too, the containers still running.
 #
 #   bash tests/0027-backup.stand-in.sh
 #
@@ -81,6 +82,11 @@ holds() { # <stamp> <files…>
 rows() { sql "select string_agg(name, ',' order by name) from item"; }
 files() { on_host 'docker exec faito.files ls -1A /srv' | paste -sd' '; }
 changed() { sql "insert into item values ('r3')" && on_host 'docker exec faito.files sh -c "echo b > /srv/b"'; }
+logged_refusal() { # Faito's nightly log ends with the floor's refusal
+  local log
+  log=$(on_host 'cat "$1"' "$BACKUPS/backup.log")
+  [[ $log == *"GiB free on $BACKUP_ROOT, under the floor of 5.0GiB"*"== exit 1" ]] || { echo "$log"; return 1; }
+}
 # what root's compose mounts and runs, staged by c4-app up: every file, with its checksum
 staged() { on_host 'cd /var/lib/c4-apps && find faito .run.faito -type f -exec cksum {} + | LC_ALL=C sort'; }
 
@@ -233,6 +239,12 @@ check "it names the free space and the floor" \
 check "the earlier stamps stay, no .partial left" is "$(entries)" "$before"
 check "faito.files wasn't stopped, and the containers run" \
   eval 'is "$(started faito.files)" "$files_started" && runs faito.db faito.files faito.other'
+on_host '/usr/local/sbin/c4-app nightly' > "$work/nightly-floor.log" 2>&1
+status=$?
+check "root's nightly run, under the floor, exits 1" refused nightly-floor.log
+check "Faito's nightly log names the refusal, the free space and the floor, then exit 1" logged_refusal
+check "the earlier stamps stay, no .partial left, after the nightly run" \
+  is "$(entries | grep -vx backup.log)" "$before"
 as_faito restore-floor.log "sudo c4-app restore $first --yes"
 check "sudo c4-app restore $first --yes is refused" refused restore-floor.log
 check "it names the free space and the floor" \
