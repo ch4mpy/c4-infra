@@ -102,6 +102,7 @@ Usage, from an application's account:
   sudo c4-app register [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
                        [--rabbitmq-user <user> --rabbitmq-password-env <VAR of .env>] [--reset-realms]
   sudo c4-app backup
+  sudo c4-app restore [<stamp> --yes]
 EOF
   exit 2
 }
@@ -141,14 +142,24 @@ if ! flock -n 9; then
 fi
 
 # However the command ends: the incoming copy removed, an unfinished backup removed, the containers a
-# backup stopped started again
+# backup or a restore stopped started again, and a failed restore names the backup of the state before
 partial=
 stopped=()
+restoring=
+safety=
 leave() {
+  local status=$?
   rm -rf "$incoming"
   [ -z "$partial" ] || rm -rf "$partial"
   if [ ${#stopped[@]} -gt 0 ]; then
     docker start "${stopped[@]}" > /dev/null || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+  fi
+  if [ "$status" -ne 0 ] && [ -n "$restoring" ]; then
+    if [ -n "$safety" ]; then
+      echo "c4-app: the restore of backup $restoring failed (above): the state before it is backup $safety (sudo c4-app restore $safety --yes)" >&2
+    else
+      echo "c4-app: the restore of backup $restoring failed (above), before it changed any data" >&2
+    fi
   fi
 }
 trap leave EXIT
@@ -457,17 +468,19 @@ stack_image() {
   printf '%s' "${BASH_REMATCH[1]}"
 }
 
-# What a backup acts on: the containers compose created for the project (the label, which compose
-# sets itself) and named after it, the volumes labelled with it and named <app>_<key>, and what each
-# service declares (c4-infra.backup: postgres or volumes). Sets dump_of (service → container),
-# volumes_of (service → volumes), mounters_of (volume → containers), unbacked and tar_image; or
-# nothing, a message, when there is nothing to back up. A refusal stops the command.
-declare -A dump_of=() volumes_of=() mounters_of=()
+# What a backup or a restore acts on: the containers compose created for the project (the label,
+# which compose sets itself) and named after it, the volumes labelled with it and named <app>_<key>,
+# and what each service declares (c4-infra.backup: postgres or volumes). Sets dump_of (service →
+# container), volumes_of (service → volumes), mounters_of (volume → containers), service_of (container
+# → service), running, unbacked and tar_image; or nothing, a message, when there is nothing to back
+# up. A refusal stops the command.
+declare -A dump_of=() volumes_of=() mounters_of=() service_of=()
+running=()
 unbacked=()
 nothing=
 tar_image=
 select_items() {
-  local ids id info name running service kind mounts volume containers=0 runs=0
+  local ids id info name state service kind mounts volume containers=0
   local -A project_volume=() kind_of=() count_of=() container_of=() running_of=() mounts_of=() covered=()
   ids=$(docker volume ls -q --filter "label=com.docker.compose.project=$app") || fail "docker volume ls failed (above)"
   for volume in $ids; do
@@ -478,13 +491,14 @@ select_items() {
   ids=$(docker ps -aq --no-trunc --filter "label=com.docker.compose.project=$app") || fail "docker ps failed (above)"
   for id in $ids; do
     info=$(docker inspect -f '{{.Name}} {{.State.Running}}' "$id") || fail "docker inspect $id failed (above)"
-    read -r name running <<< "$info"
+    read -r name state <<< "$info"
     [[ $name == "/$app."* || $name == "/$app-"* ]] || continue
     name=${name#/}
     containers=$((containers + 1))
-    [ "$running" != true ] || runs=$((runs + 1))
     service=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id")
     [[ $service =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "container $name: service '$(printf %q "$service")', not a service's name: refused"
+    service_of[$name]=$service
+    [ "$state" != true ] || running+=("$name")
     kind=$(docker inspect -f '{{index .Config.Labels "c4-infra.backup"}}' "$id")
     case "$kind" in
       '' | postgres | volumes) ;;
@@ -501,13 +515,13 @@ select_items() {
     kind_of[$service]=$kind
     count_of[$service]=$((${count_of[$service]:-0} + 1))
     container_of[$service]=$name
-    running_of[$service]=$running
+    running_of[$service]=$state
   done
   if [ "$containers" -eq 0 ]; then
     nothing="$app has no container: nothing to back up"
     return
   fi
-  if [ "$runs" -eq 0 ]; then
+  if [ ${#running[@]} -eq 0 ]; then
     nothing="no container of $app runs: nothing to back up"
     return
   fi
@@ -540,14 +554,14 @@ select_items() {
 }
 
 # PA-05: the backups' disk keeps the larger of 5 GiB and 10 % of its size free
-above_floor() {
-  local free size floor
+above_floor() { # [<what is refused>]
+  local what=${1:-backup of $app} free size floor
   read -r free size <<< "$(df -P -B1 "$BACKUP_ROOT" | awk 'NR == 2 { print $4, $2 }')"
   [[ $free =~ ^[0-9]+$ && $size =~ ^[0-9]+$ ]] || fail "the free space of $BACKUP_ROOT can't be read (df, above)"
   floor=$((size / 10))
   [ "$floor" -ge "$FLOOR_MIN" ] || floor=$FLOOR_MIN
   [ "$free" -ge "$floor" ] \
-    || fail "backup of $app refused: $(iec "$free") free on $BACKUP_ROOT, under the floor of $(iec "$floor") (5 GiB, or 10 % of $(iec "$size")): nothing of it is kept, the earlier backups stay"
+    || fail "$what refused: $(iec "$free") free on $BACKUP_ROOT, under the floor of $(iec "$floor") (5 GiB, or 10 % of $(iec "$size")): nothing of it is kept, the earlier backups stay"
 }
 
 # The running containers that mount these volumes, stopped (started again on the way out if the
@@ -571,12 +585,16 @@ stop_mounters() { # <volume>…
   docker stop "${group[@]}" > /dev/null || fail "${group[*]} could not be stopped (above)"
 }
 
-# Containers started again, then waited for: running, and healthy where they have a healthcheck,
-# 300 s at most
+# Containers started again, then waited for
 start_again() { # <container>…
-  local deadline=$((SECONDS + 300)) name state
   [ $# -gt 0 ] || return 0
   docker start "$@" > /dev/null || fail "$* could not be started again (above)"
+  wait_running "$@"
+}
+
+# Running, and healthy where they have a healthcheck: 300 s at most
+wait_running() { # <container>…
+  local deadline=$((SECONDS + 300)) name state
   for name in "$@"; do
     while :; do
       state=$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$name") \
@@ -650,6 +668,130 @@ cmd_backup() {
   take_backup
 }
 
+# A database recreated empty, then its dump restored, in its own container: fixed scripts, its user
+# and database read there and handed to psql as variables (a name with a hyphen stays one identifier)
+RECREATE='db=${POSTGRES_DB:-${POSTGRES_USER:-postgres}}
+maintenance=postgres
+[ "$db" != postgres ] || maintenance=template1
+exec psql -q -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$maintenance" -v db="$db" -v owner="${POSTGRES_USER:-postgres}"'
+RESTORE='exec pg_restore --exit-on-error -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"'
+
+list_backups() {
+  local entry name found=
+  for entry in "$backups"/*; do
+    name=${entry##*/}
+    [[ -d $entry && $name =~ ^[0-9]{8}-[0-9]{6}$ ]] || continue
+    [ -n "$found" ] || echo "c4-app: the backups of $app, the latest last (sudo c4-app restore <stamp> --yes restores one):"
+    found=1
+    echo "  $name  $(iec "$(du -sb "$entry" | cut -f1)")"
+  done
+  [ -n "$found" ] || echo "c4-app: $app has no backup (sudo c4-app backup takes one)"
+}
+
+# Each file of the backup matched, before anything stops: <service>.dump to a running database the
+# project declares postgres, <service>.<key>.tar to the volume <app>_<key>, which it declares
+# volumes (the backup of the state before then holds both). Sets dump_into (file → container) and
+# tar_into (file → volume).
+declare -A dump_into=() tar_into=()
+match_backup() { # <stamp>
+  local entry file service volume
+  local -A copied=()
+  for service in "${!volumes_of[@]}"; do
+    # shellcheck disable=SC2086 # volume names, checked: no space, no glob
+    for volume in ${volumes_of[$service]}; do
+      copied[$volume]=1
+    done
+  done
+  for entry in "$backups/$1"/*; do
+    [ -e "$entry" ] || continue
+    file=${entry##*/}
+    if [[ $file =~ ^([a-z0-9][a-z0-9_-]*)\.dump$ ]]; then
+      service=${BASH_REMATCH[1]}
+      [ -n "${dump_of[$service]:-}" ] \
+        || fail "$file of backup $1: $app has no running service $service declared c4-infra.backup postgres: restore refused"
+      dump_into[$file]=${dump_of[$service]}
+    elif [[ $file =~ ^[a-z0-9][a-z0-9_-]*\.([A-Za-z0-9][A-Za-z0-9_.-]*)\.tar$ ]]; then
+      volume=${app}_${BASH_REMATCH[1]}
+      [ -n "${copied[$volume]:-}" ] \
+        || fail "$file of backup $1: $volume is no volume of a service $app declares c4-infra.backup volumes: restore refused"
+      tar_into[$file]=$volume
+    else
+      fail "backup $1 holds $(printf %q "$file"), neither a dump nor a volume's archive: restore refused"
+    fi
+  done
+  [ ${#dump_into[@]} -gt 0 ] || [ ${#tar_into[@]} -gt 0 ] || fail "backup $1 of $app is empty: restore refused"
+}
+
+# PA-06 A: every check first, then every running container but the databases stopped, the state
+# before backed up, each database recreated and its dump restored, each volume emptied and filled
+# again, and the containers started in compose's order (depends_on), then waited for
+cmd_restore() {
+  local wanted= yes= file name
+  local -a stop=() services=()
+  local -A database=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes) yes=1 ;;
+      *) [ -z "$wanted" ] || usage; wanted=$1 ;;
+    esac
+    shift
+  done
+  if [ -z "$wanted" ]; then
+    [ -z "$yes" ] || usage
+    list_backups
+    return 0
+  fi
+  [[ $wanted =~ ^[0-9]{8}-[0-9]{6}$ ]] \
+    || fail "no backup $(printf %q "$wanted") of $app: a backup is named by its stamp, YYYYMMDD-HHMMSS (sudo c4-app restore lists them)"
+  backup_dirs
+  [ -d "$backups/$wanted" ] || fail "no backup $wanted of $app (sudo c4-app restore lists them)"
+  [ -n "$yes" ] \
+    || fail "restore $wanted replaces $app's databases and volumes with that backup's, once the state before is backed up: sudo c4-app restore $wanted --yes"
+  select_items
+  [ -z "$nothing" ] || fail "$nothing: restore refused"
+  match_backup "$wanted"
+  above_floor "restore of $app (the state before backed up first)"
+
+  restoring=$wanted
+  for name in "${dump_of[@]}"; do
+    database[$name]=1
+  done
+  for name in "${running[@]}"; do
+    [ -n "${database[$name]:-}" ] || stop+=("$name")
+  done
+  stopped+=("${stop[@]}")
+  [ ${#stop[@]} -eq 0 ] || docker stop "${stop[@]}" > /dev/null || fail "${stop[*]} could not be stopped (above)"
+  take_backup
+  safety=$stamp
+  for file in $(sorted "${!dump_into[@]}"); do
+    printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' \
+      | docker exec -i "${dump_into[$file]}" sh -c "$RECREATE" \
+      || fail "${dump_into[$file]}: its database could not be recreated (above)"
+    docker exec -i "${dump_into[$file]}" sh -c "$RESTORE" < "$backups/$wanted/$file" \
+      || fail "${dump_into[$file]}: $file could not be restored (above)"
+  done
+  # a database that mounts a restored volume stops too
+  # shellcheck disable=SC2046 # volume names, checked: no space, no glob
+  stop_mounters $(sorted "${tar_into[@]}")
+  for file in $(sorted "${!tar_into[@]}"); do
+    docker run -i "${THROWAWAY[@]}" --mount "type=volume,src=${tar_into[$file]},dst=/data" --entrypoint sh "$tar_image" \
+      -c 'find /data -mindepth 1 -delete && tar --numeric-owner -xpf - -C /data' < "$backups/$wanted/$file" \
+      || fail "${tar_into[$file]}: $file could not be restored (above)"
+  done
+  for name in "${stopped[@]}"; do
+    services+=("${service_of[$name]}")
+  done
+  # from / with no file, as down: compose finds the containers by the project's label, which it sets
+  # itself, and starts them in their depends_on order (plan 0027, facts a and b)
+  # shellcheck disable=SC2046 # service names, checked: no space, no glob
+  [ ${#services[@]} -eq 0 ] || docker compose -p "$app" start $(sorted "${services[@]}" | uniq) > /dev/null \
+    || fail "${stopped[*]} could not be started again (above)"
+  wait_running "${stopped[@]}"
+  stopped=()
+  restoring=
+  echo "c4-app: backup $wanted of $app restored; the state before it is backup $safety"
+}
+
 command=${1:-}
 [ $# -eq 0 ] || shift
 case "$command" in
@@ -673,5 +815,6 @@ case "$command" in
     ;;
   register) cmd_register "$@" ;;
   backup) cmd_backup "$@" ;;
+  restore) cmd_restore "$@" ;;
   *) usage ;;
 esac
