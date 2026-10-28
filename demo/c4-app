@@ -169,7 +169,8 @@ snapshot_src() {
 # The compose model, read as the application from the incoming copy, into the root-only model file
 # root's compose runs (root's redirection and mv, in $snap: no container can plant a symlink there).
 # Its paths under the copy become the staging directory's, which the containers mount; one the
-# rewrite would miss stays outside it, and check_model refuses it.
+# rewrite would miss stays outside it, and check_model refuses it. Root writes the checked model to a
+# new file: the application's process (its compose plugin, under its HOME) never holds it open.
 read_model() {
   local next=$model.new config=$model.config
   [ -f "$incoming/compose.yml" ] || fail "$source_dir/compose.yml is missing"
