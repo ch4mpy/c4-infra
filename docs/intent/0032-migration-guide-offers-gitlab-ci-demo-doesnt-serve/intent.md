@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (the product owner's decision of 2026-10-28, after 0028's delivery)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
