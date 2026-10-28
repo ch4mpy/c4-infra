@@ -138,8 +138,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 ## On the demo host
 
-1. Deploy `c4-infra` on the VPS first (its README). Its Caddy takes ports 80 and 443: a project
-   still deploying its own Caddy on the same host must move in the same maintenance window.
+1. c4-infra runs on the demo host (deployed since 2026-10-23, its README). Its Caddy holds ports 80
+   and 443: a project's own Caddy can't run beside it, so a project still deploying one on that
+   host moves in one maintenance window.
 2. **Its account** on the host, `<project>`, named after its registry entry, opened by its own key
    only: [demo-setup.md](demo-setup.md), step 9, "Adding an application" (its registry entry
    deployed, its key pair, `vps-bootstrap.sh app <project> '<key>'`, its secrets `VPS_HOST`,

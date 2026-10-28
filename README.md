@@ -555,7 +555,8 @@ no RabbitMQ UI), Mailpit asking for its own credentials; plain HTTP inside the D
 
 Step by step in [docs/demo-setup.md](docs/demo-setup.md): VPS and DNS, deployment key, host
 preparation, host key, passwords (three of them fixed by the first deployment), the GitHub `demo`
-environment, first deployment and checks. Not set up yet (postponed on 2026-10-21).
+environment, first deployment and checks. Deployed since 2026-10-23 (the first successful run of
+`deploy-demo.yml`).
 
 ### Accounts
 
