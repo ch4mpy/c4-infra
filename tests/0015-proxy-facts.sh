@@ -23,7 +23,7 @@
 # Needs the image c4-infra/reverse-proxy (up.sh builds it). Its containers and network are removed
 # whatever happens.
 #
-# covers: reverse-proxy/
+# covers: reverse-proxy/ caddy/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

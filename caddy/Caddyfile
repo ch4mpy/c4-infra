@@ -43,7 +43,15 @@ import env/{$INFRA_ENV}.caddy
 	encode zstd gzip
 	import env-tls
 	import common-headers
+	# Caddy logs an error handle_errors handles at DEBUG only: an access log of those requests alone,
+	# with their cause, keeps an upstream that doesn't answer in `docker compose logs reverse-proxy`
+	log {
+		output stderr
+	}
+	log_skip
 	handle_errors {
+		vars log_skip false
+		log_append error {err.message}
 		import common-headers
 		@app-headers vars app_headers yes
 		handle @app-headers {

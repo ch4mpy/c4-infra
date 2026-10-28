@@ -19,7 +19,9 @@
 #   - AC-05: /ui/x (no headers=app, a front end sending its own policy): today's headers, two
 #     policies, the shared one first;
 #   - AC-08: the proxy's own responses, verif's gateway 502, /ui-down/x's 502, /ui-upload/x's 413, the
-#     shared host's 502: nosniff, Referrer-Policy, no Server, HSTS on the demo only;
+#     shared host's 502: nosniff, Referrer-Policy, no Server, HSTS on the demo only; the front ends'
+#     (without headers=app) keep the three shared values; the proxy logs each, with its cause, and
+#     not a request it served;
 #   - AC-06: register-app.sh with headers=app on the gateway refused in dev, naming the line, before
 #     any docker call (a fake docker).
 #
@@ -36,7 +38,7 @@ source tests/lib/stubs.sh
 
 PROXY_IMAGE=c4-infra/reverse-proxy
 UPSTREAM_IMAGE=caddy:2.11.4-alpine
-NAME=c4-infra-test-0015
+NAME=c4-infra-test-0015-headers
 HOST=infra.c4-soft.com
 DEV_PORT=48451
 DEMO_PORT=48452
@@ -111,6 +113,10 @@ common() { # <dev|demo>: what every response of every site carries
     absent strict-transport-security
   fi
 }
+logged() { # <text> <text>: a line of the proxy's log holds both
+  docker logs "$NAME-$env" 2>&1 | grep -F -- "$1" | grep -qF -- "$2" \
+    || { echo "log:"; docker logs --tail 5 "$NAME-$env" 2>&1 | cut -c1-300; return 1; }
+}
 ready() {
   local waited
   for ((waited = 0; waited < 40; waited++)); do
@@ -163,12 +169,16 @@ for env in dev demo; do
   fetch verif-down.c4-soft.com /ui-down/x
   check "$env, AC-08: a ui front end that doesn't answer: 502" answered 502
   check "$env, AC-08: its 502 carries the common headers" common "$env"
+  check "$env, AC-05: and the three shared values, as before" shared_three
   fetch verif.c4-soft.com /ui-upload/x -X POST --data-binary "@$work/2kb" -H 'Content-Type: text/plain'
   check "$env, AC-08: 2 KB on /ui-upload/x: 413" answered 413
   check "$env, AC-08: the 413 carries the common headers" common "$env"
+  check "$env, AC-05: and the three shared values, as before" shared_three
   fetch "$HOST" /auth/realms/verif
   check "$env, AC-08: the shared host's Keycloak doesn't answer: 502" answered 502
   check "$env, AC-08: its 502 carries the common headers" common "$env"
+  check "$env: the proxy logs the gateway's 502 with its cause" logged '"uri":"/gateway/x"' '"error":"dial tcp: lookup verif.gateway'
+  check "$env: and not a request it served (/fr/x)" eval '! docker logs "$NAME-$env" 2>&1 | grep -F "\"uri\":\"/fr/x\""'
 done
 
 # AC-06: refused in dev before anything is registered

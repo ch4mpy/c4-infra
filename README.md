@@ -444,7 +444,8 @@ next to it):
   [`caddy/Caddyfile`](caddy/Caddyfile)); every response gets `X-Content-Type-Options` and
   `Referrer-Policy`, and no `Server`; `Strict-Transport-Security` on the demo host only. The
   responses the proxy makes itself (a `413` of `max-body=`, a `502` when an upstream doesn't
-  answer, the rate limit's `429`) carry them too (intent 0015).
+  answer, the rate limit's `429`) carry them too (intent 0015), and the proxy logs each of them
+  with its cause (`docker compose logs reverse-proxy`: an access log of those responses only).
 - **`headers=app`** (intent 0015), on a front-end route only: the application's front end owns its
   pages' Content-Security-Policy, `X-Frame-Options` and `Permissions-Policy`. Each one its response
   carries reaches the browser once, unchanged; each one it lacks gets the shared value, header by

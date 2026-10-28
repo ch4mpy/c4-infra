@@ -235,7 +235,7 @@ before=$(faito_site)
 as headers.log faito "sudo c4-app register --proxy routes-headers-app-gateway.routes"
 refused_saying "0015, AC-06: headers=app on the gateway" headers.log \
   "routes-headers-app-gateway.routes:3: headers=app is for a front end (fr, en or ui), not for gateway"
-check "0015, AC-06: Faito's site is as it was" test "$(faito_site)" = "$before"
+check "0015, AC-06: Faito's site is as it was" eval '[ -n "$before" ] && [ "$(faito_site)" = "$before" ]'
 as outside.log faito "sudo c4-app register --proxy ../hururaa/x"
 refused_saying "AC-03: a path outside ~/faito/ (../hururaa/x)" outside.log "../hururaa/x is outside ~/faito/: refused"
 as absolute.log faito "sudo c4-app register --proxy /home/hururaa/hururaa/hururaa.routes"
