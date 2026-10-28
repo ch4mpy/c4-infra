@@ -1,7 +1,8 @@
 # 0015 fixture (tests/0015-headers.sh): verif's front end, by path: /fr/* sends its own
 # Content-Security-Policy, X-Frame-Options and Referrer-Policy (no Permissions-Policy); /en/* none of
 # them; /report-only/* a Content-Security-Policy-Report-Only only; /ui/* its own policy and
-# X-Frame-Options, as a front end without headers=app may
+# X-Frame-Options, as a front end without headers=app may; /own/* and /ui-own/* all three of its own,
+# Permissions-Policy included (intent 0031)
 {
 	admin off
 	auto_https off
@@ -17,6 +18,13 @@
 	handle /report-only/* {
 		header Content-Security-Policy-Report-Only "default-src 'none'; report-to verif"
 		respond "report-only"
+	}
+	@own-three path /own/* /ui-own/*
+	handle @own-three {
+		header Content-Security-Policy "default-src 'none'; script-src 'self' 'sha256-verif'"
+		header X-Frame-Options "SAMEORIGIN"
+		header Permissions-Policy `geolocation=(self "https://tiles.verif.example"), fullscreen=(self)`
+		respond "own"
 	}
 	handle /ui/* {
 		header Content-Security-Policy "default-src 'none'; script-src 'self' 'sha256-verif'"

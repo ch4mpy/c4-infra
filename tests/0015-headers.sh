@@ -18,6 +18,8 @@
 #     unsafe-url replaced), no Server; HSTS on the demo only;
 #   - AC-05: /ui/x (no headers=app, a front end sending its own policy): today's headers, two
 #     policies, the shared one first;
+#   - 0031: /own/x (fr) and /ui-own/x (ui), headers=app, a front end sending all three: each once,
+#     with the front end's value, its Permissions-Policy included;
 #   - AC-08: the proxy's own responses, verif's gateway 502, /ui-down/x's 502, /ui-upload/x's 413, the
 #     shared host's 502: nosniff, Referrer-Policy, no Server, HSTS on the demo only; the front ends'
 #     (without headers=app) keep the three shared values; the proxy logs each, with its cause, and
@@ -47,6 +49,7 @@ export REGISTRY_FILE=$PWD/$FIXTURES/registry.txt
 SHARED_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 SHARED_PERMISSIONS='camera=(), microphone=(), geolocation=(), payment=()'
 OWN_CSP="default-src 'none'; script-src 'self' 'sha256-verif'"
+OWN_PERMISSIONS='geolocation=(self "https://tiles.verif.example"), fullscreen=(self)'
 
 host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
@@ -162,6 +165,14 @@ for env in dev demo; do
     eval '[ "$(values content-security-policy | wc -l)" -eq 2 ]'
   check "$env, AC-05: the shared one first" eval '[ "$(values content-security-policy | head -n 1)" = "$SHARED_CSP" ]'
   check "$env, AC-05: two X-Frame-Options" eval '[ "$(values x-frame-options | LC_ALL=C sort | paste -sd" " -)" = "DENY SAMEORIGIN" ]'
+
+  for path in /own/x /ui-own/x; do
+    fetch verif.c4-soft.com "$path"
+    check "$env, 0031: $path (headers=app, sending all three): answered by the front end" answered 200
+    check "$env, 0031: $path: its Content-Security-Policy, once" once content-security-policy "$OWN_CSP"
+    check "$env, 0031: $path: its X-Frame-Options, once" once x-frame-options SAMEORIGIN
+    check "$env, 0031: $path: its Permissions-Policy, once" once permissions-policy "$OWN_PERMISSIONS"
+  done
 
   fetch verif.c4-soft.com /gateway/x
   check "$env, AC-08: a gateway that doesn't answer: 502" answered 502
