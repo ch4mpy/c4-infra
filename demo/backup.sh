@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Nightly backup of the shared Keycloak: its PostgreSQL database, dumped hot through the running
-# container (users, organizations, clients and role mappings of every application's realm). Each
-# application backs up its own databases.
+# container (users, organizations, clients and role mappings of every application's realm). The
+# applications' databases and volumes are backed up by `sudo c4-app backup`, as each application's
+# account, from root's cron at 03:45 (demo/c4-app, README.md "Backups").
 #
 # Runs on the host as the c4-infra account, from ~/c4-infra (demo/deploy.sh installs it in that
 # account's crontab). Restore procedure in README.md.

@@ -20,8 +20,19 @@
 #                                   with register-app.sh's options (README.md) but --app: paths are
 #                                   relative to ~/<application>/, and --rabbitmq-password-env <VAR>
 #                                   takes VAR from ~/<application>/.env
+#   sudo c4-app backup              backs up what the project declares (intent 0027), read from its
+#                                   running containers: a service labelled c4-infra.backup: postgres
+#                                   dumped hot in its container (pg_dump -Fc), one labelled volumes
+#                                   has its named volumes copied, its containers stopped meanwhile;
+#                                   into /var/backups/c4-apps/<application>/<stamp>/ (0750, files 0640,
+#                                   root:<application>), kept 7 days, refused under the disk's floor
+#   sudo c4-app restore [<stamp> --yes]
+#                                   lists the backups; with a stamp and --yes, backs up the current
+#                                   state, then restores that backup (README.md, "Backups")
+#   c4-app nightly                  root's cron only (/etc/cron.d/c4-apps-backup, 03:45): backup as
+#                                   each account of the group c4-apps, into its backup.log
 #
-# Each command but down works on a copy of ~/<application>/<application>/ (sent there by the
+# pull, up and register work on a copy of ~/<application>/<application>/ (sent there by the
 # application's workflow), read as the application and written by root into
 # /var/lib/c4-apps/.<application>.incoming/ (root:<application>, mode 0750: the application reads it,
 # never writes it); a symbolic link or a special file in it is refused. Only up, once its checks have
@@ -101,7 +112,8 @@ Usage, from an application's account:
   sudo c4-app down
   sudo c4-app register [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
                        [--rabbitmq-user <user> --rabbitmq-password-env <VAR of .env>] [--reset-realms]
-  sudo c4-app backup
+  sudo c4-app backup                    (the services labelled c4-infra.backup: postgres or volumes,
+                                        into /var/backups/c4-apps/<app>/, nightly at 03:45 too)
   sudo c4-app restore [<stamp> --yes]
 EOF
   exit 2
