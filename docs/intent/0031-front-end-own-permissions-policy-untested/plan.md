@@ -154,4 +154,24 @@ No file of `caddy/` or `routes.sh` changes (the intent's constraint). Should ste
 
 ## Verification
 
-<!-- bootstrap mode: the evidence block of /sdlc-verify 0031, committed `plan: verification of 0031` -->
+### Verification — f6b4e3a (integration 205b8eb; rerun 13474a8, which contains it)
+
+- Verification command (batch `batch-0031-0030-0028-0026-0027-0029`, the product owner's decision of 2026-10-28): `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --all` at the integration commit 205b8eb → `verification passed` (`total: 1764.0 s for 72 test(s)`, 2026-10-28; also the milestone before the push); after the verifiers' documentation fixes, `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed 205b8eb --all` at 13474a8 → `verification passed (--changed: 8 of 72 tests)`.
+- Risk tier: standard (a test only).
+- Reviews: bootstrap mode: 1 round, on 0031's own commits; bugs (`code-review high`) 0 fixed / 3 answered; no security or quality pass (bootstrap, standard risk).
+  - no check of the proxy's own 413/502 on a `ui` route with `headers=app` (`tests/0015-headers.sh:169`): the plan's choice; the intent asks for the headers a front end sends, and `routes.sh` writes the same import for `ui` (M2 shows the `ui` checks hold the option);
+  - `/own/x` repeats AC-01's CSP and X-Frame-Options checks (`:171`): one loop for both paths, as planned;
+  - `tests/0015-proxy-facts.sh` unchanged (`:194`): the plan's choice; `0015-headers.sh` runs on the stack's image and covers `reverse-proxy/`.
+- Mutation checks (throw-away worktree at f6b4e3a): unmutated → `every check passed`; M1 (`caddy/Caddyfile:27`, Permissions-Policy set instead of defaulted) → `4 check(s) failed`, {dev,demo} × {/own/x,/ui-own/x}: its Permissions-Policy, once; M1 with `main`'s test → `every check passed` (the gap the intent names); M2 (`routes.sh`, `headers=app` ignored on `ui`) → `6 check(s) failed`, {dev,demo}, /ui-own/x, three headers.
+- Verifier: 4/4 criteria OK — table below (its own run of `tests/0015-headers.sh` at 205b8eb: `every check passed`, 16 checks of 0031).
+- Not verifiable here: none.
+- Files outside the plan: none.
+- Pre-existing findings: none.
+- Details left (not KO): the Proof row 4 says the test removes comment lines; it removes none, each fixture replaces one; the "answered by the front end" checks read the status only (the front end's exact header values identify it).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| A front end sending all three on a `fr` route with `headers=app`: each reaches the browser once, with its value, dev and demo | OK | `ok - {dev,demo}, 0031: /own/x: its Content-Security-Policy / X-Frame-Options / Permissions-Policy, once`, `… answered by the front end` (batch log; the verifier's run) |
+| The same on a `ui` route with `headers=app` | OK | the same four checks on `/ui-own/x`, dev and demo; the generated site imports `spa-headers-app` for `/ui-own/*` |
+| The test guards it | OK | M1 → `4 check(s) failed`; M1 with main's test → `every check passed`; M2 → `6 check(s) failed` |
+| 0015's behaviour doesn't change | OK | no file of `caddy/` or `routes.sh` changed; the 63 earlier checks pass (79 = 63 + 16) |
