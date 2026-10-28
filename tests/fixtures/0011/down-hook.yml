@@ -1,0 +1,25 @@
+# 0011 fixture (tests/0011-demo-host.stand-in.sh, tests/0011-facts.sh): valid.yml of 0007 with a
+# provider service whose executable is hook.sh, staged next to it: compose runs it at down, as the
+# user running compose (root, for sudo c4-app). The allowlist refuses a provider; sudo c4-app down
+# must not read this file at all.
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    expose: ['7080']
+    networks:
+      c4-infra.faito:
+        aliases: [faito.gw]
+      internal: {}
+    volumes:
+      - cache:/cache
+  hook:
+    provider:
+      type: /var/lib/c4-apps/faito/hook.sh
+networks:
+  c4-infra.faito:
+    external: true
+  internal: {}
+volumes:
+  cache: {}

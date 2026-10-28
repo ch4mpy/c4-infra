@@ -53,9 +53,11 @@ bash ./env.sh
   done
 ) || exit 1
 
-certificate_before=$(cat certs/tls.crt 2> /dev/null | cksum)
+# a fresh clone has none yet (intent 0011)
+certificate_before=none
+[ ! -f certs/tls.crt ] || certificate_before=$(cksum < certs/tls.crt)
 bash ./certs/make-certs.sh
-certificate_after=$(cat certs/tls.crt | cksum)
+certificate_after=$(cksum < certs/tls.crt)
 
 # compose.apps.yml (COMPOSE_FILE): the shared services on each registered application's network,
 # before any compose call (intent 0007)
@@ -86,13 +88,28 @@ fi
 # by all, whatever mode the checkout has (a umask 077 makes it 600 on Linux); no secret in it
 chmod -R a+rX keycloak-import
 
-docker compose up -d --build --wait
+# Built first (keycloak/, reverse-proxy/): a new Keycloak image stops Keycloak before compose runs
+# the new version's import, so that its database migration never runs under the old one (intent
+# 0013). No dump here: the demo host takes one (demo/deploy.sh).
+docker compose build --quiet
+keycloak_image=$(source ./registry.sh && stack_env_read value KC_IMAGE && printf '%s' "$value")
+running_image=$(docker inspect -f '{{.Image}}' c4-infra.keycloak 2> /dev/null | tr -d '\r' || true)
+if [ -n "$running_image" ] && [ "$running_image" != "$(docker image inspect -f '{{.Id}}' "$keycloak_image" | tr -d '\r')" ]; then
+  echo "Keycloak's image changed: Keycloak stopped before its import runs"
+  docker compose stop keycloak
+fi
+docker compose up -d --wait
 # compose recreates nothing when only a mounted file changed (caddy/Caddyfile, caddy/env/*.caddy
 # after a pull): reload Caddy (graceful). A configuration it refuses leaves the previous one
 # serving: say so and stop, never restart it (it would start on the refused one, every site down)
 if ! output=$(MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1); then
   printf '%s\n' "$output" | tail -n 5 >&2
-  echo "The reverse proxy refuses its configuration (above): it keeps serving its previous configuration. Fix caddy/ (or the site of caddy/apps/ it names), then run $0 again." >&2
+  # its admin API answering (compose.yml's healthcheck probe) means Caddy refused the configuration
+  if MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy wget -q -O /dev/null http://127.0.0.1:2019/config/ > /dev/null 2>&1; then
+    echo "The reverse proxy refuses its configuration (above): it keeps serving its previous configuration. Fix caddy/ (or the site of caddy/apps/ it names), then run $0 again." >&2
+  else
+    echo "The reverse proxy isn't reachable (above): its container isn't running, or its admin API doesn't answer yet. Run $0 again; docker compose ps and docker logs c4-infra.reverse-proxy tell why." >&2
+  fi
   exit 1
 fi
 

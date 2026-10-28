@@ -21,3 +21,4 @@
 2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
 3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
 4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+5 immo immo - immo immo.dev.localhost immo.c4-soft.com

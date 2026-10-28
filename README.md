@@ -13,12 +13,20 @@ every time it deploys.
 ## Design
 
 - **One origin per application.** Each application is served on its own host name, with the
-  same paths as before the stack was shared (`/fr/`, `/en/`, `/gateway/`, `/mcp`):
+  same paths as before the stack was shared (`/fr/`, `/en/`, `/gateway/`):
   `https://<app>.dev.localhost/` in dev, `https://<app>.c4-soft.com/` on the demo host. Its
-  cookies (session, `XSRF-TOKEN` at path `/`), its OAuth discovery documents at the root
-  (`/.well-known/oauth-protected-resource/mcp`) and its Content-Security-Policy stay its own.
-  Sharing one host with a path prefix per application would have mixed all three; so would
-  sharing one host with a port per application (cookies ignore the port).
+  cookies (session, `XSRF-TOKEN` at path `/`), its OAuth discovery documents at the root and its
+  Content-Security-Policy stay its own. Sharing one host with a path prefix per application would
+  have mixed all three; so would sharing one host with a port per application (cookies ignore the
+  port).
+- **An MCP server on an origin of its own** (intent 0013): `https://<app>-mcp.dev.localhost/` in
+  dev, `https://<app>-mcp.c4-soft.com/` on the demo host (the first label of the registry entry's
+  host names, suffixed with `-mcp`). It serves the routes whose target is `mcp` (`/mcp`, its
+  protected resource's document `/.well-known/oauth-protected-resource/mcp`), and the application's
+  origin no longer does: the application's cookies never reach an MCP server, which takes bearer
+  tokens only. It gets the headers every site gets, not the single-page applications'; Caddy sends
+  it `X-Forwarded-Host` and `X-Forwarded-Proto`, from which it derives its public URL. The registry
+  holds these host names as its entry's: no other entry may take them.
 - **One origin for the shared services**: `https://host.docker.internal/` in dev,
   `https://infra.c4-soft.com/` on the demo host: `/auth/` (Keycloak), `/mailpit/`, `/grafana/`,
   and `/rabbitmq/` in dev. Every realm's issuer is `https://<that host>/auth/realms/<realm>`.
@@ -30,15 +38,31 @@ every time it deploys.
   (`127.0.0.1`), in the containers through `extra_hosts: [host.docker.internal:host-gateway]`
   (`host-gateway` is Docker Desktop's gateway address, which it forwards to the host's loopback;
   Docker Engine on Linux doesn't); only the browser uses `<app>.dev.localhost`. A command-line
-  client of an application's own origin (an MCP client such as Claude Code) needs a hosts-file
-  line: `127.0.0.1 <app>.dev.localhost`.
+  client of an application's MCP server (an MCP client such as Claude Code) needs a hosts-file
+  line: `127.0.0.1 <app>-mcp.dev.localhost`.
 - **One certificate.** The leaf the proxy, Keycloak and Mailpit serve is valid for
   `host.docker.internal`, `localhost` and `*.dev.localhost` (browsers refuse a second-level wildcard
-  such as `*.localhost`), and signed by the local CA the projects already trust,
+  such as `*.localhost`), the MCP origins `<app>-mcp.dev.localhost` included, and signed by the
+  local CA the projects already trust,
   `~/.ssh/host.docker.internal.crt`: adding an application needs no new certificate and no new
   trust ([`certs/make-certs.sh`](certs/make-certs.sh)).
 - **Keycloak on PostgreSQL**, so that a realm is exported ([`export-realm.sh`](export-realm.sh))
   and the database backed up while Keycloak keeps serving every other application.
+- **Keycloak 26.8.1, pinned** ([`keycloak/Dockerfile`](keycloak/Dockerfile), intent 0013): a
+  rebuild never changes its version unannounced. It enables two preview features,
+  `token-exchange-delegation` and the `parameterized-scopes` it uses (an agent acts for a user: the
+  delegated token's `act` claim names the agent, as Turu's agents need; a realm issues one only
+  where an FGAP v2 `delegate` permission allows it. Keycloak checks that permission when it issues
+  a token: removing it stops new delegated tokens, while a token issued before keeps its `may_act`
+  until it expires, the access token's lifespan), and one experimental feature, `cimd` (an MCP
+  client registers by the URL of its metadata document; a realm opts in through its client
+  policies, which the registration checks: see "What an application provides"); no other. What an
+  MCP client finds on the shared host: each realm's RFC 8414 metadata
+  (`/.well-known/oauth-authorization-server/auth/realms/<realm>`) and OpenID discovery at the
+  issuer host's root, PKCE `S256`, `iss` in the authorization response, the standard token exchange
+  and, where a realm opts in, client ID metadata documents; a `resource` parameter is ignored
+  (resource indicators stay off). A new Keycloak image migrates the database once, at the first
+  `up` or deployment that runs it, Keycloak stopped first (see "Backups").
 - **A block of 1 000 ports per application** for what runs on the host (dev servers, Spring Boot
   apps, databases), registered in [`registry.txt`](registry.txt) (see the port registry below);
   the shared services keep their usual ports.
@@ -48,12 +72,20 @@ every time it deploys.
   [`caddy/env/demo.caddy`](caddy/env/demo.caddy): the certificate (the dev leaf, Let's Encrypt),
   HSTS (on the demo host only, so that browsers don't pin the workstation's host names) and
   RabbitMQ's management UI (dev). A page that the demo's Content-Security-Policy blocks is blocked
-  in dev too. Each application's site is generated from its [routes file](#routes-file).
+  in dev too. Each application's site is generated from its [routes file](#routes-file). Its image
+  is Caddy built with the rate-limit module ([`reverse-proxy/Dockerfile`](reverse-proxy/Dockerfile),
+  intent 0013): a realm's client registration endpoint
+  (`/auth/realms/<realm>/clients-registrations/…`, which an MCP client may call anonymously) takes
+  10 requests a minute per client address, `429` beyond; nothing else is limited. The applications'
+  containers, which reach `keycloak:8080` without the proxy, aren't limited either.
 - **One network per application** (intent 0007). An application's containers join
-  `c4-infra.<app>` (named after its registry entry), in dev as on the demo host (in dev, those the
-  shared services must reach, such as Tickee's LDAP server), which no other application's
-  container joins: two applications never reach each other's containers. Its registration
-  ([`networks.sh`](networks.sh) `ensure`, run by `register-app.sh`) creates it and attaches the
+  `c4-infra.<app>` (named after its registry entry), in dev as on the demo host (in dev, where the
+  gateways run on the host, those the shared services must reach, such as a directory its realm
+  federates: Tickee's `ldap2`), which no other application's container joins: two applications
+  never reach each other's containers. The stack provides, runs and monitors no directory: a realm
+  that federates its users does so with a directory its application provides itself, one of its
+  containers on that network, which it maintains, or one outside the stack (intent 0023). Its
+  registration ([`networks.sh`](networks.sh) `ensure`, run by `register-app.sh`) creates it and attaches the
   shared services to it under their usual names (`reverse-proxy`, `keycloak`, `mailpit`,
   `rabbitmq`, `grafana-lgtm`, and on the demo host the shared host's name, Caddy's), so that Caddy
   and Keycloak reach the application's containers and these reach the shared services; the
@@ -80,6 +112,7 @@ every time it deploys.
 Prerequisites:
 
 - Docker Desktop and Git Bash;
+- `jq`, which `register-app.sh` reads a realm export with (intent 0013; the tests use it too);
 - the local CA trusted by the browsers and by each JDK the projects run on (by the browsers, it
   already is if a project was set up on this machine before; otherwise `certs/make-certs.sh`
   creates it and says how to trust it). For each JDK, `bash certs/trust-ca-in-jdk.sh <JDK home>`
@@ -148,6 +181,8 @@ the shared stack (its realms, RabbitMQ user, themes and host names; the file's h
 write a line). `up.sh` and `register-app.sh` check it ([`registry.sh`](registry.sh)): two
 applications sharing a number, a name, a realm, a theme, a RabbitMQ user or a host name stop both,
 naming the two lines, and `register-app.sh` registers nothing for an application missing from it.
+An entry's MCP origins (`<first label>-mcp.<rest>` of each host name, intent 0013) are its host
+names too, and no application may be named `<other>-mcp`.
 No entry may claim what the shared stack itself owns: Keycloak's `master` realm, RabbitMQ's
 administrator (`RABBITMQ_ADMIN_USER` of `.env`, `admin`), since a registration may reset its
 entry's realms and set its RabbitMQ user's password.
@@ -169,6 +204,22 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     import. A key committed in a template or a project would let anyone who reads it sign tokens
     the application accepts; `export-realm.sh` exports the generated ones, which stay dev keys:
     the demo rendering removes them again;
+  - client policies that fetch client metadata documents (`cimd`, intent 0013) over https from
+    named domains: a registration refuses an export whose `client-id-metadata-document` executor
+    allows the http scheme (`cimd-allow-http-scheme` other than `false`: Keycloak reads `"true"`,
+    `"TRUE"` or `1` as true) or permits the domain `*` or `*.` (which matches every host written
+    with a final dot), with which Keycloak, on every application's network, would fetch any URL an
+    unauthenticated client names; or a permitted domain that names no public host, which Keycloak
+    resolves on those networks (PA-08): an IP address (`10.0.0.1`, `[::1]`), a single label
+    (`keycloak`), a last label outside the IANA root zone (`*.mcp`, `faito.gateway`,
+    `host.docker.internal`; the list is
+    [`tlds-alpha-by-domain.txt`](tlds-alpha-by-domain.txt)), a wildcard over a whole top-level
+    domain (`*.com`, `*.xn--p1ai`: every domain of it; `*.xn--d1acufc.xn--p1ai` passes), or two
+    labels whose first is a registered application's name or `c4-infra` (a container: `faito.app`,
+    `c4-infra.rabbitmq`), after a leading `*.`, case ignored and a final dot removed; and one
+    holding a realm attribute `client-policies.*`, where Keycloak stores the profiles and policies,
+    out of that check. The check reads the domain's name, not what it resolves to: a public name
+    pointed at an internal address passes, and would let Keycloak fetch from it;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
@@ -199,9 +250,9 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   docker compose -f compose-rest-api-db.yml up -d --wait
   ```
 
-  Until Faito registers with its routes file (Faito 0021), its `deploy-dev.sh` passes its former
-  nginx block, `reverse-proxy/faito.conf`: `register-app.sh` then registers
-  [`examples/routes/faito.routes`](examples/routes/faito.routes) in its place, with a warning.
+  Since intent 0013, `register-app.sh` refuses a `--proxy` nginx block (`reverse-proxy/faito.conf`,
+  Faito's former one), as any file that isn't a routes file: Faito passes its routes file
+  ([`examples/routes/faito.routes`](examples/routes/faito.routes), copied by Faito 0021).
 
 A project created before this stack existed moves onto it with [docs/migration.md](docs/migration.md).
 
@@ -244,7 +295,9 @@ or theirs).
   the account and probes every realm of the registry. Only when the account is missing, its secret
   isn't `.env`'s, or a realm that exists isn't granted to it, does it log in as an administrator to
   repair it: the bootstrap administrator of `.env` while it works, else `KC_SETUP_ADMIN_USERNAME` /
-  `KC_SETUP_ADMIN_PASSWORD` from the environment, else, on a terminal, the one it asks for;
+  `KC_SETUP_ADMIN_PASSWORD` from the environment, else, on a terminal, the one it asks for. A
+  Keycloak that doesn't answer (starting, its database away) is retried for 60 s, then reported as
+  such, exit 1: only a login Keycloak refuses leads to an administrator (intent 0024);
 - `rotate` (dev): a new secret into `.env`, then `ensure`. On the demo host, the secret is the
   `demo` environment's ([docs/demo-setup.md](docs/demo-setup.md), "Rotating the registration
   secret").
@@ -373,12 +426,16 @@ next to it):
   | Role | dev | demo host |
   |---|---|---|
   | `gateway` | `https://host.docker.internal:p080` | `http://<app>.gateway:7080` |
-  | `mcp` | `https://host.docker.internal:p280` | none yet: refused (see "What an application's deployment does") |
+  | `mcp` | `https://host.docker.internal:p280` | `http://<app>.mcp:9080` |
   | `fr`, `ui` | `http://host.docker.internal:p200` | `http://<app>.frontend:80` |
   | `en` | `http://host.docker.internal:p205` | `http://<app>.frontend:80` |
 
   Dev's HTTPS upstreams are checked against the local CA (`certs/ca.crt`) and get the client's
-  `Host` (`<app>.dev.localhost`).
+  `Host` (`<app>.dev.localhost`, `<app>-mcp.dev.localhost`).
+- **Two sites.** The `mcp` routes are served on the application's MCP origin,
+  `<app>-mcp.dev.localhost` or `<app>-mcp.c4-soft.com` (see "Design"), and only there; the other
+  routes on its own origin. Each site has its own first match and its own `404`; a file without
+  `mcp` route gives one site.
 - **Headers.** The front ends (`fr`, `en`, `ui`) get the single-page-app headers
   (Content-Security-Policy, `X-Frame-Options`, `Permissions-Policy`: the `spa-headers` snippet of
   [`caddy/Caddyfile`](caddy/Caddyfile)); every response gets `X-Content-Type-Options` and
@@ -421,15 +478,19 @@ One account per application, plus the shared stack's, each opened by one workflo
 application whose account runs it (never an argument), on its own project only:
 
 - `sudo c4-app pull [--registry <host> --registry-user <user>]` (the registry's token on stdin, in a
-  temporary Docker configuration removed at once), `sudo c4-app up`, `sudo c4-app down`: its compose
-  project, named after it (`-p <app>`, for the model and for root's compose: a top-level `name:` of
-  its file changes nothing). Each command copies `~/<app>/` (read as the application) into
+  temporary Docker configuration removed at once), `sudo c4-app up`: its compose project, named after
+  it (`-p <app>`, for the model and for root's compose: a top-level `name:` of its file changes
+  nothing). Each of them copies `~/<app>/` (read as the application) into
   `/var/lib/c4-apps/<app>/`, which root owns and the application can read but not write, refusing a
   symbolic link or a special file; that copy is only the containers' mount sources. The compose
   model is read as the application (`docker compose config`: no file its account can't read, such as
   another application's `env_file`) and, once checked, kept with the files root itself reads in a
   **root-only snapshot**, `/var/lib/c4-apps/.run.<app>/` (mode `0700 root:root`, outside anything a
-  container may mount); root's `docker compose` runs that snapshot model, for every command;
+  container may mount); root's `docker compose` runs that snapshot model, for both commands;
+- `sudo c4-app down`: stops and removes the project's containers and networks by its name
+  (`docker compose -p <app> down`), reading no compose file: whatever `~/<app>/compose.yml` holds now
+  (refused, or replaced), its account can always stop its project, and nothing that file declares
+  runs (intent 0011). Its volumes stay;
 - `sudo c4-app register <register-app.sh's options>`, without `--app`: paths relative to
   `~/<app>/`, which must stay inside it, and `--rabbitmq-password-env <VAR>` taken from
   `~/<app>/.env`. The registration then runs with the registration account's secret, which the
@@ -438,35 +499,29 @@ application whose account runs it (never an argument), on its own project only:
   provides"). It reads the realm, routes and theme files from the snapshot too, so a container can't
   swap them under it.
 
-`sudo c4-app up`, `down` and `pull` all check that model before root's compose touches it (intent
-0007): compose runs a provider's and a hook's executables, so an unchecked model must never reach
-it. The check is an **allowlist** — the top-level keys, the service keys, and, for the nested
-objects that can escape (`build`, `deploy`, `security_opt`, `volumes` and `networks` entries), their
+`sudo c4-app up` and `pull` check that model before root's compose touches it (intent 0007):
+compose runs a provider's and a hook's executables, so an unchecked model must never reach it. The
+check is an **allowlist** — the top-level keys, the service keys, and, for the nested objects that
+can escape (`deploy`, `security_opt`, `volumes` and `networks` entries), their
 sub-keys and values — and refuses anything else, naming the service (or network/volume) and the key:
 
-- **a service may set** its `image` or its `build` (not both), `container_name` and network aliases
-  under `<app>.`,
+- **a service may set** its `image`, `container_name` and network aliases under `<app>.`,
   `command`/`entrypoint`/`environment`/`env_file`, `expose`, its own networks and named volumes,
   **read-only** bind mounts inside `/var/lib/c4-apps/<app>/`, `healthcheck`, `depends_on`, resource
   limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
   no-new-privileges`). A service name is `[a-z0-9_-]+` — no dot, which would be an alias on the
   shared network;
-- **refused with their own message**: a service named after a shared service (`keycloak`,
-  `mailpit`, `rabbitmq`, `grafana-lgtm`, `reverse-proxy`, `keycloak-db`) or the shared host
-  (`infra.c4-soft.com`); a published port (`expose` is fine: only the shared Caddy publishes);
+- **refused with their own message**: `build` — the demo host runs the images the application's
+  CI builds and pushes to a registry, and builds none itself (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
+  `grafana-lgtm`, `reverse-proxy`, `keycloak-db`); a published port (`expose` is fine: only the
+  shared Caddy publishes);
   `privileged`, `cap_add`, `devices`, `device_cgroup_rules`, a `deploy` reservation of host devices;
   `network_mode`, `links`, `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup`
   set to `host` or another container; a read-write bind mount, or one of the staging root or outside
   it (the Docker socket, another application's files…); a network or volume that is external, has a
-  name or driver of its own, or `driver_opts`; a `build` context or Dockerfile outside the staging
-  tree; a service that builds and sets an `image`, or whose name has a `-`. Compose names a built image
-  `<project>-<service>` (`faito-gateway`), in the Docker daemon every application shares: an image
-  name of the application's own choosing could be another application's, which root's build would
-  replace for that application's next `up`; and with a `-` in a service's name, application `a`'s
-  `b-c` and application `a-b`'s `c` would both build `a-b-c`;
+  name or driver of its own, or `driver_opts`;
 - **refused by the allowlist** (not an application's to set): `use_api_socket`,
-  `post_start`/`pre_stop` hooks, a `provider` service, `build.network`/`privileged`/`entitlements`/
-  `ssh`/`tags` (`tags` names the image too), and anything else not listed above. A need for one of
+  `post_start`/`pre_stop` hooks, a `provider` service, and anything else not listed above. A need for one of
   these is a new intent, not a change an application makes on its own.
 
 Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
@@ -489,10 +544,12 @@ files rsynced to `~/<app>/`, then `sudo c4-app pull`, `sudo c4-app register …`
   `sudo c4-app register --realm <realm>-realm.json --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
 - no Caddy site to write: its routes file, the one it registers in dev (see "Routes file"), gives
   its site on the demo host name of its registry entry, to its containers on the ports fixed here:
-  the gateway on `<app>.gateway:7080`, and every locale's front end on `<app>.frontend:80` (`/fr/`
-  and `/en/` are directories of that one container). No container port is fixed yet for an MCP
-  server, since no application deploys one here: a routes file naming the `mcp` role is refused
-  on the demo host, and the first application that deploys one fixes its port in this section.
+  the gateway on `<app>.gateway:7080`, every locale's front end on `<app>.frontend:80` (`/fr/`
+  and `/en/` are directories of that one container), and its MCP server on `<app>.mcp:9080`, on
+  its MCP origin `https://<app>-mcp.c4-soft.com/` (intent 0013: a DNS record of its own,
+  [docs/demo-setup.md](docs/demo-setup.md)). That server exchanges tokens through
+  `http://keycloak:8080/auth` (no proxy, no limit), for tokens issued by
+  `https://infra.c4-soft.com/auth/realms/<realm>`.
 
 ### Reachable from an application's network
 
@@ -559,11 +616,37 @@ first.
 
 [`demo/deploy.sh`](demo/deploy.sh) installs [`demo/backup.sh`](demo/backup.sh) in the `c4-infra` account's crontab, nightly
 at 03:15 (host time): a hot `pg_dump` of Keycloak's database in `~/backups/`, kept 7 days. Each
-application backs up its own databases. To restore, from `~/c4-infra`:
+application backs up its own databases. To restore, from `~/c4-infra`, into a database recreated
+empty (`pg_restore --clean` drops only what the dump holds: a table created since, as a newer
+Keycloak's migration adds, would stay; measured on a throwaway `postgres:18.6`, intent 0013):
 
 ```bash
 docker compose stop keycloak
-docker compose exec -T keycloak-db pg_restore -U keycloak -d keycloak --clean --if-exists \
+docker compose exec -T keycloak-db psql -U keycloak -d postgres -v ON_ERROR_STOP=1 \
+  -c 'DROP DATABASE keycloak WITH (FORCE)' -c 'CREATE DATABASE keycloak OWNER keycloak'
+docker compose exec -T keycloak-db pg_restore -U keycloak -d keycloak \
   < ~/backups/c4-infra-keycloak-db-<stamp>.dump
 docker compose start keycloak
 ```
+
+**A new Keycloak version** (intent 0013) migrates its database at its first run, with no way back
+but a dump. When `c4-infra.keycloak` runs another image than `.env`'s `KC_IMAGE` (the workflow tags
+it with the content of `keycloak/`), `demo/deploy.sh` dumps the database first,
+`~/backups/c4-infra-keycloak-before-upgrade-<stamp>.dump` (out of the nightly rotation: kept until
+removed by hand), stops Keycloak, then starts the stack: the new version's `keycloak-import`
+migrates the database (`--spi-connections-jpa--quarkus--migration-strategy=update`; an import only
+validates it by default), then the new Keycloak starts on it. Logins fail during that restart. To
+go back: `docker compose stop keycloak`, restore that dump with the `psql` and `pg_restore` lines
+above, which leave none of the tables the migration added (not
+`start`: the newer Keycloak would migrate it again), then deploy the previous version (revert the
+merge that brought the new one), whose import and Keycloak read the restored database (neither
+reads one the newer version migrated). In dev, `up.sh` stops Keycloak when its image changed, and
+dumps nothing.
+
+**A new image of Keycloak's database** (another tag, or the same tag published again upstream, as
+`postgres:18.6` was on 2026-10-28: intent 0024) recreates its container on the same volume.
+`demo/deploy.sh` brings the database up first, on its own, and when it was recreated or started
+again, restarts a running Keycloak on it ("Keycloak's database recreated or started again: Keycloak
+restarted on it"), before the rest of the stack and the registration account: Keycloak would
+otherwise keep the former container's connections. Logins fail
+during that restart; sessions survive it (persisted in the database).

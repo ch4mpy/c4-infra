@@ -17,6 +17,8 @@
 #
 # Needs the image c4-infra/keycloak (up.sh builds it) and caddy:2.11.4-alpine (the stack's). The
 # throwaway containers, volume and compose project are removed whatever happens.
+#
+# covers: keycloak/ keycloak-import/ compose.yml
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

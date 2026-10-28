@@ -51,6 +51,7 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    | MCP server / management | 9080 / 9081 | p280 / p281 |
    | REST API database | 2633 | p633 |
    | `openapi` profile: gateway / REST API | dev ports | p090 / p190, passed as `--server.port` |
+   | `openapi` profile: their management | dev ports + 1 | p091 / p191, passed as `--management.server.port` (else they take the dev applications' p081 / p181) |
 
    In `application.yml` (`server.port`, `management.server.port`, `rest-api-v1` and the like), the
    poms' `integration-tests.port` (`openapi` profile), `angular.json` / `package.json` (`--port`),
@@ -61,12 +62,20 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
      `${app-uri}(/.*)?`); the `issuer` stays `https://${cn}/auth/realms/<realm>`, written without
      `reverse-proxy-uri`; `back-channel-logout.internal-logout-uri` becomes
      `https://${cn}:${server.port}${server.servlet.context-path}/logout/connect/back-channel/<registration>`;
-   - REST API: `issuer` and the Keycloak admin client's base URI on `https://${cn}/auth`, unchanged
-     in value;
-   - an MCP server: its protected resource becomes `https://<project>.dev.localhost/mcp`; a
-     command-line MCP client needs `127.0.0.1 <project>.dev.localhost` in the hosts file. The
-     authorization server metadata (`/.well-known/oauth-authorization-server/auth/realms/<realm>`)
-     is now served by the shared host, for every realm: drop the project's own route;
+   - REST API: `issuer` and the Keycloak admin client's base URI on `https://${cn}/auth`, without
+     a port (a project's own Keycloak port, such as Tickee's `:3643`, goes: the proxy serves
+     Keycloak); in its `demo` profile, the admin client on `http://keycloak:8080/auth`;
+   - an MCP server: it is served on an origin of its own, `https://<project>-mcp.dev.localhost/`
+     (c4-infra 0013: the project's cookies never reach it), its protected resource
+     `https://<project>-mcp.dev.localhost/mcp`, which it derives from `X-Forwarded-Host` and
+     `X-Forwarded-Proto` (Spring: `server.forward-headers-strategy: framework`); a command-line MCP
+     client needs `127.0.0.1 <project>-mcp.dev.localhost` in the hosts file. The authorization
+     server metadata (`/.well-known/oauth-authorization-server/auth/realms/<realm>`) is served by
+     the shared host, for every realm: drop the project's own route;
+   - TLS, as Faito: the gateway, the REST API and the MCP server serve c4-infra's leaf
+     (`${C4_INFRA_CERTS_DIR}/tls.crt` and `tls.key`, an SSL bundle) and trust its local CA through
+     the JDK's trust store (`bash ../c4-infra/certs/trust-ca-in-jdk.sh <JDK home>`); no certificate
+     is packed into the jars anymore; CI generates a throwaway pair and sets `C4_INFRA_CERTS_DIR`;
    - Angular: `serve.options.allowedHosts: ["<project>.dev.localhost"]` (instead of
      `host.docker.internal`).
 3. **Unique names in the shared services**: `spring.application.name` of the gateway becomes
@@ -76,7 +85,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `baseUrl` and `post.logout.redirect.uris` on `https://<project>.dev.localhost/`, and its
    `backchannel.logout.url` on the gateway itself:
    `https://host.docker.internal:p080/gateway/logout/connect/back-channel/<registration>` (its
-   `adminUrl` too). Empty the realm's keys, `"org.keycloak.keys.KeyProvider" : [ ]`: the realms
+   `adminUrl` too); each organization's `redirectUrl` on the new origin
+   (`https://<project>.dev.localhost/<locale>/…`). Empty the realm's keys, `"org.keycloak.keys.KeyProvider" : [ ]`: the realms
    exported from the former template all carry its private keys, which would let anyone who reads
    them sign tokens; Keycloak generates new ones on import. The
    SMTP server stays `host.docker.internal:1025`. Export the realm from the project's Keycloak
@@ -85,7 +95,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    The realms created from the former skill's template all carry its ids, which the shared
    database refuses twice ("Duplicate resource error"). The script prints the users' new ids:
    update whatever the project stores about them (dev seed data such as Liquibase `dev` contexts,
-   tests naming a user id).
+   tests naming a user id). It maps each file on its own: a reference from one realm file to
+   another's ids (Tickee's `federatedIdentities[].userId`, which name users of its tenants' realms)
+   breaks, and is rewritten with the ids it printed for that other file.
 5. **Routes file**: `reverse-proxy/<project>.routes`, the paths of the project's site, the same
    file in dev and on the demo host (notation, roles and upstreams: the
    [README's "Routes file"](../README.md#routes-file)). One line per path the project's
@@ -93,7 +105,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    naming the role it goes to, never a host or a port: `/gateway/*`, the front ends (`/fr/*`,
    `/en/*`, or `/ui/*` without i18n), `/assets/`, `/mcp`,
    `/.well-known/oauth-protected-resource/mcp`, special routes (a regular expression, a body
-   limit), in the order they must be tried, the narrowest first. Turu's, Hurura'a's and Faito's
+   limit), in the order they must be tried, the narrowest first; the `mcp` routes are served on the
+   project's MCP origin, the others on its own. Turu's, Hurura'a's and Faito's
    are written: [`examples/routes/`](../examples/routes/) (copy the project's into its
    `reverse-proxy/`). `register-app.sh --proxy reverse-proxy/<project>.routes` generates the
    project's site, on its registry entry's dev host name; the dev and demo upstreams are derived
@@ -104,7 +117,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `compose-observability.yml`, `compose-rabbitmq.yml`, `compose-reverse-proxy.yml`,
    `nginx-reverse-proxy/`, `keycloak/Dockerfile`, `keycloak/HealthCheck.java` and the Keycloak and
    mail entries of `.env` and `secrets/`. Another container of the project that the shared
-   Keycloak must reach (an LDAP server of a user federation) joins the project's own network
+   services must reach (a directory a realm federates, which the project runs and maintains itself,
+   the stack providing none; the gateway runs on the host, step 4) joins the project's own network
    `c4-infra.<project>` as an external one, never `c4-infra` (the shared services' own), under a
    unique container name: `deploy-dev.sh`'s registration creates that network and attaches the
    shared services to it (c4-infra's README, "One network per application").
@@ -129,13 +143,15 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    variables compose interpolates, and the RabbitMQ password), its routes file, its rendered realm
    file(s) and its themes, if any; nothing that is a symbolic link (`c4-app` refuses it). In
    `compose.yml`: drop `caddy`, `keycloak`, `mailpit`, `rabbitmq` and `grafana-lgtm`; the services
-   that need the shared ones (gateway, API, frontend, an LDAP server) join the project's own network
-   `c4-infra.<project>` as an external one (its registration creates it and attaches the shared
-   services to it, under their usual names), never `c4-infra`, and keep their unique
+   that need the shared ones (gateway, API, frontend, a directory a realm federates) join the
+   project's own network `c4-infra.<project>` as an external one (its registration creates it and
+   attaches the shared services to it, under their usual names), never `c4-infra`, and keep their unique
    `container_name` (`<project>.gateway`…); the databases stay on the project's network only; every
    file it mounts or reads (`env_file`) is inside `~/<project>/`, relative to it (the model is read
    as the project's account: it can't read any other). Its data go in named volumes: what is
    mounted from `~/<project>/` is root's copy, made again, as sent, by each `sudo c4-app` command.
+   Every service runs an `image:` the project's CI built and pushed to a registry (GHCR): no
+   `build:`, which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
    No published port, no `network_mode`, no other network, no alias or container name outside
    `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
    README, "Accounts"):
@@ -212,8 +228,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
    its dev routes file, `reverse-proxy/<project>.routes` (dev step 5), gives its site on its demo
    host name, to its containers on the ports the README fixes (`<project>.gateway:7080`,
-   `<project>.frontend:80`). A route to the `mcp` role is refused there until the README fixes the
-   MCP server's container port. A realm, a theme or a RabbitMQ user its registry entry doesn't
+   `<project>.frontend:80`, its MCP server `<project>.mcp:9080` on
+   `https://<project>-mcp.c4-soft.com/`, which needs a DNS record of its own:
+   [demo-setup.md](demo-setup.md), step 1). A realm, a theme or a RabbitMQ user its registry entry doesn't
    assign is refused, before anything changes. Its secrets no longer include Keycloak's, Mailpit's,
    RabbitMQ's admin or Grafana's.
 6. Users created during a demo live in the former Keycloak: export the realm from it
@@ -226,18 +243,23 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 ### Turu (n° 1, ports 11xxx, realm `turu`)
 
-- Branch `master`; uncommitted work in progress on it: migrate once it is committed.
+- Branch `master` until its first demo deployment.
 - MCP server (`mcp-server`, 9080 → 11280, management 9081 → 11281) and its clients in the realm
   (`turu-mcp`, `turu-agent-dev`, `turu-agent-dev-actor`): routes `/mcp` and
-  `/.well-known/oauth-protected-resource/mcp` to the `mcp` role; drop the
+  `/.well-known/oauth-protected-resource/mcp` to the `mcp` role, served on
+  `turu-mcp.dev.localhost` and `turu-mcp.c4-soft.com`; drop the
   `/.well-known/oauth-authorization-server/...` and `/.well-known/openid-configuration/...` routes
-  (c4-infra serves them). `keycloak/check-agent-delegation.sh` may name the old ports.
-- Extra routes: `/assets/` → the `fr` front end, prefixed with `/fr`; the migration runs upload
+  (c4-infra serves them). Its agents' delegation relies on the shared Keycloak's
+  `token-exchange-delegation` and `parameterized-scopes` (c4-infra 0013);
+  `keycloak/check-agent-delegation.sh` may name the old ports.
+- Extra route: the migration runs upload
   (`~^/gateway/bff/api/v1/agencies/[^/]+/migrations/[^/]+/runs$`, to the gateway, `max-body=64MB`),
-  first. All in [`examples/routes/turu.routes`](../examples/routes/turu.routes).
+  first. No `/assets/` route: its front end (Material) names no absolute `/assets/` path. All in
+  [`examples/routes/turu.routes`](../examples/routes/turu.routes).
 - `.env`: `MAIL_SSL_TRUST=host.docker.internal` stays (the shared Mailpit serves a leaf signed by
   the same CA, valid for that host).
-- No demo deployment yet.
+- Demo on `turu.c4-soft.com`, its MCP server `turu.mcp:9080` on `turu-mcp.c4-soft.com` (two DNS
+  records): steps above.
 
 ### Hurura'a (n° 2, ports 12xxx, realm `public-facing`)
 
@@ -247,7 +269,7 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 - Extra route: `/assets/` → the `fr` front end, prefixed with `/fr` (pf-ui's images, absolute
   paths): [`examples/routes/hururaa.routes`](../examples/routes/hururaa.routes).
 - Demo on `hururaa.c4-soft.com`: steps above; the demo users and the clients Hurura'a provisions
-  are in the former Keycloak's H2 volume (export first, step 5).
+  are in the former Keycloak's H2 volume (export first, step 6).
 
 ### Tickee (n° 3, ports 13xxx, realms `tickee`, `brasserie`, `tenant2`, `tenant3`)
 
@@ -256,18 +278,20 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
   it in dev, edit it, run `bash ../c4-infra/register-app.sh --app tickee --themes keycloak/themes`
   (or `deploy-dev.sh`), then reload the login page: the dev Keycloak caches no theme and isn't
   restarted, so the other applications' sessions stay valid.
-- `tenant2` federates the LDAP server `ldap://tickee.ldap-tenant2:389`, now started by the
-  project's own compose (move `ldap2` out of `compose-keycloak.yml`), on Tickee's own network
-  `c4-infra.tickee` (external), in dev as in the demo: Keycloak, attached to it by Tickee's
-  registration, federates it, and no other application's container reaches it.
+- `tenant2` federates Tickee's own LDAP server, `ldap://tickee.ldap-tenant2:389`: its `ldap2`
+  container, now started by the project's own compose (move `ldap2` out of `compose-keycloak.yml`),
+  on Tickee's own network `c4-infra.tickee` (external), in dev as in the demo. Tickee runs,
+  monitors and upgrades it: the stack provides no directory (intent 0023). Keycloak, attached to
+  that network by Tickee's registration, federates it, and no other application's container
+  reaches it.
 - The realm `tickee` has two BFF clients with back-channel logout (`gateway` and `tickee-bff`):
   both URLs move to the gateway's port.
-- Demo: steps above (the LDAP container joins `c4-infra.tickee`).
+- Demo: steps above (Tickee's `ldap2` container joins `c4-infra.tickee`).
 
 ### Faito (n° 4, ports 14xxx, realm `faito`)
 
 - Created on this stack: nothing to migrate but its site. Its routes file,
   [`examples/routes/faito.routes`](../examples/routes/faito.routes), replaces its nginx block
   `reverse-proxy/faito.conf` (Faito 0021: copied to `reverse-proxy/faito.routes`, passed to
-  `--proxy`). Until then, `register-app.sh` registers c4-infra's copy in place of the `.conf`, with
-  a warning.
+  `--proxy`). Since c4-infra 0013, `register-app.sh` refuses a `.conf`, as any file that isn't a
+  routes file.

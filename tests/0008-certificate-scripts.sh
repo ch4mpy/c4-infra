@@ -18,6 +18,8 @@
 # (CA_DIR), copies of a JDK's cacerts. Neither ~/.ssh, the repository's certs/ nor a JDK is touched.
 # The JDK is JAVA_HOME's, else the first of ~/.sdkman/candidates/java/; the test's own keytool calls
 # run it directly, outside the wrappers, with the passwords in their environment (the :env forms).
+#
+# covers: certs/ docs/demo-setup.md
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

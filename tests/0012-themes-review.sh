@@ -18,6 +18,9 @@
 # doesn't let this test make.
 #
 #   bash tests/0012-themes-review.sh
+#
+# covers: register-app.sh registry.sh registry.txt routes.sh networks.sh registration-account.sh
+# covers: tlds-alpha-by-domain.txt keycloak/ tests/fixtures/0012/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

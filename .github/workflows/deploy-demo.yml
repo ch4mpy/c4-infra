@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    name: Build and push the Keycloak image
+    name: Build and push the Keycloak and proxy images
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -28,15 +28,19 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.image.outputs.image }}
+      proxy_image: ${{ steps.image.outputs.proxy_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Tagged with the content of keycloak/ (its git tree, the Keycloak version of the Dockerfile
-      # included): a push that doesn't touch it keeps the image, so the deployment doesn't restart
-      # the Keycloak every application uses. GHCR wants a lowercase owner.
-      - name: Compute the Keycloak image
+      # Each tagged with the content of its directory (its git tree, the version of its Dockerfile
+      # included): a push that doesn't touch keycloak/ keeps Keycloak's image, so the deployment
+      # doesn't restart the Keycloak every application uses; the same for reverse-proxy/ (Caddy with
+      # its rate-limit module, intent 0013). GHCR wants a lowercase owner.
+      - name: Compute the images
         id: image
-        run: echo "image=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/c4-infra-keycloak:$(git rev-parse --short=12 HEAD:keycloak)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "image=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/c4-infra-keycloak:$(git rev-parse --short=12 HEAD:keycloak)" >> "$GITHUB_OUTPUT"
+          echo "proxy_image=$REGISTRY/${GITHUB_REPOSITORY_OWNER,,}/c4-infra-reverse-proxy:$(git rev-parse --short=12 HEAD:reverse-proxy)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -44,25 +48,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Look for the image in GHCR
+      - name: Look for the images in GHCR
         id: existing
         run: |
           if docker manifest inspect "$KC_IMAGE" > /dev/null 2>&1; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "keycloak=true" >> "$GITHUB_OUTPUT"
+          fi
+          if docker manifest inspect "$PROXY_IMAGE" > /dev/null 2>&1; then
+            echo "proxy=true" >> "$GITHUB_OUTPUT"
           fi
         env:
           KC_IMAGE: ${{ steps.image.outputs.image }}
+          PROXY_IMAGE: ${{ steps.image.outputs.proxy_image }}
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: steps.existing.outputs.found != 'true'
+        if: steps.existing.outputs.keycloak != 'true' || steps.existing.outputs.proxy != 'true'
 
       - name: Push c4-infra-keycloak
-        if: steps.existing.outputs.found != 'true'
+        if: steps.existing.outputs.keycloak != 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: keycloak
           push: true
           tags: ${{ steps.image.outputs.image }}
+          pull: true
+
+      - name: Push c4-infra-reverse-proxy
+        if: steps.existing.outputs.proxy != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: reverse-proxy
+          push: true
+          tags: ${{ steps.image.outputs.proxy_image }}
           pull: true
 
   deploy:
@@ -78,6 +95,7 @@ jobs:
       INFRA_HOST: ${{ vars.INFRA_HOST || 'infra.c4-soft.com' }}
       VPS: c4-infra@${{ secrets.VPS_HOST }}
       KC_IMAGE: ${{ needs.build.outputs.image }}
+      PROXY_IMAGE: ${{ needs.build.outputs.proxy_image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
