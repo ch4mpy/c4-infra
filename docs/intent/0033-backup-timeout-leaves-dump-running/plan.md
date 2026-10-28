@@ -3,7 +3,7 @@
 - Spec: [v1](spec.md)
 - Status: approved
 - Branch: 0033-backup-timeout-leaves-dump-running
-- Approved: — (engineer; the tech lead's agreement too: the spec's risk is high)
+- Approved: 2026-10-28, Jérôme Wacongne (engineer, and tech lead: the high risk agreed; the batch and the agent, product owner)
 - Builds on: `main` at de2be13 (0027 delivered: `backup`, `restore` and `nightly` in `demo/c4-app`), merged into the branch at f3ba47e
 
 ## Starting point
