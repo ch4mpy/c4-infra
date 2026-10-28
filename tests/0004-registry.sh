@@ -104,6 +104,14 @@ part_registry() {
     "bad-fields.txt:3: number '39' is not between 1 and 38" \
     "bad-fields.txt:4: host name 'verif2.dev.localhost:14080' is not a host name"
   refused reserved-name.txt 'reserved-name.txt:6: keycloak-db is reserved for the shared stack'
+  # intent 0016: the simulated providers' realms, imported by the stack, and its own login themes
+  refused stack-realms-themes.txt \
+    "stack-realms-themes.txt:6: realm simulated-google is the shared stack's" \
+    "stack-realms-themes.txt:7: realm simulated-facebook is the shared stack's" \
+    "stack-realms-themes.txt:8: realm simulated-apple is the shared stack's" \
+    "stack-realms-themes.txt:9: theme simulated-google is the shared stack's" \
+    "stack-realms-themes.txt:10: theme simulated-facebook is the shared stack's" \
+    "stack-realms-themes.txt:11: theme simulated-apple is the shared stack's"
   # 0013: each application's MCP origin, which no other entry may take, as a host or a name
   refused mcp-origin-host.txt "host name faito-mcp.dev.localhost: faito's MCP origin (line 5) and verif (line 6)"
   refused mcp-origin-name.txt "application faito-mcp: faito's MCP origin (line 5) and faito-mcp (line 6)"
