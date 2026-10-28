@@ -67,3 +67,5 @@ Facts read (2026-10-28):
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — step 1: `0003-demo-deploy.stand-in` (123 s) and `0012-themes.stand-in` (298 s, its new volume pulling its images) passed at once on two stand-in hosts beside the dev stack; the sum of `docker stats` peaked at 6000 MiB, 50 % of Docker's 11955 MiB (written into `tests/0022-lanes.sh`'s header). Step 2: `tests/0017-run.sh` also gets stand-in names of its own (`STAND_IN_NAME`, `STAND_IN_VOLUME`), its `--all` runs now having a stand-in lane that would otherwise use the default host's name. No impact on proof.
