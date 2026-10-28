@@ -1,11 +1,11 @@
 # Spec: The demo host backs up no application's data
 
 - Intent: [0027](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (rules: personal data, the backups hold what every application's demo users entered; the isolation between applications, root reads and writes an application's databases and volumes on the one Docker daemon; authorization, two more commands the applications' accounts run as root; tech lead's agreement required)
 - Policies applied: none yet; standing constraints: README "Accounts" and "Backups", 0002 (no `docker` group for an application's account, one root-owned command, the application is the account that runs it), 0007 (nothing of another application's within reach), 0011's accepted risk (a leaked deployment key is not contained), 0025 (accepted: a refused deployment leaves the running files as they were)
-- Approved: —
+- Approved: 2026-10-28, Jérôme Wacongne (product owner, and tech lead for the high risk; every point of attention decided as recommended)
 
 ## Summary
 
@@ -89,7 +89,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A every named volume of the project, cold (the project stopped meanwhile): nothing to declare / B declared per service by a label (API and contracts): `postgres` dumped hot, `volumes` copied cold, the rest not backed up / C B, plus every named volume no label declares, cold (`c4-infra.backup: none` leaves one out)
 - Recommendation: B: the databases stay up and their dumps survive an upgrade, the application says what matters (Tickee's directory or not), a label passes today's allowlist; each run names the volumes it left out, so a forgotten one shows.
 - Decides: PO
-- Decision: to decide
+- Decision: B, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-02: Who triggers a backup
 
@@ -97,7 +97,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A on demand only, `sudo c4-app backup`, scheduled by the application's own crontab if it wants / B the host only: a root-owned nightly schedule installed by `vps-bootstrap.sh`, running the backup as each application's account (03:45) / C both
 - Recommendation: C: no application goes without a backup for a missing step, and each can take its way back before a risky deployment.
 - Decides: PO
-- Decision: to decide
+- Decision: C, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-03: Where backups are kept, and who reads them
 
@@ -105,7 +105,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A `/var/backups/c4-apps/<app>/`, root only (0700): the application restores through `c4-app`, can't read, copy or delete its backups / B the same, `0750 root:<app>` as its staging copy: it reads and downloads them, can't change or delete them / C in its home, written as the application: it reads, copies and deletes them
 - Recommendation: B: the application gets its own data, off the host too if it wants (PA-07 B), and a restore reads only what root wrote.
 - Decides: tech lead
-- Decision: to decide
+- Decision: B, as recommended (tech lead, Jérôme Wacongne, 2026-10-28)
 
 ### PA-04: How long backups are kept
 
@@ -113,7 +113,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A 7 days for every backup, nightly or on demand, as Keycloak's nightly ones / B 7 days for the nightly ones, on-demand and pre-restore ones until the operator removes them, as Keycloak's `--before-upgrade` / C a length per application, a registry column (0004)
 - Recommendation: A: one rule, a known bound on how long an erased user's data lasts, nothing piling up that only root can delete.
 - Decides: PO
-- Decision: to decide
+- Decision: A, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-05: Disk space
 
@@ -121,7 +121,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A no guard: the operator watches the disk / B a backup is refused, what it wrote removed and named in the log, when the disk's free space falls under a floor (10 % or 5 GB), earlier backups kept / C B, plus a size cap per application
 - Recommendation: B: one application's data can't stop the others, for one check per item.
 - Decides: tech lead
-- Decision: to decide
+- Decision: B, as recommended (tech lead, Jérôme Wacongne, 2026-10-28)
 
 ### PA-06: How a restore protects the running data
 
@@ -129,7 +129,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A `sudo c4-app restore <stamp> --yes`: stops the project's containers (a database's alone runs while its dump is restored), backs up the current state first, restores every item of that backup, starts the containers again; refused without `--yes` / B the same with the application's name typed instead of `--yes`: a terminal only, so the operator's / C no command: a README procedure the operator runs as root
 - Recommendation: A: the intent wants a restore from the account (C isn't), its workflows have no terminal (B is the operator's only), and the backup taken first undoes a wrong restore.
 - Decides: PO, tech lead
-- Decision: to decide
+- Decision: A, as recommended (PO, tech lead, Jérôme Wacongne, 2026-10-28)
 
 ### PA-07: A copy off the host
 
@@ -137,7 +137,7 @@ The backups: dumps and archives of each application's databases and volumes, its
 - Options: A none from c4-infra, documented; the operator may take the provider's VPS backups / B A, and an application may pull its own through its key (needs PA-03 B) / C c4-infra copies every backup to an external store (a new secret, an outgoing path)
 - Recommendation: B: demo data, no new secret or path; C is a later intent if the demo ever holds data worth it.
 - Decides: PO
-- Decision: to decide
+- Decision: B, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ## Acceptance criteria
 
@@ -162,3 +162,4 @@ The backups: dumps and archives of each application's databases and volumes, its
 ## Change log
 
 - v1 — 2026-10-28 — first version
+- v1 — 2026-10-28 — approved: every point of attention decided as recommended (Jérôme Wacongne, PO and tech lead)
