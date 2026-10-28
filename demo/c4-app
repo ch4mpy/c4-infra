@@ -381,11 +381,9 @@ case "$command" in
     ;;
   down)
     [ $# -eq 0 ] || usage
-    stage
-    read_model
-    # down runs pre_stop hooks and a provider's down: the model it hands compose is checked too
-    check_model
-    compose down --remove-orphans
+    # by the project's name, from / (no compose file there): compose finds its containers and
+    # networks by their labels, and runs nothing a file declares (a provider's down, pre_stop hooks)
+    docker compose -p "$app" down --remove-orphans
     ;;
   register) cmd_register "$@" ;;
   *) usage ;;
