@@ -1,0 +1,4 @@
+# refused: see tests/0003-routes.sh
+/ redirect to=/fr/
+/gateway/* gateway headers=app
+/en/* en

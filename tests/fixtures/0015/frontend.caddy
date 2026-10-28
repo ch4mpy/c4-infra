@@ -1,0 +1,29 @@
+# 0015 fixture (tests/0015-headers.sh): verif's front end, by path: /fr/* sends its own
+# Content-Security-Policy, X-Frame-Options and Referrer-Policy (no Permissions-Policy); /en/* none of
+# them; /report-only/* a Content-Security-Policy-Report-Only only; /ui/* its own policy and
+# X-Frame-Options, as a front end without headers=app may
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	handle /fr/* {
+		header Content-Security-Policy "default-src 'none'; script-src 'self' 'sha256-verif'"
+		header X-Frame-Options "SAMEORIGIN"
+		header Referrer-Policy "unsafe-url"
+		respond "fr"
+	}
+	handle /report-only/* {
+		header Content-Security-Policy-Report-Only "default-src 'none'; report-to verif"
+		respond "report-only"
+	}
+	handle /ui/* {
+		header Content-Security-Policy "default-src 'none'; script-src 'self' 'sha256-verif'"
+		header X-Frame-Options "SAMEORIGIN"
+		respond "ui"
+	}
+	handle {
+		respond "none"
+	}
+}

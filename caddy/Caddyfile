@@ -18,20 +18,46 @@ import env/{$INFRA_ENV}.caddy
 }
 
 # For the single-page applications only. Keycloak serves its own pages under /auth/* and uses
-# iframes for session status, so a blanket frame-ancestors would be its problem, not theirs.
+# iframes for session status, so a blanket frame-ancestors would be its problem, not theirs. The
+# values once, one directive per field: imported with "", they are set; with ?, each one is a default
+# for a response that lacks it (one block of ? would default all or nothing: intent 0015).
+(spa-header-values) {
+	header {args[0]}Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+	header {args[0]}X-Frame-Options "DENY"
+	header {args[0]}Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+}
 (spa-headers) {
-	header {
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
-		X-Frame-Options "DENY"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-	}
+	import spa-header-values ""
+}
+# A front end that sends its own policy (headers=app in its routes file, intent 0015): the shared
+# values only where its response lacks one; the marker gives the proxy's own errors the same
+(spa-headers-app) {
+	vars app_headers yes
+	import spa-header-values ?
 }
 
-# The start of every site, the shared host's and each application's
+# The start of every site, the shared host's and each application's. The responses the proxy makes
+# itself (a 413, a 502, the rate limit's 429…) skip the deferred headers: handle_errors gives them
+# the common ones, and on a headers=app route the shared values as defaults (intent 0015).
 (site) {
 	encode zstd gzip
 	import env-tls
 	import common-headers
+	# Caddy logs an error handle_errors handles at DEBUG only: an access log of those requests alone,
+	# with their cause, keeps an upstream that doesn't answer in `docker compose logs reverse-proxy`
+	log {
+		output stderr
+	}
+	log_skip
+	handle_errors {
+		vars log_skip false
+		log_append error {err.message}
+		import common-headers
+		@app-headers vars app_headers yes
+		handle @app-headers {
+			import spa-header-values ?
+		}
+	}
 }
 
 {$INFRA_HOST} {

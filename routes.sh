@@ -24,6 +24,9 @@
 #     options: to=<path>          redirect only, required: a path on the same host
 #              max-body=<n>KB|MB  request body limit (413 beyond)
 #              prefix=<path>      prepended to the request's path before proxying (not / alone)
+#              headers=app        fr, en or ui only: the front end's Content-Security-Policy,
+#                                 X-Frame-Options and Permissions-Policy are the application's, the
+#                                 shared values only for a response without them (intent 0015)
 #
 # Routes are tried in the file's order and the first match serves the request; a /<p>/* route also
 # redirects /<p> to /<p>/ (301), whatever route comes first (a wider route that also matches /<p>, a
@@ -84,7 +87,7 @@ _routes_proxy() { # <upstream> <indent>
 routes_generate() { # <routes file> <dev|demo>
   local file=$1 env=$2 name number=0 problems=0 line host path target option key value upstream
   local i
-  local -a tokens kinds=(path target) paths=() targets=() tos=() bodies=() prefixes=() upstreams=()
+  local -a tokens kinds=(path target) paths=() targets=() tos=() bodies=() prefixes=() headers=() upstreams=()
   local -A seen_options
   case "$env" in
     dev) host=$REG_DEV_HOST ;;
@@ -133,14 +136,14 @@ routes_generate() { # <routes file> <dev|demo>
         ;;
     esac
 
-    local to='' body='' prefix=''
+    local to='' body='' prefix='' own_headers=''
     seen_options=()
     for option in "${tokens[@]:2}"; do
       key=${option%%=*}
       value=${option#*=}
       # an empty key is no option's, nor an array subscript
       if [ -z "$key" ]; then
-        _routes_problem "unknown option '$option' (to=, max-body= or prefix=)"
+        _routes_problem "unknown option '$option' (to=, max-body=, prefix= or headers=)"
         continue 2
       fi
       if [ -n "${seen_options[$key]:-}" ]; then
@@ -174,8 +177,17 @@ routes_generate() { # <routes file> <dev|demo>
             || { _routes_problem "prefix= takes a path without a final '/', not '$value'"; continue 2; }
           prefix=$value
           ;;
+        headers=*)
+          case "$target" in
+            fr | en | ui) ;;
+            redirect) _routes_problem "headers=app is for a front end (fr, en or ui), not for a redirect"; continue 2 ;;
+            *) _routes_problem "headers=app is for a front end (fr, en or ui), not for $target"; continue 2 ;;
+          esac
+          [ "$value" = app ] || { _routes_problem "headers= takes app, not '$value'"; continue 2; }
+          own_headers=app
+          ;;
         *)
-          _routes_problem "unknown option '$option' (to=, max-body= or prefix=)"
+          _routes_problem "unknown option '$option' (to=, max-body=, prefix= or headers=)"
           continue 2
           ;;
       esac
@@ -197,6 +209,7 @@ routes_generate() { # <routes file> <dev|demo>
     tos+=("$to")
     bodies+=("$body")
     prefixes+=("$prefix")
+    headers+=("$own_headers")
     upstreams+=("$upstream")
   done < "$file"
 
@@ -218,7 +231,7 @@ routes_generate() { # <routes file> <dev|demo>
 }
 
 # One site of routes_generate, from its arrays (bash's dynamic scoping: paths, targets, tos, bodies,
-# prefixes, upstreams): <host>, then the indices of the site's routes
+# prefixes, headers, upstreams): <host>, then the indices of the site's routes
 _routes_site() {
   local site_host=$1 i k p path target under own regex
   shift
@@ -282,7 +295,13 @@ _routes_site() {
       printf '\t\t\tredir * %s temporary\n' "${tos[$i]}"
     else
       case "$target" in
-        fr | en | ui) printf '\t\t\timport spa-headers\n' ;;
+        fr | en | ui)
+          if [ "${headers[$i]}" = app ]; then
+            printf '\t\t\timport spa-headers-app\n'
+          else
+            printf '\t\t\timport spa-headers\n'
+          fi
+          ;;
       esac
       if [ -n "${bodies[$i]}" ]; then
         printf '\t\t\trequest_body {\n\t\t\t\tmax_size %s\n\t\t\t}\n' "${bodies[$i]}"

@@ -1,0 +1,6 @@
+# 0015: headers=app on /fr/* only (tests/0003-routes.sh)
+/gateway/*  gateway
+/mcp        mcp
+/fr/*       fr  headers=app
+/en/*       en
+/           redirect  to=/fr/
