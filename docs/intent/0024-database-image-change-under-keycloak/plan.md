@@ -87,3 +87,5 @@ Deploy-demo run 40636936869 (2026-10-28): `postgres:18.6` republished upstream, 
 | The check tells a Keycloak that doesn't answer from an account or administrator that doesn't work | OK | same test, its database stopped: `ok - saying Keycloak doesn't answer`, `ok - not that an administrator doesn't log in`; `tests/0006-account.sh` (a real refusal still repaired: `its secret set to .env's`) `every check passed` |
 | The Keycloak upgrade's dump still comes first | OK | `tests/0013-upgrade.stand-in.sh`: `ok - AC-07: dumped before Keycloak stops`, `every check passed` |
 | The bug is reproduced | OK | mutation check above: `5 check(s) failed` at 126d101 |
+
+After deployment: the push's deploy-demo run (its log with `Registration account c4-infra-registration: up to date`) is not done: `main` stays local tonight (2026-10-28), pushed once the product owner validates the night's work; the run is checked then.

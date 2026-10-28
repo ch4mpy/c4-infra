@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (the milestone push of 0023 and 0020, 2026-10-28; deploy-demo run 40636936869)
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
