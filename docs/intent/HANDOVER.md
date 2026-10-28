@@ -1,6 +1,6 @@
 # Handover — 2026-10-28
 
-Where the intents stand when work moves to another workstation; delete this file once work has resumed. The index ([README.md](README.md)) and each intent's `plan.md` (*Deviations*, *Verification*) hold the details.
+Where the intents stand, for whoever resumes the work, here or on another workstation; delete this file once they are all delivered. The index ([README.md](README.md)) and each intent's `plan.md` (*Deviations*, *Verification*) hold the details.
 
 - **Mode:** bootstrap since 2026-10-27 (the project context's `Mode` line, and each open intent's `Mode` field): no PR, gates decided in the session, each intent on its own branch on `origin`, merged into `main` by `/sdlc-ship`.
 - **Delivered and deployed** this session: 0013, 0018, 0017, 0022.
@@ -8,9 +8,9 @@ Where the intents stand when work moves to another workstation; delete this file
 
 ## Next, in this order
 
-1. **0021** — the dev isolation test's LDAP control check fails now and then. Accepted, no spec. Next: `/sdlc-plan draft 0021`, in plan mode. Measured cause (2026-10-28): `osixia/openldap:1.5.0` opens port 389 about 2 s after it starts, closes it a second later and opens it again (its first-start configuration, then a restart); the control can fall in that gap.
+1. **0023** — LDAP leaves the stack (product owner, 2026-10-28: a Keycloak demonstration element; Keycloak's own user database is enough). Accepted, spec needed. Next: `/sdlc-spec draft 0023`, then its plan in plan mode. It replaces **0021** (the LDAP control check), abandoned on its branch.
 2. **0020** — the isolation test's probe image fails to build in the stand-in, now and then. Accepted, no spec. Next: `/sdlc-plan draft 0020`, in plan mode. Seen since: the workstation's own resolver failed once too (`lookup registry-1.docker.io on 127.0.0.53:53: server misbehaving`, building the stand-in image).
-   - **Milestone:** 0021 and 0020 merged into `main`, then a full `--all`, then push.
+   - **Milestone:** 0023 and 0020 merged into `main`, then a full `--all`, then push.
 3. **0011** — planned (spec v2; plan approved 2026-10-23, step 1 done). Next: `/sdlc-plan implement 0011` on its branch, its step 0 merging `main`.
 4. **0015** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0015`.
 5. **0016** — planned (plan approved 2026-10-27). Next: `/sdlc-plan implement 0016`.
