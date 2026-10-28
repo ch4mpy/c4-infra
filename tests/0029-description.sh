@@ -10,7 +10,10 @@
 #     removed from the Dockerfile, another version in the description, an ENV added, a key added);
 #   - (d) KC_PUBLISHED_IMAGE is ghcr.io/ch4mpy/c4-infra-keycloak:<KC_VERSION>-<12 hex of keycloak/'s
 #     tree, as the working tree holds it>: a change of keycloak/ needs a new reference (another one
-#     on a copy: named).
+#     on a copy: named);
+#   - (e) the workflow's "Compute the images" block, run as it is: when keycloak/ is HEAD's, the
+#     version reference it publishes is KC_PUBLISHED_IMAGE, beside the tree's; a description naming
+#     another one stops it, ::error:: naming both (on copies).
 #
 #   bash tests/0029-description.sh
 #
@@ -79,6 +82,16 @@ published_here() { # <description> <tree>: its KC_PUBLISHED_IMAGE is this keyclo
   named=$(sed -n 's/^KC_PUBLISHED_IMAGE=//p' "$1")
   [ "$named" = "$expected" ] || { echo "KC_PUBLISHED_IMAGE: $1 says $named, keycloak/ gives $expected"; return 1; }
 }
+compute_block() { # the commands of the workflow's "Compute the images" step
+  awk '/- name: Compute the images/ { step = 1 } step && /run: \|/ { block = 1; next }
+    block && /^[[:space:]]*$/ { exit } block { sub(/^ {10}/, ""); print }' .github/workflows/deploy-demo.yml
+}
+computed() { # <dir>: the block run there (its keycloak/Dockerfile and keycloak-image.properties, this repository's HEAD), its outputs in <dir>/output
+  local block
+  block=$(compute_block)
+  (cd "$1" && GIT_DIR=$git_dir GITHUB_OUTPUT=$1/output REGISTRY=ghcr.io GITHUB_REPOSITORY_OWNER=ch4mpy bash -c "$block")
+}
+output() { sed -n "s/^$2=//p" "$1/output"; }
 refused_naming() { # <text> <command…>: the command fails, its output holding the text
   local output
   ! output=$("${@:2}" 2>&1) && grep -qF -- "$1" <<< "$output" || { echo "output:"; printf '%s\n' "$output"; return 1; }
@@ -107,6 +120,27 @@ check "(c) a key added to the description: named" \
   refused_naming "KC_LOG_LEVEL: in $work/key-added, not in $DOCKERFILE" same_settings "$DOCKERFILE" "$work/key-added"
 check "(d) another tree: named" \
   refused_naming "keycloak/ gives $REPOSITORY:26.8.1-000000000000" published_here "$DESCRIPTION" 000000000000
+git_dir=$(git rev-parse --absolute-git-dir)
+head_tree=$(git rev-parse --short=12 HEAD:keycloak)
+mkdir -p "$work/here/keycloak" "$work/other/keycloak"
+cp "$DOCKERFILE" "$work/here/keycloak/"
+cp "$DOCKERFILE" "$work/other/keycloak/"
+cp "$DESCRIPTION" "$work/here/"
+sed "s|^KC_PUBLISHED_IMAGE=.*|KC_PUBLISHED_IMAGE=$REPOSITORY:26.8.1-000000000000|" "$DESCRIPTION" > "$work/other/$DESCRIPTION"
+check "(e) the workflow's Compute the images block read" test -n "$(compute_block)"
+if [ "$head_tree" = "$tree" ]; then
+  check "(e) the block passes on this description" computed "$work/here"
+  check "(e) the version reference it publishes is KC_PUBLISHED_IMAGE" \
+    test "$(output "$work/here" version_image)" = "$(sed -n 's/^KC_PUBLISHED_IMAGE=//p' "$DESCRIPTION")"
+  check "(e) the deployment's stays the tree's, $REPOSITORY:$head_tree" test "$(output "$work/here" image)" = "$REPOSITORY:$head_tree"
+else
+  echo "# (e) skipped: keycloak/ isn't HEAD's ($tree, HEAD $head_tree), which the workflow reads"
+fi
+check "(e) a description naming another reference: the block stops, naming both" \
+  refused_naming "::error::keycloak-image.properties names $REPOSITORY:26.8.1-000000000000, keycloak/ gives $REPOSITORY:26.8.1-$head_tree" \
+  computed "$work/other"
+check "(e) and writes no output" test ! -s "$work/other/output"
+
 printf 'KC_VERSION="26.8.1"\n' > "$work/quoted"
 check "(a) a quoted value: refused" refused_naming 'KC_VERSION="26.8.1"' form "$work/quoted"
 finish
