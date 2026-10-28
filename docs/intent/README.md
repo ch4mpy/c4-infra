@@ -66,6 +66,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0012 | [An application's Keycloak theme may read the shared Keycloak's environment](0012-themes-read-keycloak-environment/intent.md) | bug | delivered | 2026-10-23 | 2026-10-23 |
 | 0013 | [The shared stack lacks what Turu and Hurura'a need to move onto it](0013-stack-lacks-what-turu-and-hururaa-need/intent.md) | change | delivered | 2026-10-23 | 2026-10-23 |
 | 0015 | [The shared proxy imposes its security headers on every application's front end](0015-proxy-imposes-front-end-headers/intent.md) | change | delivered | 2026-10-26 | 2026-10-27 |
+| 0016 | [The shared Keycloak offers no simulated Google, Facebook or Apple provider to try a social login](0016-no-simulated-google-and-apple-realms/intent.md) | change | delivered | 2026-10-26 | 2026-10-27 |
 | 0017 | [The verification runs every test every time, and says nothing of where its time goes](0017-suite-runs-every-test-every-time/intent.md) | change | delivered | 2026-10-27 | 2026-10-27 |
 | 0018 | [The registry test requires exactly four applications, so registering a new one fails the verification](0018-registry-test-pins-four-entries/intent.md) | bug | delivered | 2026-10-27 | 2026-10-27 |
 | 0020 | [The isolation test's probe image fails to build in the stand-in, now and then, on a DNS error](0020-stand-in-probe-build-dns/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |

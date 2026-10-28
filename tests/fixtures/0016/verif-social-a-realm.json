@@ -1,0 +1,122 @@
+{
+  "realm": "verif-social-a",
+  "enabled": true,
+  "displayName": "0016 fixture verif-social-a",
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false,\"required\":{\"roles\":[\"user\"]}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false,\"required\":{\"roles\":[\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false,\"required\":{\"roles\":[\"user\"]}}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}],\"unmanagedAttributePolicy\":\"ENABLED\"}"
+          ]
+        }
+      }
+    ]
+  },
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Simulated Google",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "https://host.docker.internal/auth/realms/simulated-google",
+        "clientId": "any-application",
+        "clientSecret": "simulated-google-public-secret",
+        "clientAuthMethod": "client_secret_post",
+        "authorizationUrl": "https://host.docker.internal/auth/realms/simulated-google/protocol/openid-connect/auth",
+        "tokenUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/token",
+        "userInfoUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/userinfo",
+        "jwksUrl": "http://keycloak:8080/auth/realms/simulated-google/protocol/openid-connect/certs",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "facebook",
+      "displayName": "Simulated Facebook",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "https://host.docker.internal/auth/realms/simulated-facebook",
+        "clientId": "any-application",
+        "clientSecret": "simulated-facebook-public-secret",
+        "clientAuthMethod": "client_secret_post",
+        "authorizationUrl": "https://host.docker.internal/auth/realms/simulated-facebook/protocol/openid-connect/auth",
+        "tokenUrl": "http://keycloak:8080/auth/realms/simulated-facebook/protocol/openid-connect/token",
+        "userInfoUrl": "http://keycloak:8080/auth/realms/simulated-facebook/protocol/openid-connect/userinfo",
+        "jwksUrl": "http://keycloak:8080/auth/realms/simulated-facebook/protocol/openid-connect/certs",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "defaultScope": "openid profile email",
+        "syncMode": "IMPORT"
+      }
+    },
+    {
+      "alias": "apple",
+      "displayName": "Simulated Apple",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "https://host.docker.internal/auth/realms/simulated-apple",
+        "clientId": "any-application",
+        "clientSecret": "simulated-apple-public-secret",
+        "clientAuthMethod": "client_secret_post",
+        "authorizationUrl": "https://host.docker.internal/auth/realms/simulated-apple/protocol/openid-connect/auth",
+        "tokenUrl": "http://keycloak:8080/auth/realms/simulated-apple/protocol/openid-connect/token",
+        "userInfoUrl": "http://keycloak:8080/auth/realms/simulated-apple/protocol/openid-connect/userinfo",
+        "jwksUrl": "http://keycloak:8080/auth/realms/simulated-apple/protocol/openid-connect/certs",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "defaultScope": "openid email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "picture",
+      "identityProviderAlias": "google",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "claim": "picture",
+        "user.attribute": "picture",
+        "syncMode": "INHERIT"
+      }
+    },
+    {
+      "name": "is_private_email",
+      "identityProviderAlias": "apple",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "claim": "is_private_email",
+        "user.attribute": "is_private_email",
+        "syncMode": "INHERIT"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "verif-web",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "https://verif-social.dev.localhost/callback"
+      ]
+    }
+  ]
+}

@@ -6,8 +6,9 @@ c4-infra: the infrastructure the c4-soft applications share on one machine (deve
 
 - Intent home: `docs/intent/`, one sub-folder per change (`NNNN-<slug>/`), see [docs/intent/README.md](docs/intent/README.md).
 - One stack at the root for both environments: the compose base `compose.yml` with `compose.dev.yml` (workstation, `up.sh`) or `compose.demo.yml` (demo host), named by `COMPOSE_FILE` in `.env`; the shared Caddy configuration `caddy/` (`env/dev.caddy` or `env/demo.caddy`, picked by `INFRA_ENV` in `.env`); `register-app.sh`, which generates each application's site with `routes.sh` from its routes file (`examples/routes/`) and its `registry.txt` entry.
+- `keycloak-import/` holds the realms the stack imports itself, once, at a start (`master`, and the simulated providers' `simulated-google`, `simulated-facebook`, `simulated-apple`: README, "Simulated social providers").
 - `demo/` holds the demo host's scripts (`write-env.sh` on the workflow's runner, `deploy.sh` and `backup.sh` on the host, `vps-bootstrap.sh`); `.github/workflows/deploy-demo.yml` sends the files of `demo/deploy-files.txt`.
-- The two images built here: `keycloak/` (Keycloak, pinned, and its features) and `reverse-proxy/` (Caddy with its rate-limit module); in dev `up.sh` builds them (`KC_IMAGE`, `PROXY_IMAGE` in `.env`), the demo workflow pushes them to GHCR tagged by the content of their directory.
+- The two images built here: `keycloak/` (Keycloak, pinned, its features, and the stack's login themes `keycloak/stack-themes/`, a theme JAR) and `reverse-proxy/` (Caddy with its rate-limit module); in dev `up.sh` builds them (`KC_IMAGE`, `PROXY_IMAGE` in `.env`), the demo workflow pushes them to GHCR tagged by the content of their directory.
 - Scripts run under Git Bash on Windows and bash on Ubuntu: container paths need `MSYS_NO_PATHCONV=1`, host paths given to the docker CLI need `cygpath -w` under Git Bash, and no password goes on a command line.
 
 ## Verification
