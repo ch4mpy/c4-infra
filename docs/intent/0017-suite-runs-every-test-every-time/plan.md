@@ -105,3 +105,5 @@ Decided by Jérôme Wacongne (engineer) on 2026-10-27:
 | AC-07 | OK | `CLAUDE.md`:15 (`--all` the proof, `--changed [<base>]`, never a proof), :17 (a covers line, `docs/intent/`), :19 (the lock, `docker rm -f c4-infra.suite-lock`) |
 | AC-08 | OK | `tests/0017-run.sh` → `ok - AC-08: docs/intent/ only: no test runs`, `each one skipped, not concerned`, `with a.sh too: the tests declaring a.sh only` |
 
+
+**After deployment** (run 40614189052 on `1593256`, `success`, 2026-10-28): tests and docs only, the images unchanged; no proof deferred to it, no smoke test declared; master's discovery on `infra.c4-soft.com` → `200`.
