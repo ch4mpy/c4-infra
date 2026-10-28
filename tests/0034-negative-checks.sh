@@ -27,7 +27,7 @@ NO_NETWORK=c4-infra.0034-no-such-app
 NO_IMAGE=alpine:0034-no-such-tag
 STANDIN=tickee.network-standin
 # the negative check by address, whichever address it names
-BY_ADDRESS="[0-9]+(\\.[0-9]+){3}:7080 can't be reached\$"
+BY_ADDRESS="[0-9.]+:7080 can't be reached\$"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -42,9 +42,9 @@ variant() { # <name> <text of tests/0007-dev.sh> <parts…>: its output in $work
 exited() { # <name> <status>
   [ "$(cat "$work/$1.status")" = "$2" ] || { echo "exit $(cat "$work/$1.status"); its log:"; tail -n 20 "$work/$1.log"; return 1; }
 }
-ko_naming() { # <name> <label regex> <cause fragment>: a KO line matching the label, the cause in it or in the lines under it
+ko_naming() { # <name> <label regex> <cause fragment>: a KO line matching the label, the cause in the lines under it
   awk -v label="$2" -v cause="$3" '
-    /^KO - / { inside = $0 ~ label; if (inside && index($0, cause)) found = 1; next }
+    /^KO - / { inside = $0 ~ label; next }
     /^     / { if (inside && index($0, cause)) found = 1; next }
     { inside = 0 }
     END { exit !found }' "$work/$1.log" \
@@ -60,14 +60,15 @@ no_ok_line() { # <name> <label fragment>
 # Without Faito's network
 variant no-network "$(sed "s/c4-infra\.faito/$NO_NETWORK/g" tests/0007-dev.sh)" tickee guard
 check "without Faito's network: the copy names $NO_NETWORK" grep -qF "$NO_NETWORK" "$work/no-network.log"
-check "without Faito's network: a KO names it and register-app.sh --app faito" ko_naming no-network "$NO_NETWORK" 'register-app.sh --app faito'
+check "without Faito's network: a KO names it and register-app.sh --app faito" \
+  ko_naming no-network "$NO_NETWORK .*register-app.sh --app faito" "network $NO_NETWORK not found"
 check "without Faito's network: the negative check by name KOs, naming it" \
-  ko_naming no-network "AC-07: from $NO_NETWORK, $STANDIN:7080 can't be reached by name" "$NO_NETWORK"
+  ko_naming no-network "AC-07: from $NO_NETWORK, $STANDIN:7080 can't be reached by name" "network $NO_NETWORK not found"
 check "without Faito's network: the negative check by address KOs, naming it" \
-  ko_naming no-network "AC-07: from $NO_NETWORK, $BY_ADDRESS" "$NO_NETWORK"
+  ko_naming no-network "AC-07: from $NO_NETWORK, $BY_ADDRESS" "network $NO_NETWORK not found"
 check "without Faito's network: no ok from it" no_ok_line no-network "AC-07: from $NO_NETWORK"
 check "without Faito's network: the dev alias check KOs, naming it" \
-  ko_naming no-network "dev: the reverse proxy has no INFRA_HOST alias on $NO_NETWORK" "$NO_NETWORK"
+  ko_naming no-network "dev: the reverse proxy has no INFRA_HOST alias on $NO_NETWORK" "reverse proxy on $NO_NETWORK"
 check "without Faito's network: exit 1" exited no-network 1
 
 # Without the probe image
