@@ -1,0 +1,26 @@
+# 0026 fixture (tests/0026-log-bound.stand-in.sh): Faito's gateway, as 0025's, and a talker that
+# prints a first line, 60 MiB of 1 KiB lines, then its last line, and waits. No logging: the host's
+# bound applies to both.
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+  talker:
+    image: caddy:2.11.4-alpine
+    container_name: faito.talker
+    init: true
+    networks: [c4-infra.faito]
+    command:
+      - sh
+      - -c
+      - |
+        echo 'faito.talker: first line'
+        line=$$(printf '%01023d' 0)
+        yes "$$line" | head -n 61440
+        echo 'faito.talker: last line'
+        exec sleep 86400
+networks:
+  c4-infra.faito:
+    external: true

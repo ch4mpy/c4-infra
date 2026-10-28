@@ -146,7 +146,7 @@ their ports: `up.sh` names its containers, to stop first.
 | Landing page (links to everything registered) | https://host.docker.internal/ | 80, 443 |
 | Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | none: through the proxy only |
 | Mailpit | https://host.docker.internal/mailpit/ | 1025 (SMTP, auth `mailpit` / `secret`), 8025 (its UI, over plain HTTP) |
-| Grafana LGTM | https://host.docker.internal/grafana/ | 3000, 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
+| Grafana LGTM (logs, traces, metrics and profiles kept 14 days) | https://host.docker.internal/grafana/ | 3000, 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
 | RabbitMQ (admin user and password in `.env`) | https://host.docker.internal/rabbitmq/ | 5672 (AMQP), 15672 |
 
 ```bash
@@ -621,13 +621,22 @@ sub-keys and values — and refuses anything else, naming the service (or networ
   `network_mode`, `links`, `external_links`, `volumes_from`; `pid`/`ipc`/`uts`/`userns_mode`/`cgroup`
   set to `host` or another container; a read-write bind mount, or one of the staging root or outside
   it (the Docker socket, another application's files…); a network or volume that is external, has a
-  name or driver of its own, or `driver_opts`;
+  name or driver of its own, or `driver_opts`; `logging`, whatever its driver or bound — the host
+  bounds every container's logs (below);
 - **refused by the allowlist** (not an application's to set): `use_api_socket`,
   `post_start`/`pre_stop` hooks, a `provider` service, and anything else not listed above. A need for one of
   these is a new intent, not a change an application makes on its own.
 
 Then `up` makes sure of the application's network (`networks.sh ensure`) and starts the snapshot
 model it checked, outside anything the application or its containers can write.
+
+**Logs** (intent 0026): `up` gives every service of that model the stack's own bound,
+`json-file` with `max-size: 10m` and `max-file: 3` (the `x-logging` of
+[`compose.yml`](compose.yml)): Docker keeps at most 30 MB of each container's output, the oldest
+lines dropped first, so that no container fills the host's disk. The application sets none: a
+service's `logging` is refused (`service <s>: logging: the demo host bounds every container's logs
+(README, "Accounts")`). A container made before, unbounded, is recreated at the application's next
+`sudo c4-app up`, its files unchanged: compose sees its logging change.
 
 ### What an application's deployment does
 
@@ -671,7 +680,7 @@ management UI (15672) and Mailpit without credentials.
 | `rabbitmq` | 5672 | AMQP: each application's own user, on its own virtual host | events (RQ-02) |
 | `rabbitmq` | 15692 | Prometheus metrics, without authentication | recorded, no personal data (PA-03) |
 | `grafana-lgtm` | 4317, 4318 | the OTLP receivers (gRPC, HTTP): any telemetry, so an application can write under another's name | Grafana LGTM attached as it is (PA-02, decided 2026-10-21) |
-| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read | Grafana LGTM attached as it is (PA-02) |
+| `grafana-lgtm` | 9090, 3200, 3100, 4040 | Prometheus, Tempo, Loki and Pyroscope, without authentication: every application's metrics, traces, logs and profiles (URLs, user ids) can be read; Loki's deletion API is off (`403`), so that none deletes another's logs (intent 0026) | Grafana LGTM attached as it is (PA-02) |
 | `grafana-lgtm` | 3000 | Grafana, behind its login on the demo host | the dashboards (RQ-02) |
 
 Kept on the containers' loopback, unreachable from any network:
@@ -685,6 +694,19 @@ Kept on the containers' loopback, unreachable from any network:
   RQ-11: the `*_EXTRA_ARGS` of [`compose.yml`](compose.yml) and
   [`grafana-lgtm/tempo-config.yaml`](grafana-lgtm/tempo-config.yaml), a copy of the image's file
   to regenerate with each image upgrade: `tests/0007-lgtm.sh` fails until it is).
+
+Grafana LGTM keeps what it receives **14 days**, in dev as on the demo host (intent 0026), set by the
+`*_EXTRA_ARGS` of [`compose.yml`](compose.yml): logs (Loki's compactor,
+`-compactor.retention-enabled=true -store.retention=336h`, with its delete-request store on the
+filesystem; its deletion API, which retention would open to every application's network, off:
+`-compactor.deletion-mode=disabled`), traces (Tempo's backend worker,
+`-backend-worker.compaction.block-retention=336h`, its default pinned), metrics (Prometheus,
+`--storage.tsdb.retention.time=336h`) and profiles (Pyroscope, `-retention-period=336h`). Loki's
+compactor deletes what expired about two hours after marking it; its volume is bounded by time, not
+by size: a burst within the 14 days still grows it. Dev's older telemetry goes at the first
+compaction after a `bash up.sh`. An image upgrade must keep appending each component's
+`*_EXTRA_ARGS` and these flags' names: `tests/0026-stack-bounds.sh` reads each component's effective
+configuration, and fails until it does.
 
 ### On the host
 
@@ -710,6 +732,13 @@ On the host, as `c4-infra`, from `~/c4-infra`: over ssh with its key, or from th
 ssh c4-infra@<vps> 'cd ~/c4-infra && docker compose ps'   # health of every shared service
 docker compose logs -f keycloak    # or reverse-proxy, rabbitmq...
 ```
+
+An application's recent output, as `c4-infra` too (its own account runs no `docker` command):
+`docker logs --tail 100 <container>` (its `container_name`, `<app>.gateway`…, or
+`<app>-<service>-1` without one), or `docker compose -p <app> logs --tail 100 <service>` run from
+`~` (in `~/c4-infra`, compose would read the stack's file under the application's name).
+Docker keeps 30 MB of each container's output ("Accounts"); an application's history is in Grafana,
+14 days, if it exports its logs ([docs/migration.md](docs/migration.md), "On the demo host").
 
 `docker compose down -v` wipes Keycloak (every application's users) and Mailpit: take a backup
 first.
