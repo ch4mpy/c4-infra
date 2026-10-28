@@ -69,7 +69,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0016 | [The shared Keycloak offers no simulated Google, Facebook or Apple provider to try a social login](0016-no-simulated-google-and-apple-realms/intent.md) | change | delivered | 2026-10-26 | 2026-10-27 |
 | 0017 | [The verification runs every test every time, and says nothing of where its time goes](0017-suite-runs-every-test-every-time/intent.md) | change | delivered | 2026-10-27 | 2026-10-27 |
 | 0018 | [The registry test requires exactly four applications, so registering a new one fails the verification](0018-registry-test-pins-four-entries/intent.md) | bug | delivered | 2026-10-27 | 2026-10-27 |
-| 0019 | [The stand-in deployment test fails on a workstation whose locale isn't C](0019-stand-in-test-depends-on-locale/intent.md) | bug | accepted | 2026-10-28 | 2026-10-28 |
+| 0019 | [The stand-in deployment test fails on a workstation whose locale isn't C](0019-stand-in-test-depends-on-locale/intent.md) | bug | planned | 2026-10-28 | 2026-10-28 |
 | 0020 | [The isolation test's probe image fails to build in the stand-in, now and then, on a DNS error](0020-stand-in-probe-build-dns/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0022 | [A full verification runs its stand-in tests one after the other, while nothing else runs](0022-full-verification-runs-sequentially/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0023 | [The stack still documents and tests an LDAP user federation no application needs](0023-ldap-leaves-the-stack/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
