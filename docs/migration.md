@@ -53,9 +53,17 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    | `openapi` profile: gateway / REST API | dev ports | p090 / p190, passed as `--server.port` |
    | `openapi` profile: their management | dev ports + 1 | p091 / p191, passed as `--management.server.port` (else they take the dev applications' p081 / p181) |
 
-   In `application.yml` (`server.port`, `management.server.port`, `rest-api-v1` and the like), the
-   poms' `integration-tests.port` (`openapi` profile), `angular.json` / `package.json` (`--port`),
-   `.env` (`REST_API_DB_PORT`) and `.vscode/launch.json` if it names ports.
+   In `application.yml`'s default and dev profiles, not the `demo` one's (`server.port`,
+   `management.server.port`, `rest-api-v1` and the like), the poms' `integration-tests.port`
+   (`openapi` profile), `angular.json` / `package.json` (`--port`), `.env` (`REST_API_DB_PORT`) and
+   `.vscode/launch.json` if it names ports.
+
+   Only what runs on the workstation moves. On the demo host the containers keep their ports and
+   publish none: its Caddy reaches `<project>.gateway:7080`, `<project>.frontend:80` and
+   `<project>.mcp:9080` (`registry.sh upstream`). So when the default profile held `7080`, the
+   `demo` profile sets it back, whatever the containers run; the same for the REST API's `8080`,
+   which the demo `rest-api-v1` names, and for the management ports the compose file's healthchecks
+   name.
 2. **Origin.** The project is served on `https://<project>.dev.localhost/`:
    - gateway: a new `app-uri: https://<project>.dev.localhost` replaces `reverse-proxy-uri` in
      `client-uri`, `post-login-*` and `post-logout-*` (the allowed patterns become
