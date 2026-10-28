@@ -11,6 +11,9 @@ tlds-alpha-by-domain.txt
 registration-account.sh
 networks.sh
 keycloak-import/master-realm.json
+keycloak-import/simulated-google-realm.json
+keycloak-import/simulated-facebook-realm.json
+keycloak-import/simulated-apple-realm.json
 demo/deploy.sh
 demo/backup.sh
 demo/c4-app
