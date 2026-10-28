@@ -182,6 +182,10 @@ nightly() {
           || code=$?
       fi
       if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+        # runuser KILLs sudo 2 s after relaying the TERM (intent 0033, step 0, fact e): c4-app may still
+        # be stopping what it started; its end frees the application's lock
+        flock -w 60 "$STAGING_ROOT/.$member.lock" true \
+          || echo "c4-app: a c4-app command of $member still holds its lock 60 s after the cut"
         echo "== exit $code: stopped after $NIGHTLY_TIMEOUT s"
       else
         echo "== exit $code"
@@ -244,8 +248,12 @@ run=
 # E3: the item that runs (bounded), stopped on the way out: what it is, its timeout's pid, where it
 # runs, its FIFO's reader; what its stop stopped, a cut's line
 item_what= item_pid= item_container= item_marker= item_cid= item_reader= item_stopped= cut=
+# a docker stop under way (stop_containers)
+stopping=
 leave() {
-  local status=$? what=$item_what
+  local status=$? what=$item_what deadline=$((SECONDS + STOP_WAIT))
+  # a signal sudo relays again must not cut the way out short
+  trap '' INT TERM
   if [ -n "$what" ]; then
     stop_item || true
     if [ -n "$signalled" ]; then what="stopped by a signal during $what"; else what="$what interrupted"; fi
@@ -259,14 +267,20 @@ leave() {
     echo "c4-app: the restore of backup $restoring failed (above) once it had begun replacing $app's data: its containers stay stopped (${stopped[*]}). To put the state before back: sudo c4-app restore $safety --yes, then sudo c4-app up; to start $app as it is: sudo c4-app up" >&2
     return
   fi
-  [ ${#stopped[@]} -eq 0 ] || docker start "${stopped[@]}" > /dev/null \
-    || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+  while [ -n "$stopping" ] && kill -0 "$stopping" 2> /dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 0.5
+  done
+  if [ -n "$stopping" ] && kill -0 "$stopping" 2> /dev/null; then
+    echo "c4-app: ${stopped[*]} still stopping $STOP_WAIT s later: sudo c4-app up starts them" >&2
+  elif [ ${#stopped[@]} -gt 0 ]; then
+    timeout 20 docker start "${stopped[@]}" > /dev/null || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+  fi
   [ "$status" -eq 0 ] || [ -z "$restoring" ] \
     || echo "c4-app: the restore of backup $restoring failed (above), before it changed any data: its containers run again" >&2
 }
 trap leave EXIT
-trap 'signalled=1; exit 130' INT
-trap 'signalled=1; exit 143' TERM
+trap 'trap "" INT TERM; signalled=1; exit 130' INT
+trap 'trap "" INT TERM; signalled=1; exit 143' TERM
 
 # The application's files, read as it, links and special files refused, into the incoming copy
 # (0750 root:<app>); the root-only snapshot directory (re)created empty
@@ -869,6 +883,17 @@ untrack() { # <container>…
   stopped=("${kept[@]}")
 }
 
+# docker stop in a session of its own, waited for: a signal reaches the trap without waiting for the
+# application's stop_grace_period, and leave lets the stop end
+stop_containers() { # <container>…
+  local code=0
+  setsid docker stop "$@" > /dev/null 9>&- &
+  stopping=$!
+  wait "$stopping" || code=$?
+  stopping=
+  return "$code"
+}
+
 # The running containers that mount these volumes, stopped (started again on the way out); sets group
 group=()
 stop_mounters() { # <volume>…
@@ -886,7 +911,7 @@ stop_mounters() { # <volume>…
   done
   [ ${#group[@]} -gt 0 ] || return 0
   stopped+=("${group[@]}")
-  docker stop "${group[@]}" > /dev/null || fail "${group[*]} could not be stopped (above)"
+  stop_containers "${group[@]}" || fail "${group[*]} could not be stopped (above)"
 }
 
 # Running, healthy where checked, or done (exited 0) within 300 s; the others named, status 1
@@ -1111,7 +1136,7 @@ cmd_restore() {
     [ -n "${database[$name]:-}" ] || stop+=("$name")
   done
   stopped+=("${stop[@]}")
-  [ ${#stop[@]} -eq 0 ] || docker stop "${stop[@]}" > /dev/null || fail "${stop[*]} could not be stopped (above)"
+  [ ${#stop[@]} -eq 0 ] || stop_containers "${stop[@]}" || fail "${stop[*]} could not be stopped (above)"
   take_backup
   safety=$stamp
   altered=1
