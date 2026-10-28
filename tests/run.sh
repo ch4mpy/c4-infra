@@ -45,6 +45,8 @@ done
 shopt -s nullglob
 tests=(tests/[0-9][0-9][0-9][0-9]-*.sh)
 shopt -u nullglob
+# in C order, whatever the workstation's locale: a glob follows its collation (intent 0019)
+[ ${#tests[@]} -eq 0 ] || mapfile -t tests < <(printf '%s\n' "${tests[@]}" | LC_ALL=C sort)
 declare -A covers=()
 for test in "${tests[@]}"; do
   covers[$test]="$test $(sed -n 's/^# covers: //p' "$test" | tr '\n' ' ')"

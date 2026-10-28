@@ -1,4 +1,4 @@
-# Plan: The stand-in deployment test fails on a workstation whose locale isn't C (0019)
+# Plan: The stand-in deployment test fails on a workstation whose locale isn't C
 
 - Spec: none, the [intent](intent.md) (bug, spec needed: no)
 - Status: approved
@@ -53,3 +53,7 @@
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — step 0. `LANG=fr_FR.UTF-8` here; `bash tests/0003-demo-deploy.stand-in.sh` without `LC_ALL`, on the code as it was: `KO - /root/c4-infra holds only what the deployment sends`, the found list in C order (`.env` first), the only failing check (`1 check(s) failed`).
+- 2026-10-28 — step 1. The guard names 36 bare sorts, `tests/0003-demo-deploy.stand-in.sh:40,43` among them; the sort inside a jq program (`tests/0009-master-realm.sh:48`, jq's own, by code point) is left out, a command line run in a container (`sh -c '…'`) or by `eval '…'` is not. Step 2's check: the guard `every check passed`, `tests/0003-demo-deploy.stand-in.sh` without `LC_ALL` `every check passed`.
+- 2026-10-28 — step 4, review round (bootstrap: one; `code-review high`). The guard missed a sort opening a quoted command line, after `do`/`then`/`!`/`xargs`/a backtick, behind `LANG=C` or `LC_COLLATE=C` (which don't win over `LC_ALL`), in an untracked file, and its jq purge could swallow a real sort further on the line: unfrozen with the product owner's approval (2026-10-28) and strengthened (one pipeline, `git grep --untracked`, only the quoted program right after `jq` and its options left out); a throw-away probe of those 13 forms: each named, `LC_ALL=C sort`, a jq program's sort and a comment not; at step 1's tree (526b25e) it names the 36 bare sorts. `tests/run.sh`: its test list, a glob that follows the locale's collation, sorted with `LC_ALL=C sort` (the order of lane 1 and of 0017's checks; the same today, not for names differing in punctuation only). Files: none new.

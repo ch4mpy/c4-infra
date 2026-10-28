@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# 0019: the tests sort in the C locale, whatever the workstation's: every sort command of tests/ (its
-# scripts, tests/lib/, tests/run.sh) is `LC_ALL=C sort`. A sort in the workstation's collation (fr_FR
-# puts .env after caddy/…, C before) compared with a list sorted in a container, or with a literal
-# written in C order, fails there although both hold the same names (intent 0019). A bare one is named
-# <file>:<line>.
-#
-# A command is a sort at a line's start or after | ; & ( { or $(, a command line run elsewhere
-# (sh -c '…', eval '…') included; a jq program's sort is jq's (code points): its quoted program is left
-# out.
+# 0019: every sort command of tests/ is `LC_ALL=C sort`, so that a list sorted on a workstation
+# whatever its locale compares with a container's or a literal in C order; a bare one, or one behind
+# another prefix (LANG=C does not win over LC_ALL), is named <file>:<line>. A jq program's sort is
+# jq's: the quoted program right after jq and its options is left out.
 #
 #   bash tests/0019-collation.sh
 #
@@ -16,18 +11,19 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 
-# the command's name from pieces, so that this file never holds one
-command=so
-command+=rt
+# the command's name from pieces, so that this file never holds it
+name=so
+name+=rt
+# a command's position: a line's start, after | ; & ( { ! $( ` or a quote opening a command line
+# (sh -c, eval), or after a keyword or wrapper; any assignments in front
+position="(^[^:]*:[0-9]+:|[|;&({!\`'\"]|\\\$\\(|(do|then|else|if|elif|while|until|xargs|env|time|command|nohup)[[:space:]])"
+bare_pattern="$position[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*$name([[:space:]]|[)'\"\`]|\$)"
 bare() {
-  local file number line found=""
-  while IFS=: read -r file number line; do
-    line=$(sed "s/jq[^'|]*'[^']*'/jq/g" <<< "$line")
-    if grep -qE "(^|[|;&({]|\\\$\\()[[:space:]]*$command([[:space:]]|[)'\"]|$)" <<< "$line"; then
-      found+="$file:$number"$'\n'
-    fi
-  done < <(git grep -nw "$command" -- 'tests/*.sh' 'tests/lib/*')
-  [ -z "$found" ] || { printf '%s' "$found"; return 1; }
+  local found
+  found=$(git grep -n --untracked -w "$name" -- 'tests/*.sh' 'tests/lib/*' \
+    | sed -E "s/^([^:]*:[0-9]+:)[[:space:]]*#.*/\\1/; s/jq( +-[-[:alnum:]]+)* +'[^']*'/jq/g; s/LC_ALL=C +$name/LC_ALL_C_$name/g" \
+    | grep -E "$bare_pattern" | cut -d: -f1,2)
+  [ -z "$found" ] || { printf '%s\n' "$found"; return 1; }
 }
-check "every $command of tests/ is LC_ALL=C $command (a bare one named)" bare
+check "every $name of tests/ is LC_ALL=C $name (a bare one named)" bare
 finish
