@@ -11,6 +11,9 @@
 #   bash tests/0013-keycloak.sh
 #
 # Needs the dev stack running (up.sh).
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ registry.sh registry.txt
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

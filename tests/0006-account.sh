@@ -20,6 +20,10 @@
 # Needs the dev stack (up.sh) and Faito's repository (FAITO_DIR, default ../faito): its deploy-dev.sh
 # and its realm export. Rotates the registration secret of .env (twice): the account keeps working.
 # The fixture realms are removed whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0006/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

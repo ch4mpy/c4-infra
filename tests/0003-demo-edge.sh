@@ -8,6 +8,9 @@
 # with X-Forwarded-Host and -Proto, without the single-page-app headers.
 #
 #   bash tests/0003-demo-edge.sh
+#
+# covers: caddy/ reverse-proxy/ routes.sh registry.sh registry.txt examples/routes/ rabbitmq/
+# covers: tests/fixtures/0013/ tests/fixtures/stand-in-upstream/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

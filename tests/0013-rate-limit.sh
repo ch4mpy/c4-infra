@@ -11,6 +11,8 @@
 #   bash tests/0013-rate-limit.sh
 #
 # Needs the dev stack running (up.sh); the throwaway container is removed whatever happens.
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ reverse-proxy/ keycloak/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

@@ -24,6 +24,11 @@
 #             compose.apps.yml.new (a directory) doesn't stop it; and in a Linux container (bash:5.2,
 #             which has flock), it waits while another process holds the lock on the stack's
 #             directory, then writes the file
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt compose.demo.yml rabbitmq/
+# covers: tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

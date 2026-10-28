@@ -18,6 +18,10 @@
 #
 # Needs the dev stack running (up.sh). The realm and the network this test creates are removed
 # whatever happens. Dev values only: the fixture's users and clients have the secret "secret".
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0013/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

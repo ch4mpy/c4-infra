@@ -26,6 +26,10 @@
 # the stand-in; Let's Encrypt is kept out (tests/stand-in-host/compose.no-acme.yml). The
 # applications' .env (RABBITMQ_PASSWORD, random) is written here into the copy each one uploads
 # (.gitignore ignores every .env). Passwords travel on stdin, never on a command line.
+#
+# covers: demo/ compose.yml compose.demo.yml register-app.sh registry.sh registry.txt routes.sh
+# covers: networks.sh registration-account.sh tlds-alpha-by-domain.txt rabbitmq/
+# covers: tests/fixtures/0007/ tests/stand-in-host/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

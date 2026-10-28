@@ -18,6 +18,10 @@
 # trap, whatever happens.
 #
 #   bash tests/0012-themes.sh
+#
+# covers: up.sh env.sh compose.yml compose.dev.yml caddy/ keycloak/ keycloak-import/ reverse-proxy/
+# covers: certs/ register-app.sh registry.sh registry.txt routes.sh networks.sh
+# covers: registration-account.sh tlds-alpha-by-domain.txt tests/fixtures/0012/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

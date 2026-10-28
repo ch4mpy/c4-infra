@@ -6,6 +6,9 @@
 # host 80 and 443 only (AC-10); what the demo host doesn't expose stays dev's (RQ-02).
 #
 #   bash tests/0003-compose.sh
+#
+# covers: compose.yml compose.dev.yml compose.demo.yml env.sh keycloak/ rabbitmq/ reverse-proxy/
+# covers: grafana-lgtm/ tests/fixtures/0003/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

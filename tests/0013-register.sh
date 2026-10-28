@@ -19,6 +19,9 @@
 #     file and a proxy not restarted since a pull or a rebuild (run up.sh first).
 #
 #   bash tests/0013-register.sh
+#
+# covers: register-app.sh registry.sh registry.txt routes.sh networks.sh registration-account.sh
+# covers: tlds-alpha-by-domain.txt up.sh caddy/ examples/routes/ tests/fixtures/0013/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

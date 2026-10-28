@@ -26,6 +26,8 @@
 #
 # Needs the image c4-infra/keycloak (up.sh builds it). The throwaway containers are removed whatever
 # happens.
+#
+# covers: keycloak/ keycloak-import/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
