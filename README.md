@@ -758,22 +758,27 @@ services:
       c4-infra.backup: volumes    # its named volumes, copied with its containers stopped
 ```
 
-- `postgres`: `pg_dump -Fc` run in the service's own container (`docker exec`), as its
-  `POSTGRES_USER`, of its `POSTGRES_DB`, through the local socket the official `postgres` image
-  trusts (no password needed, `POSTGRES_PASSWORD_FILE` is fine). The database answers throughout. A
-  dump holds `POSTGRES_DB` only: no role, no other database; restoring one needs PostgreSQL 13 or
-  later (`DROP DATABASE … WITH (FORCE)`);
+- `postgres`: `pg_dump -Fc --lock-wait-timeout=120s` run in the service's own container (`docker
+  exec`), as its `POSTGRES_USER`, of its `POSTGRES_DB`, through the local socket the official
+  `postgres` image trusts (no password needed, `POSTGRES_PASSWORD_FILE` is fine). The database
+  answers throughout. A dump holds `POSTGRES_DB`'s schema and data only: no role, no other database,
+  and none of the database's own settings and grants (`ALTER DATABASE … SET`, `GRANT CONNECT`…),
+  which a restore doesn't bring back: the application sets them again (its migrations, or its
+  database's init scripts); restoring needs PostgreSQL 13 or later (`DROP DATABASE … WITH (FORCE)`);
 - `volumes`: the service's named volumes, each copied with every running container of the project
-  that mounts it stopped, then started again and waited for (healthy, where it has a healthcheck),
-  for seconds. Root copies them through a throwaway container of the stack's own database image
-  (`c4-infra.keycloak-db`'s, which must run): that volume mounted and nothing else, no network, a
-  read-only root, every capability dropped but the four `tar` needs to keep owners and modes
-  (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`), `tar --numeric-owner`;
+  that mounts it stopped (a database's too: `volumes` wins over `postgres` for a volume both
+  mount), then started again in compose's order and waited for (running, healthy where it has a
+  healthcheck, or ended with status 0), for seconds. Root copies them through a throwaway container
+  of the stack's own database image (`c4-infra.keycloak-db`'s, which must run): that volume mounted
+  and nothing else, no network, a read-only root, every capability dropped but the four `tar` needs
+  to keep owners and modes (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`), `tar --sparse
+  --numeric-owner`;
 - another value is refused, naming the service and the value (printed with `printf %q`), and nothing
-  is written; a declared service with more than one container, or a declared database that doesn't
-  run, too. The project's volumes no label covers (but a database's own) are named:
-  `c4-app: not backed up: <app>_cache`. A project with no container, none running, or no label:
-  said, nothing written, exit 0.
+  is written; a declared service with more than one container, a declared database that doesn't
+  run, or a `volumes` service that mounts no named volume of the project, too. The project's volumes
+  no label covers (but a database's own) are named: `c4-app: not backed up: <app>_cache`. A project
+  with no container, none running, or no label: said, nothing written, exit 0. A dump or a volume's
+  copy that hasn't ended within 1800 s is refused.
 
 Backup and restore select the containers by the project's label, `com.docker.compose.project=<app>`,
 which compose sets itself over any the file sets, and by their name (`<app>.` or `<app>-`), and the
@@ -792,22 +797,28 @@ volumes by that label and the name `<app>_<key>`: nothing of another application
   (`0640 root:<app>`), between a dated header and its exit status: the operator reads it there. On
   demand too: `sudo c4-app backup`, from the application's workflow before a deployment that
   migrates its database.
-- **How long**: 7 days. Each run of the application (on demand, nightly, a restore's) removes its
-  backups older than that; `backup.log` stays.
+- **How long**: 7 days. Each backup or restore of the application that succeeds removes its backups
+  older than that, but never its newest: failed nights remove nothing. `backup.log` stays. Each
+  night is stopped after 2 hours (its log says so), so one application's backup can't hold the
+  others'.
 - **The disk**: a backup is refused when the free space of `/var/backups/c4-apps` falls under 5 GiB
-  or under 10 % of the disk, whichever is larger, checked before each item and after the last: what
-  it wrote is removed, the earlier backups stay, and the refusal (the free space and the floor) is in
-  its output, the nightly log included.
+  or under 10 % of the disk, whichever is larger: checked before each item, each item written at
+  most up to that floor (one that reaches it is refused), and after the last. What it wrote is
+  removed, the earlier backups stay, and the refusal (the free space and the floor) is in its
+  output, the nightly log included.
 - **Restore**: `sudo c4-app restore` lists the stamps and their sizes. `sudo c4-app restore <stamp>
   --yes` (refused without `--yes`, saying how; `<stamp>` only, never a path) checks everything
-  first, and a refusal stops nothing: each `.dump` matched to a running database the project
-  declares `postgres`, each `.tar` to a volume of a service it declares `volumes`, the floor. Then
-  it stops every running container of the project but its databases, backs up the current state (a
-  new stamp, named in its output), recreates each database empty and restores its dump
-  (`pg_restore --exit-on-error`), empties each volume and fills it again, and starts the containers
-  again in compose's order (`depends_on`), waiting up to 300 s for them to run, healthy where they
-  have a healthcheck. If it fails, the containers it stopped are started again, and it names the
-  backup of the state before: `sudo c4-app restore <that stamp> --yes` puts it back.
+  first, and a refusal changes nothing: each `.dump` matched to a running database the project
+  declares `postgres`, each `.tar` to a volume of a service it declares `volumes`, each file read
+  whole (`pg_restore`, `tar -t`), the floor. Then it stops every running container of the project
+  but its databases, backs up the current state (a new stamp, named in its output), recreates each
+  database empty and restores its dump (`pg_restore --exit-on-error`), empties each volume and fills
+  it again, and starts the containers it stopped in compose's order (`depends_on`), waiting up to
+  300 s for them (containers that don't get there are named: the data are restored all the same).
+  A failure before the first database or volume is replaced starts them again, nothing changed. A
+  failure after leaves them stopped, on half-restored data, and names the backup of the state
+  before: `sudo c4-app restore <that stamp> --yes`, then `sudo c4-app up`, puts it back; `sudo
+  c4-app up` alone starts the application as it is.
 - **Off the host**: none by c4-infra (the host's disk holds them, as Keycloak's). An application may
   pull its own, with its key, as its workflow sends its files:
   `rsync -a <app>@<vps>:/var/backups/c4-apps/<app>/ <directory>/` (they hold its users' personal
