@@ -1,11 +1,11 @@
 # Spec: An application can't tell which Keycloak its tests should run
 
 - Intent: [0029](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: standard (no risk rule applies: the stack's Keycloak, its realms, accounts and networks don't change, and what c4-infra publishes holds no secret, RQ-06; it would be high if a decision put a secret or the master realm into it)
 - Policies applied: none yet; standing constraints: README design (Keycloak 26.8.1 pinned with its features, 0013), the demo host's image tagged by `keycloak/`'s content (`deploy-demo.yml`, `compose.yml`), no secret in Keycloak's environment nor its image (0012), the simulated realms imported by `keycloak-import`, outside `keycloak/` (0016), CLAUDE.md (scripts under bash and Git Bash; a script comes with its test)
-- Approved: —
+- Approved: 2026-10-28, Jérôme Wacongne (product owner; every point of attention decided as recommended)
 
 ## Summary
 
@@ -75,7 +75,7 @@ None.
 - Options: A) the stack's image, its package made public (the content of `keycloak/` readable by anyone, the repository staying private) / B) the description only: the application starts `quay.io/keycloak/keycloak:<version>` with the features, without the stack's themes / C) both.
 - Recommendation: C: the image gives a CI on any platform the same Keycloak with no credential and no access to the repository; the description lets a developer's check or a build read version and features without pulling. `keycloak/` holds nothing private (Dockerfile, healthcheck, the simulated themes the demo host already serves).
 - Decides: PO
-- Decision: to decide
+- Decision: C, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-02: The published image's tag (PA-01 A or C)
 
@@ -83,7 +83,7 @@ None.
 - Options: A) `<version>-<content hash>` (`26.8.1-33909cd89858`) beside today's: immutable, the version readable / B) a moving `<version>` and `latest`, which an application pins by digest for its dependency bot to update / C) A and B.
 - Recommendation: A: an application's tests stay reproducible and its code shows the version; PA-04 says when to move; B's bot is each application's own setup.
 - Decides: PO
-- Decision: to decide
+- Decision: A, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-03: The stack's themes and simulated realms in an application's test Keycloak
 
@@ -91,7 +91,7 @@ None.
 - Options: A) the themes with the image, the simulated realms not: the README says how a test imports them from c4-infra's files and re-points its provider's URLs / B) both in what is published (the realm files in the image, or an artifact beside it) / C) neither (an image without the stack's themes for tests).
 - Recommendation: A: the themes cost nothing and are what the stack serves; no application tests a simulated login yet; a later intent if one does.
 - Decides: PO
-- Decision: to decide
+- Decision: A, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ### PA-04: How an application learns of a change
 
@@ -99,7 +99,7 @@ None.
 - Options: A) the description only: an application's check compares its pin with it on a workstation, c4-infra's clone beside the project / B) A, plus a dated changelog in the README of each change of the image (version, features, themes) and what it asks of an application (immo regenerates its admin API's client at a new version, its `keycloak/README.md:5`), a test refusing a change of `keycloak/` without its entry / C) nothing: the application watches c4-infra's commits.
 - Recommendation: B: the description detects the change, the changelog says what it means, the test keeps it from being forgotten.
 - Decides: PO
-- Decision: to decide
+- Decision: B, as recommended (PO, Jérôme Wacongne, 2026-10-28)
 
 ## Acceptance criteria
 
@@ -119,3 +119,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-28 — first version
+- v1 — 2026-10-28 — approved: every point of attention decided as recommended (Jérôme Wacongne, PO)
