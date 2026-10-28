@@ -103,9 +103,20 @@ stand_in_load_image() {
   done
 }
 
+# Built on this machine, when it lacks the image or the fixture changed (the label c4-infra.fixture holds
+# its content's hash), then copied in: the stand-in's own Docker fails to resolve a name now and then
+# (intent 0020), this machine's builds the image once
 stand_in_probe() {
-  (cd "$STAND_IN_ROOT/tests/fixtures/0007/probe" && tar -cf - .) \
-    | stand_in_exec -i docker build -q -t c4-test/probe - > /dev/null
+  local fixture=$STAND_IN_ROOT/tests/fixtures/0007/probe hash
+  hash=$(cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
+    echo "$file"
+    cat "$file"
+  done | cksum | cut -d' ' -f1)
+  if [ "$(docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null)" != "$hash" ]; then
+    docker build -q --label "c4-infra.fixture=$hash" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
+      || { echo "stand_in_probe: c4-test/probe doesn't build on this machine (above)" >&2; return 1; }
+  fi
+  stand_in_load_image c4-test/probe
 }
 
 stand_in_send() { # <dir>
