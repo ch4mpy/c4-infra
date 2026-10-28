@@ -611,8 +611,8 @@ sub-keys and values — and refuses anything else, naming the service (or networ
   limits, and the usual hardening (`read_only`, `cap_drop`, `user`, `tmpfs`, `init`, `security_opt:
   no-new-privileges`). A service name is `[a-z0-9_-]+` — no dot, which would be an alias on the
   shared network;
-- **refused with their own message**: `build` — the demo host runs the images the application's
-  CI builds and pushes to a registry, and builds none itself (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
+- **refused with their own message**: `build` — the demo host builds no image; it pulls each
+  service's `image:`, the application's own from its registry or a public one (intent 0011); a service named after a shared service (`keycloak`, `mailpit`, `rabbitmq`,
   `grafana-lgtm`, `reverse-proxy`, `keycloak-db`); a published port (`expose` is fine: only the
   shared Caddy publishes);
   `privileged`, `cap_add`, `devices`, `device_cgroup_rules`, a `deploy` reservation of host devices;
