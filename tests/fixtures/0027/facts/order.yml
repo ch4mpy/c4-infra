@@ -1,0 +1,17 @@
+# 0027 fact (b) (tests/0027-backup-facts.stand-in.sh): second depends on first being healthy, which
+# first is 5 s after each of its starts
+services:
+  first:
+    image: ${FACTS_IMAGE}
+    entrypoint: [sh, -c, 'rm -f /tmp/ready; sleep 5; touch /tmp/ready; exec sleep infinity']
+    init: true
+    healthcheck:
+      test: [CMD, test, -f, /tmp/ready]
+      interval: 1s
+      retries: 30
+  second:
+    image: ${FACTS_IMAGE}
+    entrypoint: [sleep, infinity]
+    init: true
+    depends_on:
+      first: {condition: service_healthy}
