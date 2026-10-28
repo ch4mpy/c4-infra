@@ -160,7 +160,7 @@ gh run watch -R ch4mpy/c4-infra
   tests pull it without a login: on GitHub, the package's settings
   (`https://github.com/users/<owner>/packages/container/c4-infra-keycloak/settings`), *Danger Zone*,
   *Change visibility*, *Public*. It can't be made private again, and every version it holds
-  becomes public: `keycloak/`'s history holds no secret (intent 0029 checked each one).
+  becomes public: `keycloak/`'s history holds no secret (intent 0029's step 7 checks each one before).
 - The `deploy` job pins the host's key first ([`demo/trust-host-key.sh`](../demo/trust-host-key.sh):
   it fails there without `VPS_KNOWN_HOSTS`), writes the host's `.env` on the runner with
   [`demo/write-env.sh`](../demo/write-env.sh) (failing by name if a secret is missing; mode 600,
