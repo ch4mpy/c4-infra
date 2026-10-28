@@ -138,6 +138,11 @@ routes_generate() { # <routes file> <dev|demo>
     for option in "${tokens[@]:2}"; do
       key=${option%%=*}
       value=${option#*=}
+      # an empty key is no option's, nor an array subscript
+      if [ -z "$key" ]; then
+        _routes_problem "unknown option '$option' (to=, max-body= or prefix=)"
+        continue 2
+      fi
       if [ -n "${seen_options[$key]:-}" ]; then
         _routes_problem "$key= given twice"
         continue 2
