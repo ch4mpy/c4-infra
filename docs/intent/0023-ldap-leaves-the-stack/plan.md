@@ -1,6 +1,6 @@
 # Plan: The stack still documents and tests an LDAP user federation no application needs
 
-- Spec: [v1](spec.md)
+- Spec: [v2](spec.md)
 - Status: approved
 - Branch: 0023-ldap-leaves-the-stack
 - Approved: 2026-10-28, Jérôme Wacongne (engineer; standard risk)
@@ -54,3 +54,5 @@ Facts read (2026-10-28):
 ## Deviations
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
+
+- 2026-10-28 — the bug review: in dev, the gateways run on the host (`compose.dev.yml:35`, `docs/migration.md:87`), so the README's and the guide's example (a gateway) and the stand-in's name and label (`tickee.gateway-standin`, "as back-channel logout does") were wrong for dev. Spec v2 (product owner, the same day): the example is a directory the application provides itself (Tickee's `ldap2`, or one outside the stack), the stand-in `tickee.network-standin`, a container of Tickee's; the reach check shows docker's last error and uses `KC_CONTAINER`. Mutations run again: on a network of its own, `KO - AC-07: Keycloak reaches …`, `no answer in 30 s: bash: line 1: tickee.network-standin: System error`. Impact: AC-01 and AC-02 as in spec v2.
