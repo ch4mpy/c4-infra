@@ -3,12 +3,13 @@
 # say so (RQ-06):
 #
 #   - (a) the first paragraph of README.md's "Demo host" and of docs/migration.md's "On the demo host"
-#     holds the statement, whatever its line breaks;
+#     is the statement, whatever its line breaks;
 #   - (b) no tracked file outside docs/intent/ names GitLab but in that statement (this file aside).
 #
 #   bash tests/0032-demo-github-only.sh
 #
-# covers: README.md CLAUDE.md docs/ demo/ .github/ examples/
+# covers: README.md CLAUDE.md docs/ demo/ .github/ examples/ registry.txt compose.yml compose.dev.yml
+# covers: compose.demo.yml keycloak/ caddy/ reverse-proxy/ tests/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -23,7 +24,7 @@ first_paragraph() { # <file> <heading>: the first paragraph after the heading, o
 opens_with_statement() { # <file> <heading>
   local paragraph
   paragraph=$(first_paragraph "$1" "$2")
-  grep -qF -- "$GITHUB_ONLY" <<< "$paragraph" && grep -qF -- "$GITLAB_NOT_HERE" <<< "$paragraph" \
+  [[ $paragraph == "$GITHUB_ONLY"* ]] && grep -qF -- "$GITLAB_NOT_HERE" <<< "$paragraph" \
     || { echo "first paragraph after '$2':"; printf '%s\n' "${paragraph:0:300}"; return 1; }
 }
 gitlab_only_in_statement() {
@@ -33,8 +34,9 @@ gitlab_only_in_statement() {
     text=${text//"$GITLAB_NOT_HERE"/}
     grep -qi gitlab <<< "$text" && named+=("$file")
   done < <(git grep -il gitlab -- . ':!docs/intent/' ':!tests/0032-demo-github-only.sh')
-  # the lines naming it, the statement's own aside (wrapped or not)
-  [ ${#named[@]} -eq 0 ] || { git grep -n -i gitlab -- "${named[@]}" | grep -vF 'A GitLab project'; return 1; }
+  # the lines naming it, the statement's own aside (whole, or its first line when it wraps)
+  [ ${#named[@]} -eq 0 ] \
+    || { git grep -n -i gitlab -- "${named[@]}" | grep -vE "${GITLAB_NOT_HERE//[()]/.}|A GitLab project\$"; return 1; }
 }
 
 check "(a) README.md's \"Demo host\" opens with the statement" opens_with_statement README.md '## Demo host'

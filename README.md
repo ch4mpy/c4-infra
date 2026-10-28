@@ -600,7 +600,7 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
 (immo) isn't deployed by this stack: the migration guide's "In dev" applies to it, not its demo
 steps ([docs/migration.md](docs/migration.md)).
 
-The same stack on one Ubuntu VPS, deployed by
+It runs the same stack as the workstation on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:
 the compose base with its demo override, [`compose.demo.yml`](compose.demo.yml), and the same Caddy
 configuration with the demo's rules (`INFRA_ENV=demo`: a Let's Encrypt certificate per site, HSTS,

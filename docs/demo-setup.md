@@ -229,8 +229,9 @@ other: [README](../README.md), "Demo host"), once:
    home closed to the other accounts, and ends with
    `Done. <app>'s workflow can now deploy as <app>@<ip>`. It refuses an account it didn't create
    (`ubuntu`, a system user).
-5. **Its secrets**, in the application's GitHub repository, its own `demo` environment, read on
-   stdin:
+5. **Its secrets**, in the application's GitHub repository, its own `demo` environment, restricted
+   to the branch it deploys from (the environment's *Deployment branches*), the keys read on stdin;
+   its registry's token too when its images aren't on GHCR:
 
    ```bash
    A=ch4mpy/<app>

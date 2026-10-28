@@ -224,9 +224,10 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings needn't be
    rendered: `register-app.sh` replaces them at import with c4-infra's (README, "Brute-force
    protection"), in dev as on the demo host.
-5. **Its workflow**, as `<project>@<vps>`, a job of its repository's `demo` environment, which alone
-   holds the deployment's secrets (`VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, another registry's
-   token), never printed: the host's key pinned before anything connects (the lines of c4-infra's
+5. **Its workflow**, as `<project>@<vps>`, a job of its repository's `demo` environment, restricted
+   to the branch it deploys from, which alone holds the deployment's secrets (`VPS_HOST`,
+   `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, and the registry's token when its images aren't on GHCR:
+   [demo-setup.md](demo-setup.md), step 9), never printed: the host's key pinned before anything connects (the lines of c4-infra's
    [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned by commit
    (the tag as a comment: the ssh agent receives the private key), then `rsync` to `~/<project>/`,
    `sudo c4-app pull` (step 3; its registry's token from a secret, on stdin, never on a command
