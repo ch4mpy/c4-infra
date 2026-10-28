@@ -1,0 +1,30 @@
+# 0026 fixture (tests/0026-log-bound.stand-in.sh): talker.yml with logging local, bounded, on talker:
+# sudo c4-app up and pull refuse it too (the host's bound, not the application's)
+services:
+  gateway:
+    image: caddy:2.11.4-alpine
+    container_name: faito.gateway
+    command: [caddy, respond, --listen, ':7080', faito.gateway]
+    networks: [c4-infra.faito]
+  talker:
+    image: caddy:2.11.4-alpine
+    container_name: faito.talker
+    init: true
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [c4-infra.faito]
+    command:
+      - sh
+      - -c
+      - |
+        echo 'faito.talker: first line'
+        line=$$(printf '%01023d' 0)
+        yes "$$line" | head -n 61440
+        echo 'faito.talker: last line'
+        exec sleep 86400
+networks:
+  c4-infra.faito:
+    external: true

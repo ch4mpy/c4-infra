@@ -13,7 +13,7 @@
 #                                   runs (healthy where it has a healthcheck); refuses, before any
 #                                   container starts, a project that leaves its isolation (below),
 #                                   then makes sure of the application's network c4-infra.<application>
-#                                   (networks.sh ensure)
+#                                   (networks.sh ensure); every container keeps a bounded log (below)
 #   sudo c4-app down                stops and removes the project's containers and networks by the
 #                                   project's name, reading no compose file (its volumes stay)
 #   sudo c4-app register <option>…  bash /home/c4-infra/c4-infra/register-app.sh --app <application>
@@ -61,9 +61,14 @@
 #     to host or another container;
 #     a read-write bind mount, or one of the staging root or outside it (the Docker socket, another
 #     application's files…); an external network or volume, one with a name or driver of its own, or
-#     driver_opts.
+#     driver_opts; logging (the host's: below).
 #   - refused by the allowlist (not an application's to set): use_api_socket, post_start/pre_stop
 #     hooks, a provider service, and anything else not listed above.
+#
+# The logs are the host's (intent 0026): once the model is checked, `up` gives every service of it
+# the stack's own bound (LOG_BOUND: json-file, 10 MB × 3, compose.yml's x-logging), so that no
+# container fills the host's disk with its output. A container made before, unbounded, is recreated
+# at the application's next `up`, its files unchanged (compose sees its logging change).
 #
 # A registration runs with the shared stack's registration credential, in
 # /home/c4-infra/c4-infra/.env (mode 600, the c4-infra account's), which only root reads; it touches
@@ -219,7 +224,7 @@ def svc_allowed: [
   "cpu_shares", "shm_size", "pids_limit", "ulimits", "deploy", "secrets", "configs",
   "pull_policy", "platform", "stdin_open", "tty", "security_opt"];
 def svc_refused: ["build", "network_mode", "links", "external_links", "ports", "privileged", "cap_add",
-  "devices", "device_cgroup_rules", "pid", "ipc", "uts", "userns_mode", "cgroup", "volumes_from"];
+  "devices", "device_cgroup_rules", "pid", "ipc", "uts", "userns_mode", "cgroup", "volumes_from", "logging"];
 def top_allowed: ["name", "services", "networks", "volumes", "secrets", "configs"];
 def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "update_config",
   "rollback_config", "placement", "mode", "endpoint_mode"];
@@ -257,6 +262,7 @@ def deploy_allowed: ["resources", "restart_policy", "labels", "replicas", "updat
   (if $v.build != null
    then "service \($s): build: the demo host runs the images the application's CI pushes to a registry (README.md, \"Accounts\")" else empty end),
   (if $v.network_mode != null then "service \($s): network_mode \($v.network_mode)" else empty end),
+  (if $v | has("logging") then "service \($s): logging: the demo host bounds every container's logs (README, \"Accounts\")" else empty end),
   (if ($v.links // []) != [] then "service \($s): links" else empty end),
   (if ($v.external_links // []) != [] then "service \($s): external_links" else empty end),
   (if $v.container_name != null and ($v.container_name | startswith("\($app).") | not)
@@ -297,6 +303,23 @@ check_model() {
     printf '%s\n' "$refusals" | sed 's/^/c4-app: refused: /' >&2
     fail "$source_dir/compose.yml leaves the application's isolation (above): nothing was started (README.md, \"What an application's deployment does\")"
   fi
+}
+
+# The host's bound on every container's logs: the stack's own (compose.yml's x-logging), as compose
+# writes it (string options)
+LOG_BOUND='{"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}'
+
+# The checked model's every service gets LOG_BOUND, in a new root-owned file, as read_model writes it
+bound_logs() {
+  local next=$model.new
+  rm -f "$next"
+  if ! jq --argjson bound "$LOG_BOUND" '.services[]?.logging = $bound' "$model" > "$next"; then
+    rm -f "$next"
+    fail "the model's logs couldn't be bounded (jq, above)"
+  fi
+  chown root:root "$next"
+  chmod 0640 "$next"
+  mv "$next" "$model"
 }
 
 # root's docker compose, on the model only (no .env read again: the model is interpolated already)
@@ -405,6 +428,7 @@ case "$command" in
     read_model
     # the file compose runs is the one checked: root's, outside anything a container may mount
     check_model
+    bound_logs
     bash "$STACK/networks.sh" ensure "$app" < /dev/null
     pull_missing
     place_copy
