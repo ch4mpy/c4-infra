@@ -73,7 +73,10 @@ token_from_mcp() {
 
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, turu), the shared stack deployed as c4-infra" stand_in_accounts turu
-check "the probe image is built in the stand-in" stand_in_probe
+failures_before=$failures
+check "the probe image is in the stand-in ($PROBE)" stand_in_probe
+# the checks below need it: without it, they would fail for its sake, and an old one would mislead them
+[ "$failures" -eq "$failures_before" ] || { echo "no probe: stopped"; finish; }
 
 check "Turu's files are rsynced to ~turu/turu/ with its key" upload
 as register.log turu "sudo c4-app register --realm turu-realm.json --proxy turu.routes"

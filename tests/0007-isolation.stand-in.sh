@@ -193,7 +193,10 @@ ac3_reachability() { # <label prefix>
 
 check "the stand-in host starts" stand_in_up
 check "the accounts (c4-infra, hururaa, faito), the shared stack deployed as c4-infra" stand_in_accounts hururaa faito
-check "the probe image is built in the stand-in ($PROBE)" stand_in_probe
+failures_before=$failures
+check "the probe image is in the stand-in ($PROBE)" stand_in_probe
+# the checks below need it: without it, they would fail for its sake, and an old one would mislead them
+[ "$failures" -eq "$failures_before" ] || { echo "no probe: stopped"; finish; }
 
 # Hurura'a, then Faito: uploaded, registered, started; the ups' outcomes are checked after AC-10's
 # first assertion (without a network of its own, an application doesn't start)
