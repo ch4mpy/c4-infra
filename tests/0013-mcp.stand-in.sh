@@ -2,7 +2,8 @@
 # 0013: an application's MCP server on a stand-in demo host (AC-06, AC-13, RQ-07, RQ-15):
 #
 #   - the accounts and the shared stack as docs/demo-setup.md prepares them (stand_in_accounts turu);
-#     the probe image (tests/fixtures/0007/probe/: an echo, curl) built in the stand-in's daemon;
+#     the probe image (tests/fixtures/0007/probe/: an echo, curl) in the stand-in's daemon, built on the
+#     workstation and copied (stand_in_probe), the test stopped without it;
 #   - Turu (tests/fixtures/0013/turu/: its MCP server turu.mcp on 9080, on c4-infra.turu; a realm
 #     turu whose client verif-mcp may exchange the tokens issued for it), rsynced to ~turu/turu/ with
 #     its key, with examples/routes/turu.routes; registered (sudo c4-app register --realm
@@ -72,11 +73,11 @@ token_from_mcp() {
 }
 
 check "the stand-in host starts" stand_in_up
+failures_before=$failures
+check "the probe image is in the stand-in ($PROBE)" stand_in_probe
+# the checks below need it: without it, they would fail for its sake, and an old one would mislead them
+[ "$failures" -eq "$failures_before" ] || { echo "no probe: stopped"; finish; }
 check "the accounts (c4-infra, turu), the shared stack deployed as c4-infra" stand_in_accounts turu
-build_probe() {
-  (cd tests/fixtures/0007/probe && tar -cf - .) | stand_in_exec -i docker build -q -t "$PROBE" - > /dev/null
-}
-check "the probe image is built in the stand-in" build_probe
 
 check "Turu's files are rsynced to ~turu/turu/ with its key" upload
 as register.log turu "sudo c4-app register --realm turu-realm.json --proxy turu.routes"
