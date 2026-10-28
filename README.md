@@ -198,7 +198,8 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   registers;
 - its realm export(s), `keycloak/import/<realm>-realm.json`, with ids of their own (every id is a
   primary key of the shared database: a realm generated from a template gets new ones once, with
-  [`new-realm-ids.sh`](new-realm-ids.sh)), and:
+  [`new-realm-ids.sh`](new-realm-ids.sh), which renews its UUIDs and a user federation's short id,
+  its users' links following, and refuses a file holding an id it can't renew, a readable one), and:
   - the BFF's redirect and post-logout URIs on `https://<app>.dev.localhost/`;
   - its back-channel logout URL (and admin URL) on the gateway itself, `https://host.docker.internal:<prefix>080/gateway/logout/connect/back-channel/<registration>` (Keycloak runs in a container: it can't resolve `<app>.dev.localhost`);
   - its SMTP server `host.docker.internal:1025`, user `mailpit`, password `secret`;
