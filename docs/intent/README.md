@@ -75,4 +75,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0023 | [The stack still documents and tests an LDAP user federation no application needs](0023-ldap-leaves-the-stack/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0024 | [A deployment that pulls a new database image recreates the database under a running Keycloak, and the registration check then blames the administrator](0024-database-image-change-under-keycloak/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0025 | [A refused `sudo c4-app up` or `pull` still copies the refused files where the application's running containers read them](0025-refused-deployment-still-staged/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
-| 0027 | [The demo host backs up no application's data](0027-demo-host-backs-up-no-application-data/intent.md) | change | planned | 2026-10-28 | 2026-10-28 |
+| 0027 | [The demo host backs up no application's data](0027-demo-host-backs-up-no-application-data/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
