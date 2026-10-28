@@ -153,6 +153,17 @@ copy_in() {
 # The containers' mount sources, 0750 root:<app>; compose's project directory too
 staging_dir() { install -d -m 0750 -o root -g "$app" "$staging"; }
 
+# The model's images up would pull, before the files change: one neither on the host nor pullable
+# refuses the deployment here (compose pull --policy missing pulls an image the host has: 0025)
+pull_missing() {
+  local image
+  for image in $(jq -r '[.services[].image // empty] | unique[]' "$model"); do
+    docker image inspect "$image" > /dev/null 2>&1 && continue
+    docker pull --quiet "$image" > /dev/null \
+      || fail "the image $image is neither on the host nor pullable (above): nothing was changed"
+  done
+}
+
 # The checked copy into place, in the same directory: a running container's mount sees the new files
 place_copy() {
   staging_dir
@@ -395,9 +406,7 @@ case "$command" in
     # the file compose runs is the one checked: root's, outside anything a container may mount
     check_model
     bash "$STACK/networks.sh" ensure "$app" < /dev/null
-    # the images up would pull, before the files change: a missing one refuses here
-    staging_dir
-    compose pull --quiet --policy missing
+    pull_missing
     place_copy
     compose up -d --wait --remove-orphans
     ;;
