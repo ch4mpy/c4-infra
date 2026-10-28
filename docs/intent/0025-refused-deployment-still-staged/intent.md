@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (0011's verifier, 2026-10-28; opened by the product owner the same day)
 - Spec needed: no
-- Status: accepted
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
