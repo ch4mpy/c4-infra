@@ -224,12 +224,14 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings needn't be
    rendered: `register-app.sh` replaces them at import with c4-infra's (README, "Brute-force
    protection"), in dev as on the demo host.
-5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
-   of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
-   by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
-   `~/<project>/`, `sudo c4-app pull` (its registry's token on stdin: GHCR's here),
-   `sudo c4-app register` (paths relative to `~/<project>/`; `--rabbitmq-password-env` names a
-   variable of `~/<project>/.env`) and `sudo c4-app up`:
+5. **Its workflow**, as `<project>@<vps>`, a job of its repository's `demo` environment, which alone
+   holds the deployment's secrets (`VPS_HOST`, `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, another registry's
+   token), never printed: the host's key pinned before anything connects (the lines of c4-infra's
+   [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned by commit
+   (the tag as a comment: the ssh agent receives the private key), then `rsync` to `~/<project>/`,
+   `sudo c4-app pull` (step 3; its registry's token from a secret, on stdin, never on a command
+   line: GHCR's here, `GITHUB_TOKEN`), `sudo c4-app register` (paths relative to `~/<project>/`;
+   `--rabbitmq-password-env` names a variable of `~/<project>/.env`) and `sudo c4-app up`:
 
    ```yaml
      deploy:
@@ -274,18 +276,6 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
              GHCR_USER: ${{ github.actor }}
              GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
    ```
-
-   On another platform (GitLab, any CI that runs a shell), the job does the same, in the same order:
-   the host's key pinned from `VPS_KNOWN_HOSTS` before anything connects (the lines of
-   `demo/trust-host-key.sh`), `VPS_SSH_KEY` in an ssh agent, what the job runs pinned as the
-   actions are (an image by digest, anything it includes by commit), then the `rsync`,
-   `sudo c4-app pull --registry <registry host> --registry-user <user>` with the registry's token on
-   stdin, read from a secret variable of the platform (never on a command line), `register` and
-   `up`. `--registry` takes a host name, with an optional `:port` and no path; `--registry-user`
-   letters, digits, `.`, `_` and `-`. Without `--registry`, `pull` logs in nowhere, which is enough
-   when every image is public. `VPS_HOST`, `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` become secret
-   variables of that platform, given only to the deployment's protected branch or environment (as
-   `environment: demo` does here), and never printed by the job.
 
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
