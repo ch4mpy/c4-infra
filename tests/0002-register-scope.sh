@@ -191,7 +191,9 @@ case " $* " in
   *" network ls "*) echo "c4-infra.faito faito" ;;
   *" network inspect "*) exit 1 ;;
   *State.Running*) echo true ;;
-  *" --client "*) [ "${FAKE_ACCOUNT_LOGIN:-}" != fails ] || exit 1 ;;
+  *" --client "*)
+    # as kcadm 26.8.1 says it (intent 0024)
+    [ "${FAKE_ACCOUNT_LOGIN:-}" != fails ] || { echo "Invalid client or Invalid client credentials [unauthorized_client]" >&2; exit 1; } ;;
 esac
 exit 0
 EOF
