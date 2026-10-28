@@ -142,6 +142,9 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
 
 ## On the demo host
 
+The demo host deploys GitHub projects, each from its own GitHub Actions workflow. A GitLab project
+(immo) isn't deployed by this stack: "In dev" applies to it, not these steps.
+
 1. c4-infra runs on the demo host (deployed since 2026-10-23, its README). Its Caddy holds ports 80
    and 443: a project's own Caddy can't run beside it, so a project still deploying one on that
    host moves in one maintenance window.
@@ -164,12 +167,14 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    as the project's account: it can't read any other). Its data go in named volumes: what is
    mounted from `~/<project>/` is root's copy, made again, as sent, by each `sudo c4-app` command.
    Every service runs an `image:`, pulled as it is: the project's own, built and pushed by its CI
-   to its registry (GHCR, GitLab's, any registry `sudo c4-app pull --registry` logs in to), or a
-   public one (`postgres`…). `sudo c4-app up` pulls the images the host lacks without logging in
-   anywhere: an image behind a login comes first through `sudo c4-app pull --registry <host>
-   --registry-user <user>` (step 5 below, which gives the forms it accepts), one registry per pull,
-   which pulls every image under that login: the private ones come from one registry. No `build:`,
-   which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
+   to its registry (GHCR, or any registry `sudo c4-app pull --registry` logs in to), or a public
+   one (`postgres`…). `sudo c4-app up` pulls the images the host lacks without logging in
+   anywhere, as `sudo c4-app pull` does without `--registry`: enough when every image is public.
+   An image behind a login comes first through `sudo c4-app pull --registry <host> --registry-user
+   <user>`, the registry's token on stdin (step 5), one registry per pull, which pulls every image
+   under that login: the private ones come from one registry. `--registry` takes a host name, with
+   an optional `:port` and no path; `--registry-user`, letters, digits, `.`, `_` and `-`. No
+   `build:`, which `sudo c4-app up` and `pull` refuse (the demo host builds nothing, intent 0011).
    No published port, no `network_mode`, no other network, no alias or container name outside
    `<project>.`, nothing privileged: `sudo c4-app up` refuses them, naming the rule (c4-infra's
    README, "Accounts"):
@@ -219,12 +224,15 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings needn't be
    rendered: `register-app.sh` replaces them at import with c4-infra's (README, "Brute-force
    protection"), in dev as on the demo host.
-5. **Its workflow**, as `<project>@<vps>`: the host's key pinned before anything connects (the lines
-   of c4-infra's [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned
-   by commit (the tag as a comment: the ssh agent receives the private key), then `rsync` to
-   `~/<project>/`, `sudo c4-app pull` (its registry's token on stdin: GHCR's here),
-   `sudo c4-app register` (paths relative to `~/<project>/`; `--rabbitmq-password-env` names a
-   variable of `~/<project>/.env`) and `sudo c4-app up`:
+5. **Its workflow**, as `<project>@<vps>`, a job of its repository's `demo` environment, restricted
+   to the branch it deploys from, which alone holds the deployment's secrets (`VPS_HOST`,
+   `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, and the registry's token when its images aren't on GHCR:
+   [demo-setup.md](demo-setup.md), step 9), never printed: the host's key pinned before anything connects (the lines of c4-infra's
+   [`demo/trust-host-key.sh`](../demo/trust-host-key.sh), inline), every action pinned by commit
+   (the tag as a comment: the ssh agent receives the private key), then `rsync` to `~/<project>/`,
+   `sudo c4-app pull` (step 3; its registry's token from a secret, on stdin, never on a command
+   line: GHCR's here, `GITHUB_TOKEN`), `sudo c4-app register` (paths relative to `~/<project>/`;
+   `--rabbitmq-password-env` names a variable of `~/<project>/.env`) and `sudo c4-app up`:
 
    ```yaml
      deploy:
@@ -270,18 +278,6 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
              GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
    ```
 
-   On another platform (GitLab, any CI that runs a shell), the job does the same, in the same order:
-   the host's key pinned from `VPS_KNOWN_HOSTS` before anything connects (the lines of
-   `demo/trust-host-key.sh`), `VPS_SSH_KEY` in an ssh agent, what the job runs pinned as the
-   actions are (an image by digest, anything it includes by commit), then the `rsync`,
-   `sudo c4-app pull --registry <registry host> --registry-user <user>` with the registry's token on
-   stdin, read from a secret variable of the platform (never on a command line), `register` and
-   `up`. `--registry` takes a host name, with an optional `:port` and no path; `--registry-user`
-   letters, digits, `.`, `_` and `-`. Without `--registry`, `pull` logs in nowhere, which is enough
-   when every image is public. `VPS_HOST`, `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` become secret
-   variables of that platform, given only to the deployment's protected branch or environment (as
-   `environment: demo` does here), and never printed by the job.
-
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:
    its dev routes file, `reverse-proxy/<project>.routes` (dev step 5), gives its site on its demo
@@ -298,12 +294,11 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    the services that hold its data in its `compose.yml`: `c4-infra.backup: postgres` on a
    PostgreSQL service (a hot dump of its `POSTGRES_DB`), `c4-infra.backup: volumes` on a service
    whose named volumes are copied, the service stopped meanwhile. Tickee: `rest-api-db` `postgres`,
-   and `ldap2` `volumes` if its directory is to be kept rather than rebuilt from `ldap/*.ldif`;
-   immo: `rest_api_db` `postgres`, `rustfs` `volumes`. Its workflow may run
-   `ssh "$VPS" sudo c4-app backup` before a deployment that migrates its database. Its backups are
-   in `/var/backups/c4-apps/<project>/`, which its account reads (and may pull with `rsync`), kept 7
-   days; `sudo c4-app restore` lists them, `sudo c4-app restore <stamp> --yes` restores one, once
-   the state before is backed up.
+   and `ldap2` `volumes` if its directory is to be kept rather than rebuilt from `ldap/*.ldif`. Its
+   workflow may run `ssh "$VPS" sudo c4-app backup` before a deployment that migrates its database.
+   Its backups are in `/var/backups/c4-apps/<project>/`, which its account reads (and may pull with
+   `rsync`), kept 7 days; `sudo c4-app restore` lists them, `sudo c4-app restore <stamp> --yes`
+   restores one, once the state before is backed up.
 
 ## Per project
 
