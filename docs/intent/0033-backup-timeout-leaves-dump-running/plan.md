@@ -323,6 +323,7 @@ Claude proposes these for Jérôme Wacongne (engineer, and tech lead for the hig
 - Files outside the plan: none.
 - Pre-existing findings: none.
 - Details left (not KO): on a nightly signal, `stop_marked`'s 40 s (plus about 2 s of psql) then `timeout 20 docker start` can reach about 62 s, over RQ-03's 60 s (no KILL comes, fact e; the nightly then logs that the lock is still held); `marked_sessions`' own psql may be left in the container if the database server hangs; when processes and sessions both remain, only the processes are named; AC-03's last check can't tell the safety backup from what the cut left (0027-backup's `r3 in its dump` proves the safety backup); AC-04's unchanged StartedAt wouldn't see a container left stopped (`match_backup` runs before any stop).
+- The product owner at delivery (2026-10-28): the batch's verification accepted with the KOs above (every failed test passing alone at 24e6481); fact (f)'s margin left as it is, its load-sensitivity accepted (no follow-up); E4's unguarded kill recorded, as decided at step 9.
 
 | Criterion | Result | Evidence |
 | --- | --- | --- |
