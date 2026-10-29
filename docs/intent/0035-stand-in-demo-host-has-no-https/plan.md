@@ -1,9 +1,9 @@
 # Plan: The stand-in demo host can't serve an application over HTTPS
 
 - Spec: [v1](spec.md) (approved 2026-10-28: PA-01 A, PA-02 B, PA-03 B)
-- Status: draft
+- Status: approved
 - Branch: 0035-stand-in-demo-host-has-no-https
-- Approved: —
+- Approved: 2026-10-29, Jérôme Wacongne (engineer, also PO and tech lead; approved in a batch in the session, every open choice as recommended)
 
 ## Starting point
 
@@ -112,6 +112,8 @@ Unchanged on purpose (IV-01, AC-05): the files of `demo/deploy-files.txt` (`cadd
 ## Verification
 
 ## Open choices for the engineer
+
+Decided at approval (2026-10-29, Jérôme Wacongne): every choice as recommended.
 
 Each with Claude's recommendation; the steps above follow the recommendations.
 
