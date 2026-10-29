@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (0023's evidence, 2026-10-28; HANDOVER "Left open")
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-28)
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —

@@ -262,3 +262,4 @@ The README, `CLAUDE.md` and `tests/lib/` are unchanged. A suite-wide convention 
 | AC-05 | OK | `ok - the stand-in on Faito's network too: by name, KO succeeded`, `… at one of its addresses, KO succeeded`, `… exit 1` |
 | AC-06 | OK | `ok - docker failing: the stand-in's removal KOs, naming docker ps`, `… the dev alias check KOs, naming docker compose config`, both negative checks still `ok`; by hand, the daemon away: `9 check(s) failed`, each naming docker's error |
 | AC-07 | OK | `--changed main --all` at 9afcd88 → `verification passed (--changed: 5 of 74 tests)`, no `uncovered:` |
+- The product owner at delivery (2026-10-28): the batch's verification accepted with the KOs above (every failed test passing alone at 24e6481).
