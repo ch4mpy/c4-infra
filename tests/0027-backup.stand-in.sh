@@ -21,8 +21,9 @@
 #     refused, naming the service and the value, nothing written;
 #   - AC-07: slow-up.yml's up running, a backup waits for it, saying so, its stamp no earlier than
 #     up's end;
-#   - AC-08: a file of 32 MiB in faito.files' volume, the tmpfs remounted with 16 MiB above the
-#     floor: the backup is refused once its archive reaches that room, nothing written, the disk
+#   - AC-08: a file of 2 GiB in faito.files' volume, the tmpfs remounted with 16 MiB above the
+#     floor: the backup is refused once its archive reaches that room, its copy's container stopped
+#     (intent 0033: none left, while the copy would have 2 GiB to go), nothing written, the disk
 #     above the floor, faito.files running again. The tmpfs remounted at 4 GiB, under the floor, a
 #     backup 8 days old planted: the backup is refused, naming the free space and the floor, the
 #     earlier stamps kept (that one too), no .partial left, the containers running; root's nightly
@@ -97,6 +98,13 @@ logged_refusal() { # Faito's nightly log ends with the floor's refusal
   local log
   log=$(on_host 'cat "$1"' "$BACKUPS/backup.log")
   [[ $log == *"GiB free on $BACKUP_ROOT, under the floor of 5.0GiB"*"== exit 1" ]] || { echo "$log"; return 1; }
+}
+# the copies' containers: the stack database's image, no compose label
+copies() {
+  on_host 'image=$(docker inspect -f "{{.Image}}" c4-infra.keycloak-db)
+    for id in $(docker ps -aq --no-trunc); do
+      [ "$(docker inspect -f "{{.Image}}|{{index .Config.Labels \"com.docker.compose.project\"}}" "$id" 2> /dev/null)" != "$image|" ] || echo "$id"
+    done'
 }
 # what root's compose mounts and runs, staged by c4-app up: every file, with its checksum
 staged() { on_host 'cd /var/lib/c4-apps && find faito .run.faito -type f -exec cksum {} + | LC_ALL=C sort'; }
@@ -261,7 +269,7 @@ check "its stamp ($(latest)) is no earlier than up's end ($up_end)" eval '[[ ! "
 check "data.yml is deployed again" eval 'send "$FIXTURES/data.yml" && as_faito up-again.log "sudo c4-app up" && exited_0 up-again.log'
 
 # AC-08
-check "a file of 32 MiB in faito.files' volume" on_host 'docker exec faito.files sh -c "head -c 33554432 /dev/urandom > /srv/big"'
+check "a file of 2 GiB in faito.files' volume" on_host 'docker exec faito.files dd if=/dev/urandom of=/srv/big bs=1M count=2048 2> /dev/null'
 check "the tmpfs remounted with 16 MiB above the floor of 5 GiB" \
   on_host 'used=$(df -P -B1 "$1" | awk "NR == 2 { print \$3 }") && mount -o remount,size=$((5 * 1024 * 1024 * 1024 + used + 16 * 1024 * 1024)) "$1"' \
   "$BACKUP_ROOT"
@@ -269,11 +277,13 @@ before=$(entries)
 as_faito backup-big.log "sudo c4-app backup"
 check "the backup is refused once files.files_data.tar reaches the room above the floor" \
   eval 'refused backup-big.log && says backup-big.log "files.files_data.tar reached the"'
+check "its copy's container is gone (intent 0033): no container of the stack database's image without a compose label" \
+  is "$(copies)" ""
 check "nothing written: the stamps as they were, no .partial left" is "$(entries)" "$before"
 check "the disk stays above the floor: 5 GiB free" \
   test "$(on_host 'df -P -B1 "$1" | awk "NR == 2 { print \$4 }"' "$BACKUP_ROOT")" -ge 5368709120
 check "faito.files runs again" runs faito.files
-check "the file of 32 MiB removed" on_host 'docker exec faito.files rm /srv/big'
+check "the file of 2 GiB removed" on_host 'docker exec faito.files rm /srv/big'
 check "the tmpfs remounted at 4 GiB" on_host 'mount -o remount,size=4g "$1"' "$BACKUP_ROOT"
 old=$(on_host 'date -u -d "8 days ago" +%Y%m%d-%H%M%S')
 check "a backup 8 days old ($old) planted" on_host 'install -d -m 0750 -o root -g faito "$1/$2"' "$BACKUPS" "$old"

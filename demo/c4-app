@@ -32,6 +32,13 @@
 #   c4-app nightly                  root's cron only (/etc/cron.d/c4-apps-backup, 03:45): backup as
 #                                   each account of the group c4-apps, into its backup.log
 #
+# The backups' time limits (intent 0033), in seconds: ITEM_TIMEOUT (1800) each dump or volume's
+# copy, RESTORE_TIMEOUT (3600) each restore step, NIGHTLY_TIMEOUT (7200) each application's nightly
+# run. One that a limit cuts is stopped where it runs (its processes and sessions in the database's
+# container, or its throwaway container), as one that reaches the floor or fails, then refused,
+# saying what was stopped. Root's own /etc/c4-app/limits may change them (read_limits), for every
+# application.
+#
 # pull, up and register work on a copy of ~/<application>/<application>/ (sent there by the
 # application's workflow), read as the application and written by root into
 # /var/lib/c4-apps/.<application>.incoming/ (root:<application>, mode 0750: the application reads it,
@@ -101,6 +108,14 @@ BACKUP_ROOT=/var/backups/c4-apps
 KEEP_DAYS=7
 # PA-05: a backup is refused under 5 GiB free, or under 10 % of the disk when that is more
 FLOOR_MIN=$((5 * 1024 * 1024 * 1024))
+# The time limits (intent 0033), in seconds: a backup's item, a restore's step, an application's
+# nightly run; root's own /etc/c4-app/limits may change them (read_limits)
+LIMITS=/etc/c4-app/limits
+ITEM_TIMEOUT=1800
+RESTORE_TIMEOUT=3600
+NIGHTLY_TIMEOUT=7200
+# What c4-app stops after a cut is confirmed gone within this, inside the nightly run's 60 s
+STOP_WAIT=40
 
 fail() {
   echo "c4-app: $*" >&2
@@ -117,16 +132,45 @@ Usage, from an application's account:
   sudo c4-app backup                    (the services labelled c4-infra.backup: postgres or volumes,
                                         into /var/backups/c4-apps/<app>/, nightly at 03:45 too)
   sudo c4-app restore [<stamp> --yes]
+Time limits, in seconds, the same for every application; root's /etc/c4-app/limits changes them
+(KEY=<seconds>, 1 to 86400): ITEM_TIMEOUT=1800 each dump or volume's copy, RESTORE_TIMEOUT=3600
+each restore step, NIGHTLY_TIMEOUT=7200 each application's nightly run. A cut stops what it
+started, then refuses, saying so.
 EOF
   exit 2
 }
 
+# PA-03 B: the limits from root's file, read as data (never sourced), each 1 to 86400 s (a 0 would turn
+# timeout off); without the file, the defaults; anything else refuses, the reason in limits_refusal
+limits_refusal=
+read_limits() {
+  local line number=0 dir=${LIMITS%/*}
+  [ -e "$LIMITS" ] || [ -L "$LIMITS" ] || return 0
+  if [ -L "$LIMITS" ] || [ ! -f "$LIMITS" ] || [ -L "$dir" ] \
+    || [[ ! $(stat -c '%u %g %a' "$LIMITS") =~ ^0\ 0\ [0-7]?[0-7][0145][0145]$ ]] \
+    || [[ ! $(stat -c '%u %a' "$dir") =~ ^0\ [0-7]?[0-7][0145][0145]$ ]]; then
+    limits_refusal="$LIMITS: not root's own regular file (root:root, writable by root only, in a directory of root's): refused"
+    return 1
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    number=$((number + 1))
+    [[ ! $line =~ ^[[:space:]]*(#.*)?$ ]] || continue
+    if [[ $line =~ ^(ITEM_TIMEOUT|RESTORE_TIMEOUT|NIGHTLY_TIMEOUT)=([1-9][0-9]{0,4})$ ]] && [ "${BASH_REMATCH[2]}" -le 86400 ]; then
+      printf -v "${BASH_REMATCH[1]}" %s "${BASH_REMATCH[2]}"
+    else
+      limits_refusal="$LIMITS, line $number: '${line//[^[:print:]]/?}': <KEY>=<seconds>, 1 to 86400, KEY ITEM_TIMEOUT, RESTORE_TIMEOUT or NIGHTLY_TIMEOUT"
+      return 1
+    fi
+  done < "$LIMITS"
+}
+
 [ "$(id -u)" -eq 0 ] || fail "runs as root, through sudo: sudo c4-app <command>"
 
-# Root's cron only (sudo sets SUDO_USER): each account of c4-apps backs up as itself, into its log
-NIGHTLY_TIMEOUT=7200
+# Root's cron only (sudo sets SUDO_USER): each account of c4-apps backs up as itself, into its log; a
+# refused limits file is written into each log
 nightly() {
-  local members member log code status=0
+  local members member log code status=0 refusal=
+  read_limits || refusal="c4-app: $limits_refusal"
   members=$(getent group c4-apps | cut -d: -f4)
   install -d -m 0755 -o root -g root "$BACKUP_ROOT"
   for member in ${members//,/ }; do
@@ -141,9 +185,18 @@ nightly() {
     {
       echo "== $(date -u '+%Y-%m-%d %H:%M:%S') UTC: nightly backup of $member"
       code=0
-      timeout --kill-after=60 "$NIGHTLY_TIMEOUT" runuser -u "$member" -- sudo -n /usr/local/sbin/c4-app backup < /dev/null 2>&1 \
-        || code=$?
+      if [ -n "$refusal" ]; then
+        echo "$refusal"
+        code=1
+      else
+        timeout --kill-after=60 "$NIGHTLY_TIMEOUT" runuser -u "$member" -- sudo -n /usr/local/sbin/c4-app backup < /dev/null 2>&1 \
+          || code=$?
+      fi
       if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+        # runuser KILLs sudo 2 s after relaying the TERM (intent 0033, step 0, fact e): c4-app may still
+        # be stopping what it started; its end frees the application's lock
+        flock -w 60 "$STAGING_ROOT/.$member.lock" true \
+          || echo "c4-app: a c4-app command of $member still holds its lock 60 s after the cut"
         echo "== exit $code: stopped after $NIGHTLY_TIMEOUT s"
       else
         echo "== exit $code"
@@ -193,28 +246,54 @@ if ! flock -n 9; then
   flock -w 600 9 || fail "another c4-app command of $app is still running"
 fi
 
-# On the way out: no incoming copy, no unfinished backup, the stopped containers started unless restoring
+# On the way out: what the running item started stopped (E6), no incoming copy, no unfinished backup,
+# the stopped containers started unless restoring
 partial=
 stopped=()
 restoring=
 safety=
 altered=
+signalled=
+# the run's own files (the item's FIFO, the throwaways' cidfiles, SQL): root's, removed on the way out
+run=
+# E3: the item that runs (bounded), stopped on the way out: what it is, its timeout's pid, where it
+# runs, its FIFO's reader; what its stop stopped, a cut's line
+item_what= item_pid= item_container= item_marker= item_cid= item_reader= item_stopped= cut=
+stopping=
 leave() {
-  local status=$?
+  local status=$? what=$item_what deadline=$((SECONDS + STOP_WAIT))
+  local -a bound=()
+  # on a signal, a KILL may follow (the nightly run's, 60 s after its TERM): the start can't wait on
+  [ -z "$signalled" ] || bound=(timeout 20)
+  # a signal sudo relays again must not cut the way out short
+  trap '' INT TERM
+  if [ -n "$what" ]; then
+    stop_item || true
+    if [ -n "$signalled" ]; then what="stopped by a signal during $what"; else what="$what interrupted"; fi
+    echo "c4-app: $what: stopped ($item_stopped)${partial:+, no backup of $app kept}" >&2
+  fi
+  [ -z "$item_reader" ] || kill "$item_reader" 2> /dev/null || true
   rm -rf "$incoming"
   [ -z "$partial" ] || rm -rf "$partial"
+  [ -z "$run" ] || rm -rf "$run"
   if [ -n "$altered" ]; then
     echo "c4-app: the restore of backup $restoring failed (above) once it had begun replacing $app's data: its containers stay stopped (${stopped[*]}). To put the state before back: sudo c4-app restore $safety --yes, then sudo c4-app up; to start $app as it is: sudo c4-app up" >&2
     return
   fi
-  [ ${#stopped[@]} -eq 0 ] || docker start "${stopped[@]}" > /dev/null \
-    || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+  while [ -n "$stopping" ] && kill -0 "$stopping" 2> /dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+    sleep 0.5
+  done
+  if [ -n "$stopping" ] && kill -0 "$stopping" 2> /dev/null; then
+    echo "c4-app: ${stopped[*]} still stopping $STOP_WAIT s later: sudo c4-app up starts them" >&2
+  elif [ ${#stopped[@]} -gt 0 ]; then
+    "${bound[@]}" docker start "${stopped[@]}" > /dev/null || echo "c4-app: ${stopped[*]} could not be started again (above)" >&2
+  fi
   [ "$status" -eq 0 ] || [ -z "$restoring" ] \
     || echo "c4-app: the restore of backup $restoring failed (above), before it changed any data: its containers run again" >&2
 }
 trap leave EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'trap "" INT TERM; signalled=1; exit 130' INT
+trap 'trap "" INT TERM; signalled=1; exit 143' TERM
 
 # The application's files, read as it, links and special files refused, into the incoming copy
 # (0750 root:<app>); the root-only snapshot directory (re)created empty
@@ -499,13 +578,156 @@ cmd_register() {
   bash "$STACK/register-app.sh" --app "$app" "${args[@]}" < /dev/null
 }
 
-# A database's dump, run in its own container: a fixed script, its user and database read there
-DUMP='pg_dump --lock-wait-timeout=120s -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}" -Fc'
+# A database's dump, run in its own container: a fixed script, its user and database read there; exec'd,
+# the one process a stop finds, its parent outside the container (intent 0033, step 0, fact c)
+DUMP='exec pg_dump --lock-wait-timeout=120s -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}" -Fc'
 # A volume's copy: the stack's database image, no network, read-only, tar's 4 capabilities (fact d)
 THROWAWAY=(--rm --pull never --network none --read-only --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE
   --cap-add FOWNER --cap-add FSETID --security-opt no-new-privileges --log-driver none)
-# A dump or a volume's copy that hasn't ended by then is refused
-ITEM_TIMEOUT=1800
+
+forget_item() { item_what= item_pid= item_container= item_marker= item_cid=; }
+
+# E4: a command in a database's container, marked: PGAPPNAME=<marker> in its environment (docker exec
+# -e PGAPPNAME), the application_name of its sessions; a new marker each time
+in_database() { # <container>
+  forget_item
+  item_container=$1
+  item_marker=c4-app.$app.$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+}
+
+# E5: a throwaway container, its id in a cidfile of the run's, labelled with the application (docker ps
+# --filter label=c4-infra.c4-app finds it); sets throwaway, its docker run options
+throwaway=()
+in_throwaway() {
+  forget_item
+  item_cid=$(mktemp -u "$run/XXXXXXXX.cid")
+  throwaway=(--cidfile "$item_cid" --label "c4-infra.c4-app=$app" "${THROWAWAY[@]}")
+}
+
+# <command> under <limit>, in the background with the lock's descriptor closed, then waited for: a
+# signal reaches the trap at once. Its status; one that fails has what it started stopped, said in
+# item_stopped, and a cut (124, or 137 once timeout's KILL fired, the limit past: before it, the
+# item's own status) returns 124, its line in cut
+bounded() { # <limit> <what> <stdin> <stdout> <command>…
+  local limit=$1 what=$2 in=$3 out=$4 code=0 start=$SECONDS
+  shift 4
+  item_what=$what item_stopped="nothing left running"
+  PGAPPNAME=$item_marker timeout --kill-after=5 "$limit" "$@" < "$in" > "$out" 9>&- &
+  item_pid=$!
+  wait "$item_pid" || code=$?
+  item_pid=
+  if [ "$code" -eq 0 ]; then
+    forget_item
+    return 0
+  fi
+  stop_item || true
+  if { [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; } && [ $((SECONDS - start)) -ge "$limit" ]; then
+    cut="$what didn't end within $limit s: stopped ($item_stopped)"
+    return 124
+  fi
+  [ "$code" -ne 124 ] || code=1
+  return "$code"
+}
+
+# E4, E5: what the item started, stopped where it runs and confirmed gone within STOP_WAIT, said in
+# item_stopped; status 1 when a stop isn't confirmed, each one named
+stop_item() {
+  local status=0
+  item_stopped="nothing left running"
+  [ -z "$item_pid" ] || kill -TERM "$item_pid" 2> /dev/null || true
+  if [ -n "$item_marker" ]; then
+    stop_marked || status=1
+  elif [ -n "$item_cid" ]; then
+    stop_throwaway || status=1
+  fi
+  [ -z "$item_pid" ] || wait "$item_pid" 2> /dev/null || true
+  forget_item
+  return "$status"
+}
+
+# The database's sessions bearing the item's marker, as the container's POSTGRES_USER on its local
+# socket, the marker a psql variable: their pids (MARKED), or those ended (END)
+SESSIONS='maintenance=postgres
+[ "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}" != postgres ] || maintenance=template1
+exec psql -X -q -At -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$maintenance" -v marker="$1"'
+MARKED="select pid from pg_stat_activity where application_name = :'marker' and pid <> pg_backend_pid();"
+END="with marked as materialized (select pid from pg_stat_activity where application_name = :'marker' and pid <> pg_backend_pid())
+select pid from marked where pg_terminate_backend(pid);"
+marked_sessions() { # <query> <seconds>
+  printf '%s\n' "$1" | timeout "$2" docker exec -i "$item_container" sh -c "$SESSIONS" sh "$item_marker" | grep -xE '[0-9]+'
+  [ "${PIPESTATUS[1]}" -eq 0 ]
+}
+# The item's processes: the host PIDs docker top lists for its container whose environment holds the
+# entry PGAPPNAME=<marker>
+marked_pids() {
+  local pid
+  for pid in $(docker top "$item_container" -eo pid 2> /dev/null | tail -n +2); do
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    ! grep -qzxF "PGAPPNAME=$item_marker" "/proc/$pid/environ" 2> /dev/null || echo "$pid"
+  done
+}
+parent() { awk '$1 == "PPid:" { print $2 }' "/proc/$1/status" 2> /dev/null; }
+# A psql call's limit: the seconds left before <deadline>, 1 to 10
+psql_wait() { local left=$(($1 - SECONDS)); echo $((left < 1 ? 1 : left > 10 ? 10 : left)); }
+# E4: the item's sessions ended, its processes killed (their environment read again just before), never
+# one whose parent is the container's first process: the database server would take that for a crash
+# and end every session (step 0, fact c); its session's end ends it. Confirmed gone, or named
+stop_marked() {
+  local deadline=$((SECONDS + STOP_WAIT)) first pid names= left open
+  local -A ended=()
+  first=$(docker inspect -f '{{.State.Pid}}' "$item_container" 2> /dev/null) || first=
+  for pid in $(marked_pids); do
+    names+="${names:+, }$(cat "/proc/$pid/comm" 2> /dev/null || true)"
+  done
+  while :; do
+    for pid in $(marked_sessions "$END" "$(psql_wait "$deadline")" 2> /dev/null); do
+      ended[$pid]=1
+    done
+    for pid in $(marked_pids); do
+      [ -n "$first" ] && [ "$(parent "$pid")" != "$first" ] || continue
+      ! grep -qzxF "PGAPPNAME=$item_marker" "/proc/$pid/environ" 2> /dev/null || kill -KILL "$pid" 2> /dev/null || true
+    done
+    sleep 0.2
+    [ "$(docker inspect -f '{{.State.Running}}' "$item_container" 2> /dev/null)" = true ] || break
+    left=$(marked_pids)
+    if open=$(marked_sessions "$MARKED" "$(psql_wait "$deadline")" 2> /dev/null) && [ -z "$open$left" ]; then
+      break
+    fi
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      for pid in $left; do
+        echo "c4-app: $(cat "/proc/$pid/comm" 2> /dev/null) (pid $pid) in $item_container didn't stop within $STOP_WAIT s" >&2
+      done
+      [ -n "$left" ] || echo "c4-app: a session of $item_container's database ($item_marker) didn't stop within $STOP_WAIT s" >&2
+      item_stopped="not all of it, in $item_container"
+      return 1
+    fi
+    sleep 0.3
+  done
+  local -a what=()
+  [ -z "$names" ] || what+=("$names in $item_container")
+  [ ${#ended[@]} -eq 0 ] || what+=("${#ended[@]} session$([ ${#ended[@]} -eq 1 ] || echo s) of its database")
+  item_stopped=${what[0]:-nothing left running}${what[1]:+, ${what[1]}}
+}
+
+# E5: the item's throwaway container (its cidfile's id, once its CLI has ended if it had none yet)
+# removed, running or paused, and confirmed gone; gone already counts as stopped
+stop_throwaway() {
+  local deadline=$((SECONDS + STOP_WAIT)) id removed=
+  [ -s "$item_cid" ] || [ -z "$item_pid" ] || wait "$item_pid" 2> /dev/null || true
+  id=$(cat "$item_cid" 2> /dev/null || true)
+  [[ $id =~ ^[0-9a-f]{64}$ ]] || return 0
+  while docker inspect "$id" > /dev/null 2>&1; do
+    ! docker rm -f "$id" > /dev/null 2>&1 || removed=1
+    docker inspect "$id" > /dev/null 2>&1 || break
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "c4-app: the throwaway container $id didn't stop within $STOP_WAIT s" >&2
+      item_stopped="not its throwaway container"
+      return 1
+    fi
+    sleep 0.5
+  done
+  [ -z "$removed" ] || item_stopped="its throwaway container"
+}
 
 iec() { numfmt --to=iec-i --suffix=B "$1"; }
 sorted() { [ $# -eq 0 ] || printf '%s\n' "$@" | sort; }
@@ -648,21 +870,24 @@ room_above_floor() { # [<what is refused>]
   echo $((free - floor))
 }
 
-# An item into its file, cut at the room above the floor: reaching it, a timeout, a failure refuse
+# An item into its file through a FIFO of the run's, cut at the room above the floor (head): reaching it,
+# the item's limit or a failure stops what the item started, then refuses
 write_item() { # <file> <command>…
-  local file=$1 room size
-  local -a status
+  local file=$1 room size code=0 reader=0
   shift
   room=$(room_above_floor)
-  set +e
-  timeout "$ITEM_TIMEOUT" "$@" < /dev/null | head -c "$room" > "$partial/$file"
-  status=("${PIPESTATUS[@]}")
-  set -e
+  rm -f "$run/item"
+  mkfifo -m 0600 "$run/item"
+  head -c "$room" < "$run/item" > "$partial/$file" 9>&- &
+  item_reader=$!
+  bounded "$ITEM_TIMEOUT" "$file" /dev/null "$run/item" "$@" || code=$?
+  wait "$item_reader" || reader=$?
+  item_reader=
   size=$(stat -c %s "$partial/$file")
   [ "$size" -lt "$room" ] \
-    || fail "$file reached the $(iec "$room") left above the floor on $BACKUP_ROOT: backup of $app refused, nothing of it is kept, the earlier backups stay"
-  [ "${status[0]}" -ne 124 ] || fail "$file didn't end within $ITEM_TIMEOUT s: no backup of $app kept"
-  [ "${status[0]}" -eq 0 ] && [ "${status[1]}" -eq 0 ] || fail "$file failed (above): no backup of $app kept"
+    || fail "$file reached the $(iec "$room") left above the floor on $BACKUP_ROOT: stopped ($item_stopped), backup of $app refused, nothing of it is kept, the earlier backups stay"
+  [ "$code" -ne 124 ] || fail "$cut, no backup of $app kept"
+  [ "$code" -eq 0 ] && [ "$reader" -eq 0 ] || fail "$file failed (above): stopped ($item_stopped), no backup of $app kept"
 }
 
 # The containers no longer to start again on the way out
@@ -676,6 +901,17 @@ untrack() { # <container>…
     kept+=("$name")
   done
   stopped=("${kept[@]}")
+}
+
+# docker stop in a session of its own, waited for: a signal reaches the trap without waiting for the
+# application's stop_grace_period, and leave lets the stop end
+stop_containers() { # <container>…
+  local code=0
+  setsid docker stop "$@" > /dev/null 9>&- &
+  stopping=$!
+  wait "$stopping" || code=$?
+  stopping=
+  return "$code"
 }
 
 # The running containers that mount these volumes, stopped (started again on the way out); sets group
@@ -695,7 +931,7 @@ stop_mounters() { # <volume>…
   done
   [ ${#group[@]} -gt 0 ] || return 0
   stopped+=("${group[@]}")
-  docker stop "${group[@]}" > /dev/null || fail "${group[*]} could not be stopped (above)"
+  stop_containers "${group[@]}" || fail "${group[*]} could not be stopped (above)"
 }
 
 # Running, healthy where checked, or done (exited 0) within 300 s; the others named, status 1
@@ -764,7 +1000,8 @@ take_backup() {
   partial=$backups/$stamp.partial
   install -d -m 0750 -o root -g "$app" "$partial"
   for service in $(sorted "${!dump_of[@]}"); do
-    write_item "$service.dump" docker exec "${dump_of[$service]}" sh -c "$DUMP"
+    in_database "${dump_of[$service]}"
+    write_item "$service.dump" docker exec -e PGAPPNAME "${dump_of[$service]}" sh -c "$DUMP"
     written+=("$service.dump")
   done
   for service in $(sorted "${!volumes_of[@]}"); do
@@ -772,7 +1009,8 @@ take_backup() {
     stop_mounters ${volumes_of[$service]}
     for volume in ${volumes_of[$service]}; do
       file=$service.${volume#"${app}_"}.tar
-      write_item "$file" docker run "${THROWAWAY[@]}" --mount "type=volume,src=$volume,dst=/data" --entrypoint tar "$tar_image" \
+      in_throwaway
+      write_item "$file" docker run "${throwaway[@]}" --mount "type=volume,src=$volume,dst=/data" --entrypoint tar "$tar_image" \
         --sparse --numeric-owner -cpf - -C /data .
       written+=("$file")
     done
@@ -796,6 +1034,8 @@ take_backup() {
 
 cmd_backup() {
   [ $# -eq 0 ] || usage
+  read_limits || fail "$limits_refusal"
+  run=$(mktemp -d)
   backup_dir
   select_items backup
   if [ -n "$nothing" ]; then
@@ -812,6 +1052,17 @@ maintenance=postgres
 [ "$db" != postgres ] || maintenance=template1
 exec psql -q -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "$maintenance" -v db="$db" -v owner="${POSTGRES_USER:-postgres}"'
 RESTORE='exec pg_restore --exit-on-error -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-${POSTGRES_USER:-postgres}}"'
+
+# RQ-02: a restore's step under RESTORE_TIMEOUT (bounded), its output discarded: a cut or a failure
+# refuses, saying nothing changed while no data was replaced yet
+restore_step() { # <stamp> <step> <failure> <stdin> <command>…
+  local stamp=$1 step=$2 failure=$3 in=$4 code=0 unchanged=": restore refused, nothing changed"
+  shift 4
+  [ -z "$restoring" ] || unchanged=
+  bounded "$RESTORE_TIMEOUT" "$step" "$in" /dev/null "$@" || code=$?
+  [ "$code" -ne 124 ] || fail "restore of backup $stamp: $cut$unchanged"
+  [ "$code" -eq 0 ] || fail "$failure"
+}
 
 list_backups() {
   local entry name found=
@@ -855,12 +1106,14 @@ match_backup() { # <stamp>
   done
   [ ${#dump_into[@]} -gt 0 ] || [ ${#tar_into[@]} -gt 0 ] || fail "backup $1 of $app is empty: restore refused"
   for file in "${!dump_into[@]}"; do
-    docker exec -i "${dump_into[$file]}" pg_restore -f /dev/null < "$backups/$1/$file" \
-      || fail "$file of backup $1 can't be read whole (pg_restore, above): restore refused, nothing changed"
+    in_database "${dump_into[$file]}"
+    restore_step "$1" "reading $file whole" "$file of backup $1 can't be read whole (pg_restore, above): restore refused, nothing changed" \
+      "$backups/$1/$file" docker exec -i -e PGAPPNAME "${dump_into[$file]}" pg_restore -f /dev/null
   done
   for file in "${!tar_into[@]}"; do
-    docker run -i "${THROWAWAY[@]}" --entrypoint tar "$tar_image" -tf - < "$backups/$1/$file" > /dev/null \
-      || fail "$file of backup $1 can't be read whole (tar, above): restore refused, nothing changed"
+    in_throwaway
+    restore_step "$1" "reading $file whole" "$file of backup $1 can't be read whole (tar, above): restore refused, nothing changed" \
+      "$backups/$1/$file" docker run -i "${throwaway[@]}" --entrypoint tar "$tar_image" -tf -
   done
 }
 
@@ -886,6 +1139,8 @@ cmd_restore() {
   [ -d "$backups/$wanted" ] || fail "no backup $wanted of $app (sudo c4-app restore lists them)"
   [ -n "$yes" ] \
     || fail "restore $wanted replaces $app's databases and volumes with that backup's, once the state before is backed up: sudo c4-app restore $wanted --yes"
+  read_limits || fail "$limits_refusal"
+  run=$(mktemp -d)
   select_items restore
   [ -z "$nothing" ] || fail "$nothing: restore refused"
   match_backup "$wanted"
@@ -900,24 +1155,28 @@ cmd_restore() {
     [ -n "${database[$name]:-}" ] || stop+=("$name")
   done
   stopped+=("${stop[@]}")
-  [ ${#stop[@]} -eq 0 ] || docker stop "${stop[@]}" > /dev/null || fail "${stop[*]} could not be stopped (above)"
+  [ ${#stop[@]} -eq 0 ] || stop_containers "${stop[@]}" || fail "${stop[*]} could not be stopped (above)"
   take_backup
   safety=$stamp
+  printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' > "$run/recreate.sql"
   altered=1
   for file in $(sorted "${!dump_into[@]}"); do
-    printf '%s\n' 'DROP DATABASE IF EXISTS :"db" WITH (FORCE);' 'CREATE DATABASE :"db" OWNER :"owner";' \
-      | docker exec -i "${dump_into[$file]}" sh -c "$RECREATE" \
-      || fail "${dump_into[$file]}: its database could not be recreated (above)"
-    docker exec -i "${dump_into[$file]}" sh -c "$RESTORE" < "$backups/$wanted/$file" \
-      || fail "${dump_into[$file]}: $file could not be restored (above)"
+    name=${dump_into[$file]}
+    in_database "$name"
+    restore_step "$wanted" "recreating $name's database" "$name: its database could not be recreated (above)" \
+      "$run/recreate.sql" docker exec -i -e PGAPPNAME "$name" sh -c "$RECREATE"
+    in_database "$name"
+    restore_step "$wanted" "restoring $file into $name" "$name: $file could not be restored (above)" \
+      "$backups/$wanted/$file" docker exec -i -e PGAPPNAME "$name" sh -c "$RESTORE"
   done
   # a database that mounts a restored volume stops too
   # shellcheck disable=SC2046 # volume names, checked: no space, no glob
   stop_mounters $(sorted "${tar_into[@]}")
   for file in $(sorted "${!tar_into[@]}"); do
-    docker run -i "${THROWAWAY[@]}" --mount "type=volume,src=${tar_into[$file]},dst=/data" --entrypoint sh "$tar_image" \
-      -c 'find /data -mindepth 1 -delete && tar --numeric-owner -xpf - -C /data' < "$backups/$wanted/$file" \
-      || fail "${tar_into[$file]}: $file could not be restored (above)"
+    in_throwaway
+    restore_step "$wanted" "refilling ${tar_into[$file]}" "${tar_into[$file]}: $file could not be restored (above)" \
+      "$backups/$wanted/$file" docker run -i "${throwaway[@]}" --mount "type=volume,src=${tar_into[$file]},dst=/data" \
+      --entrypoint sh "$tar_image" -c 'find /data -mindepth 1 -delete && tar --numeric-owner -xpf - -C /data'
   done
   altered=
   restoring=

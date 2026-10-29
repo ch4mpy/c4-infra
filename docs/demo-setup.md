@@ -200,6 +200,13 @@ gh run watch -R ch4mpy/c4-infra
   log: `ssh -t ubuntu@<vps-ip> sudo tail /var/backups/c4-apps/<app>/backup.log`. To run the
   applications' nightly backup now, as root's cron does (`c4-app nightly` refuses `sudo`'s
   `SUDO_USER`): `ssh -t ubuntu@<vps-ip> sudo env -u SUDO_USER /usr/local/sbin/c4-app nightly`.
+- The applications' backups run under time limits ([README](../README.md), "Backups"):
+  `ITEM_TIMEOUT` (1800 s, each dump or volume's copy), `RESTORE_TIMEOUT` (3600 s, each restore
+  step), `NIGHTLY_TIMEOUT` (7200 s, each application's nightly run). To give them more time, for
+  every application, write root's `/etc/c4-app/limits` from `ubuntu` (one `KEY=<seconds>` per line,
+  1 to 86400; a key left out keeps its default; `backup`, `restore` and the nightly run refuse a
+  file that breaks these rules):
+  `ssh -t ubuntu@<vps-ip> 'sudo install -d -m 0755 /etc/c4-app && echo ITEM_TIMEOUT=3600 | sudo tee /etc/c4-app/limits > /dev/null && sudo chmod 0644 /etc/c4-app/limits'`.
 
 ## 9. Adding an application
 
@@ -250,7 +257,10 @@ other: [README](../README.md), "Demo host"), once:
    03:45 into `/var/backups/c4-apps/<app>/`, which its account reads, kept 7 days, the run's output
    in `backup.log` there. Step 4's `vps-bootstrap.sh` (re)writes `/etc/cron.d/c4-apps-backup`.
    Its workflow may run `sudo c4-app backup` itself (before a deployment that migrates its database);
-   `sudo c4-app restore` lists its backups, `sudo c4-app restore <stamp> --yes` restores one. A copy
+   `sudo c4-app restore` lists its backups, `sudo c4-app restore <stamp> --yes` restores one. Each
+   dump or volume's copy is stopped after 1800 s (`ITEM_TIMEOUT`), each restore step after 3600 s
+   (`RESTORE_TIMEOUT`), its nightly run after 7200 s (`NIGHTLY_TIMEOUT`): what was stopped is said,
+   exit 1; the operator changes these for every application in `/etc/c4-app/limits` (step 8). A copy
    off the host is the application's to pull, with `rsync` through its key. When an application
    leaves the host, its backups stay until removed: `sudo rm -rf /var/backups/c4-apps/<app>`, from
    `ubuntu`.
