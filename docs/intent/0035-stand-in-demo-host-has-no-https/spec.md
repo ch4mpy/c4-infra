@@ -1,11 +1,11 @@
 # Spec: The stand-in demo host can't serve an application over HTTPS
 
 - Intent: [0035](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: standard (no risk rule applies: the real host's configuration, certificates and secrets don't change, IV-01; the local authority is a test's throwaway, trusted by the test's client alone, its keys kept in the stand-in, IV-02; it would be high if the change reached a file the real host receives)
 - Policies applied: none yet; standing constraints: README design (a Let's Encrypt certificate per site on the demo host), CLAUDE.md (bash and Git Bash, no password on a command line, a script comes with its test and its `# covers:`), the library's contract with the skills' tests (their 0095 PA-06 A: sourced from a c4-infra checkout)
-- Approved: —
+- Approved: 2026-10-28, Jérôme Wacongne (PO, also tech lead; in the session, every point of attention decided)
 
 ## Summary
 
@@ -66,7 +66,7 @@ None.
 - Options: A) Caddy's local authority (`local_certs`, as `0003-demo-edge.sh:66`), created by the stand-in's Caddy in its data volume; the test reads the root from Caddy / B) an authority the test generates in its `mktemp` directory (`openssl`), its root and key given to the stand-in's Caddy, which issues each site's certificate from it; the root known before the stack starts / C) an ACME test server (Pebble) in the stand-in, Caddy's ACME pointed at it: the real host's issuance path exercised, but one more image in a stand-in whose nested DNS fails now and then (HANDOVER; 0020), and a DNS for its challenges.
 - Recommendation: A: no key passes through the test, the workstation or the repository; the pattern two tests use; a certificate per site as Caddy loads it, as on the real host. It reads "the test's temporary files" as the stand-in's throwaway storage, where a run's Keycloak database and passwords already stay until the next `stand_in_up`; B keeps the key in the `mktemp` directory, but a copy goes into the stand-in all the same.
 - Decides: PO (the constraint's reading) and tech lead
-- Decision: to decide
+- Decision: as recommended, A (2026-10-28, Jérôme Wacongne, PO and tech lead)
 
 ### PA-02: Always on, or when a test asks (intent question 2)
 
@@ -74,14 +74,14 @@ None.
 - Options: A) when a test asks (a switch): without it, the stand-in is as today; a test that rewrites `.env` asks again / B) always on, within the stand-in's existing override: no file added to the stack's directory, `COMPOSE_FILE` unchanged (RQ-04); every stand-in test runs Caddy with its local authority.
 - Recommendation: B: one stand-in configuration instead of two, closer to the real host, no switch to carry through `stand_in_accounts`, the skills' tests and 0006's and 0009's `.env` rewrites; no existing check needs the missing certificate, and a change of `tests/lib/` runs every stand-in test either way. Only 0013's header sentence "The stand-in serves no HTTPS" turns wrong.
 - Decides: PO
-- Decision: to decide
+- Decision: as recommended, B (2026-10-28, Jérôme Wacongne, PO and tech lead)
 
 ### PA-03: What the library gives a test's client
 
 - Options: A) the root only; each test builds its client / B) A, plus `stand_in_https`, which c4-infra's test uses and the skills' may.
 - Recommendation: B: "trusts only the stand-in's authority" is written once (a curl given a CA file may still read the system's CA directory, not measured on the stand-in's Ubuntu; the name's resolution; the stand-in's curl rather than Windows'), and a skills test passes its own options (0099's login keeps a cookie jar).
 - Decides: tech lead
-- Decision: to decide
+- Decision: as recommended, B (2026-10-28, Jérôme Wacongne, PO and tech lead)
 
 ## Acceptance criteria
 
@@ -101,3 +101,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-28 — first version (draft; PA-01 to PA-03 to decide)
+- v1 approved — 2026-10-28 — by the PO in the session: every point of attention as recommended (PA-01 A, PA-02 B, PA-03 B)

@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-28, the skills' intent 0099, its spec's PA-07: the stand-in's HTTPS asked of c4-infra first)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-28
 - Decided: 2026-10-28
 - Supersedes: —
