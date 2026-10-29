@@ -214,3 +214,4 @@ Unchanged (IV-04): `demo/`, `.github/`, `registry.txt`.
 | AC-05 | OK | the token on stdin, never on a command line (`docker login … --password-stdin`); `pull` without `--registry` for public images; the environment that alone holds the secrets, never printed |
 | AC-06 | OK | the guard fails on main's documents (`3 check(s) failed`, naming :167 and :273) and passes after; each mutation above |
 | AC-07 | OK | the tests reading these documents passed (run 2; 0002-accounts.stand-in in run 1's document checks and alone); `demo/`, `.github/`, `registry.txt` unchanged; the GitHub example's sha256 `a50da828…` at de2be13, main and 24e6481; README "Keycloak in an application's tests" and the guide's "In dev" unchanged |
+- The product owner at delivery (2026-10-28): the batch's verification accepted with the KOs above (every failed test passing alone at 24e6481).
