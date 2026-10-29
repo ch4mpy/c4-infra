@@ -215,3 +215,7 @@ Unchanged (IV-04): `demo/`, `.github/`, `registry.txt`.
 | AC-06 | OK | the guard fails on main's documents (`3 check(s) failed`, naming :167 and :273) and passes after; each mutation above |
 | AC-07 | OK | the tests reading these documents passed (run 2; 0002-accounts.stand-in in run 1's document checks and alone); `demo/`, `.github/`, `registry.txt` unchanged; the GitHub example's sha256 `a50da828…` at de2be13, main and 24e6481; README "Keycloak in an application's tests" and the guide's "In dev" unchanged |
 - The product owner at delivery (2026-10-28): the batch's verification accepted with the KOs above (every failed test passing alone at 24e6481).
+
+### After deployment — deploy-demo run 40808682088 on `main` 9d69e9d (2026-10-29 UTC, the product owner's push), success
+
+- Nothing of this change is deployed (documents and tests): nothing to check on the host.

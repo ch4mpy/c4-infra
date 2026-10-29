@@ -203,3 +203,4 @@ Not changed: `keycloak/` (C2), `compose*.yml`, `env.sh`, `demo/deploy.sh`, `demo
   - the amd64 manifest (`sha256:a519df43…`)'s config blob: `org.opencontainers.image.version: 26.8.1`, `KC_FEATURES=token-exchange-delegation,parameterized-scopes,cimd`;
   - `docker pull` with an empty `DOCKER_CONFIG` (no login): exit 0, `ghcr.io/ch4mpy/c4-infra-keycloak@sha256:8ff2e5ba…`.
   - Left: the next run of the workflow on `main` (the next delivery touching more than `**/*.md`): the tag step skipped, the same digest printed twice.
+- The next run, deploy-demo 40808682088 on `main` 9d69e9d (2026-10-29 UTC, the batch 0032, 0034, 0033), success: "Push c4-infra-keycloak" and "Tag c4-infra-keycloak with its version" skipped; "Check the published references": `ghcr.io/ch4mpy/c4-infra-keycloak:33909cd89858` and `ghcr.io/ch4mpy/c4-infra-keycloak:26.8.1-33909cd89858`, both `"sha256:8ff2e5ba3819497c8b4e72a71e9d87807c08f5d3a1c974c8d7122e49fe6456d0"`. 0029 is complete.

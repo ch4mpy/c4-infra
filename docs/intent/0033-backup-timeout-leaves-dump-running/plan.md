@@ -341,3 +341,8 @@ Claude proposes these for Jérôme Wacongne (engineer, and tech lead for the hig
 | IV-02, IV-03 | OK | `0027-backup`: refused at the floor, `ok - its copy's container is gone (intent 0033)…`, nothing written, the safety backup holds the state before |
 | IV-05 | OK | `ok - a group-writable /etc/c4-app/limits (0664): the backup refused, naming it, nothing written`, the same for `ITEM_TIMEOUT=0` and `$(touch …)`, never sourced |
 | RQ-05, a stop not confirmed | OK (read) | `stop_marked`, `stop_throwaway` and `leave` name what didn't stop within 40 s with its container; the refusal that follows exits 1, the nightly logs `== exit 124` |
+
+### After deployment — deploy-demo run 40808682088 on `main` 9d69e9d (2026-10-29 UTC, the product owner's push), success
+
+- `c4-app installed (/usr/local/sbin/c4-app)`: the time limits, the stops after a cut and the bounded restore steps on the host; the stack's containers `Healthy`, `Registration account c4-infra-registration: up to date`.
+- `/etc/c4-app/limits`: no step of the deployment writes it, so the defaults apply (1800, 3600, 7200 s); not read on the host from here. No application is deployed there yet: no backup to observe.
