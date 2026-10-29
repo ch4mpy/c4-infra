@@ -84,3 +84,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0032 | [The migration guide offers a GitLab CI job the demo host doesn't serve](0032-migration-guide-offers-gitlab-ci-demo-doesnt-serve/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0033 | [A demo host backup cut by its time limit may leave its dump running, a restore has no time limit, and four backup paths are untested](0033-backup-timeout-leaves-dump-running/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0034 | [tests/0007-dev.sh's isolation checks pass when the application's network doesn't exist](0034-isolation-checks-pass-without-network/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
+| 0035 | [The stand-in demo host can't serve an application over HTTPS](0035-stand-in-demo-host-has-no-https/intent.md) | change | accepted | 2026-10-28 | 2026-10-28 |
