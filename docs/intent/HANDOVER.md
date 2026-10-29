@@ -11,13 +11,15 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 
 - **0019** and **0025** delivered (2026-10-28).
 - **0026 to 0031** delivered on 2026-10-28, as one batch (the product owner's decision): planned together; 0026 and 0027 implemented by two agents in worktrees, each on its own stand-in host; one review round per intent; one `bash tests/run.sh --all` on the integration commit 205b8eb, `verification passed` (72 tests, 1764 s), the milestone before the push; the verifiers' documentation fixes rerun at 13474a8 (`--changed 205b8eb --all`, 8 tests); merged into `main` in the batch's order (0031, 0030, 0028, 0026, 0027, 0029). Each `plan.md` holds its evidence.
-- **Waiting for the product owner:** the push of `main` (it deploys the demo host: Loki's, Prometheus', Tempo's and Pyroscope's retentions, the new `c4-app`, the workflow's version tag of Keycloak's image); then 0029's steps 7 to 9 (the GHCR login with `read:packages`, every version of the package checked, the package made public — irreversible —, the anonymous checks); `/etc/cron.d/c4-apps-backup` is written by the first application's `vps-bootstrap.sh`.
+- 0026 to 0031 pushed and deployed (deploy-demo run 40755169273 on 4bae619); 0029's steps 7 to 9 done (the package public, the anonymous checks); its last check, the tag step skipped and the same digest twice, at the next deploy-demo run. `/etc/cron.d/c4-apps-backup` is written by the first application's `vps-bootstrap.sh`.
+- **0032, 0034 and 0033** delivered on 2026-10-28, as one batch (the product owner's decision): 0033 implemented by an agent in a worktree; one review round per intent; the integration commit 24e6481 run twice with `bash tests/run.sh --all`, `run.sh exit 1` both times (run 1: six tests failing on the environment; run 2, one stand-in lane: 0024-db-image-change on Docker Hub's DNS, 0033-limits-facts on its timing margin), every failed test passing alone at 24e6481, the product owner accepting it; merged into `main` in the batch's order (0032 on `main`, then 0034, then 0033). Each `plan.md` holds its evidence, KOs first.
 - **Follow-ups found on the way** (not intents yet):
-  - The product owner's decision (2026-10-28): the demo host deploys GitHub projects only; GitLab projects (immo) will be deployed on a Kubernetes cluster at Scaleway, by a pipeline still to define. So no intent for `c4-app pull --registry-user` refusing a GitLab deploy token's user (`+`), and `docs/migration.md` demo step 5's paragraph "On another platform (GitLab, any CI…)" (0028) is to be withdrawn or reworded (the product owner's call).
+  - GitLab projects (immo) will be deployed on a Kubernetes cluster at Scaleway, by a pipeline still to define (the product owner, 2026-10-28); the demo host deploys GitHub projects only, as README and the guide now say (0032).
   - Faito's `demo` profile doesn't set the OTLP endpoints (Faito's repository; `docs/migration.md` step 3 says how).
-  - 0027: a `pg_dump` cut by its timeout may keep running in the application's container (`docker exec` forwards no signal); a restore has no timeout; no dedicated test of the timeouts, of a `volumes` service without a volume, of a shared volume, of a multi-layer restart order.
   - 0030: `new-realm-ids.sh` lists the users of an export in Keycloak's layout only (pre-existing).
   - 0026: no test of `demo/deploy.sh` replacing a changed `c4-app` since the review round.
+  - 0032: `docs/demo-setup.md` step 9.5 and the guide's step 5 say the `demo` environment is restricted to the branch it deploys from, but the `gh api` command creates it without a `deployment_branch_policy`.
+  - 0033: the kill of a marked process (E4) is guarded by no test; `tests/0033-limits-facts.stand-in.sh`'s fact (f) can fail under load (its 5× margin, 3.8× in a full run; accepted as it is); the paths checked by reading only, listed in its `plan.md`; a nightly cut's way out can reach about 62 s.
 
 ## Tickee and poc-immo-pf on c4-infra (analysed 2026-10-28, read only; to resume later)
 
@@ -37,9 +39,10 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 - 0011: the header comments of `tests/fixtures/0007/hostile/build-*.yml` give their former reasons.
 - 0015: no automated check that a front end's own Permissions-Policy passes unchanged (the verifier saw it pass by hand).
 - 0016: the 0016 tests repeat a curl browser; a shared helper in `tests/lib/keycloak.sh` would hold it once.
-- `tests/0007-dev.sh`'s `fails` takes docker's "network not found" for "can't be reached": its negative checks pass when `c4-infra.faito` doesn't exist (0023's evidence).
+- Tickee's registration fails while Faito's network `c4-infra.faito` is gone (`networks.sh`, seen at 0034's AC-03).
 - The stand-in's nested DNS, and alpine's package index from the workstation, fail now and then (0020's step 0; a 0004-upload run of 2026-10-28), cause not established.
 - 0013, on the demo host: the master realm's settings not checked one by one after the upgrade.
 - `tests/0004-registry.sh` still pins other live data of `registry.txt` (Tickee's line, `entry faito`).
 - 0013's round-4 details, 0017's verifier details: in their `plan.md`.
 - Docker Desktop stopped starting any container once (2026-10-27 21:06 UTC; restarted, cause unknown).
+- During a two-lane `--all` (2026-10-28), the dev Keycloak was found stopped, then recreated by a `docker compose up` from the main tree that no test of the run made; a few hours later the workstation froze during two parallel stand-in lanes (no OOM logged on the host). Causes unknown; one stand-in lane (`SUITE_DOCKER_MEMORY=1`) since.
