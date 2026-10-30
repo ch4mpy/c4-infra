@@ -534,10 +534,11 @@ Changelog, newest first (a version change's entry has its `Generated admin clien
   `autoRedirect`; a role's groups, a realm role's or a client role's, are read as
   `GroupRepresentation` (`UserRepresentation` in 26.7.2); the `configuration` of
   `ClientPolicyConditionRepresentation` and `ClientPolicyExecutorRepresentation` refers to a new
-  `RawJsonValue` (its generated type may change); the four operations of a client's certificates
-  (`…/certificates/{attr}/download`, `generate`, `generate-and-download`, `upload`) and
-  `OrganizationInvitationRepresentation.inviteLink` become deprecated; a few `400` and `403`
-  responses are added. No operation removed.
+  `RawJsonValue` (its generated type may change); four of the six operations on a client's
+  certificates (`…/certificates/{attr}/download`, `generate`, `generate-and-download`, `upload`)
+  and `OrganizationInvitationRepresentation.inviteLink` become deprecated, and by their
+  descriptions `download` and `upload` no longer carry the private key, the certificate only; a few
+  `400` and `403` responses are added. No operation removed.
 
 ### Routes file
 
