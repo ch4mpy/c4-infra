@@ -145,3 +145,7 @@ Each with Claude's recommendation; the steps above follow the recommendations.
 | 0039 AC-05 | OK | `CLAUDE.md:16`'s `jq` prerequisite word for word that of 359edca; `CLAUDE.md:12` names the redirection or `cygpath -w` for a native program |
 | No regression | OK | the full run: `verification passed`, 83 tests, no `KO` line |
 - The product owner at delivery (2026-10-30): 0039 AC-02, the four tests under bash on Ubuntu, not done, accepted unverified as PA-02 A decided; not the project's first production release. Delivered together, one merge into `main` (step 6); `main` unchanged since 359edca, the full run above is the milestone.
+
+### After deployment — deploy-demo run 41116396675 on `main` 118e627 (2026-10-30 UTC), success
+
+- Nothing of this change is deployed (tests and documents): nothing to check on the host. The step "Pull and restart the stack" recreated no container this time (each `Running`, then `Healthy`; the same image tags, Keycloak's `33909cd89858`, the proxy's `a67df90883e1`).
