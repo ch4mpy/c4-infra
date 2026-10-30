@@ -13,8 +13,8 @@
 #   - AC-13: from turu.mcp, through http://keycloak:8080/auth, a token issued for the public issuer
 #     (https://infra.c4-soft.com/auth/realms/turu) is exchanged for another, of the same issuer.
 #
-# The stand-in serves no HTTPS (Let's Encrypt is kept out): the MCP origin's headers are checked by
-# tests/0003-demo-edge.sh, on a throwaway Caddy with its own certificates.
+# The stand-in serves HTTPS from its Caddy's local authority (intent 0035); this test keeps to HTTP,
+# and the MCP origin's headers are checked by tests/0003-demo-edge.sh.
 #
 #   bash tests/0013-mcp.stand-in.sh      (bash tests/run.sh --all runs it)
 #
