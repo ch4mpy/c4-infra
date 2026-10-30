@@ -9,4 +9,4 @@ This intent is planned, implemented, verified and delivered together with 0038, 
 
 ## Verification
 
-The joint evidence block is in [0038's plan](../0038-description-test-cr-check-fails-under-git-bash/plan.md), `## Verification`.
+The joint evidence block is in [0038's plan](../0038-description-test-cr-check-fails-under-git-bash/plan.md), `## Verification`, "Verification — e538d54": this intent's rows are "0039 AC-…" and "No regression".
