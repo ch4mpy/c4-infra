@@ -17,7 +17,7 @@
 #
 #   bash tests/0037-queue.sh      (on a Linux Docker: tests/0037-queue-linux.stand-in.sh)
 #
-# covers: tests/lib/suite-lock.sh tests/fixtures/0037/
+# covers: tests/lib/suite-lock.sh tests/fixtures/0037/ CLAUDE.md
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -119,7 +119,7 @@ apart() { # <run>…: each one ran, none while another held the lock
     ended "$run" || { echo "$run didn't end"; cat "$work/order.log"; return 1; }
   done
   order=$(awk '$2 == "start" { print $3, $1 }' "$work/order.log" | grep -E " ($(IFS='|'; echo "$*"))\$" \
-    | sort -n | cut -d' ' -f2)
+    | LC_ALL=C sort -n | cut -d' ' -f2)
   in_order $order || { cat "$work/order.log"; return 1; }
 }
 went_first() { # <holder> <waiting> <killed>: the waiting run ran after the holder, the killed one never
@@ -204,7 +204,7 @@ check "AC-05: both ran, never at the same time as another" within 30 apart H5 Q 
 
 # AC-06
 header=$(sed -n '/^#/!q;p' "$LIB")
-for text in c4-infra.suite.queue StartedAt 'place in the queue'; do
+for text in c4-infra.suite.queue StartedAt 'the run at place 1 tries the lock' 'place in the queue'; do
   check "AC-06: the library's header names $text" grep -qF -- "$text" <<< "$header"
 done
 check "AC-06: CLAUDE.md says waiting runs take the lock in the order they arrived" \
