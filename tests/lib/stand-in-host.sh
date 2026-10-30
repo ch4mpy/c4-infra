@@ -40,9 +40,10 @@
 #   stand_in_https <host> <path> [curl option…]
 #                                    one request to https://<host><path> from inside the stand-in,
 #                                    every host and port sent to its Caddy, that root the only trust
-#                                    anchor; first waits up to 15 s for the site's certificate; curl's
-#                                    exit status, or stand_in_ca_cert's failures. The caller's paths
-#                                    (-o, -D, -c, -b) are the stand-in's
+#                                    anchor; first waits up to 15 s for Caddy and the site's
+#                                    certificate (GET https://<host>/, no cookie, until the handshake
+#                                    verifies); curl's exit status, or stand_in_ca_cert's failures.
+#                                    The caller's paths (-o, -D, -c, -b) are the stand-in's
 #   stand_in_down                    stops and removes the stand-in (its Docker volume stays: the
 #                                    pulled images)
 #
@@ -279,11 +280,11 @@ stand_in_https() { # <host> <path> [curl option…]
     trap "rm -rf $dir" EXIT
     mkdir "$dir/capath"
     read_root stand_in_https > "$dir/root.crt" || exit 1
-    # a site'"'"'s certificate is issued in the background after a start or a reload
+    # after a start or a reload, Caddy listens (7 until then) and issues a site'"'"'s certificate (35) in the background
     tries=0
     until curl -s -o /dev/null --cacert "$dir/root.crt" --capath "$dir/capath" --connect-to ::127.0.0.1: \
       "https://$host/"; do
-      [ $? -eq 35 ] && [ "$tries" -lt 75 ] || break
+      case $? in 7 | 35) [ "$tries" -lt 75 ] || break ;; *) break ;; esac
       tries=$((tries + 1))
       sleep 0.2
     done

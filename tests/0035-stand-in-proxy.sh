@@ -13,6 +13,7 @@
 #   bash tests/0035-stand-in-proxy.sh
 #
 # covers: tests/stand-in-host/ caddy/ reverse-proxy/ routes.sh registry.sh registry.txt examples/routes/
+# covers: compose.yml
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh

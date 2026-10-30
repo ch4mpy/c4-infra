@@ -89,6 +89,17 @@ no_private_key() { # in the test's files, the stack's upload and directory, the 
     "$UPLOADS" /home/faito/faito /home/hururaa/hururaa)
   [ -z "$found" ] || { echo "private keys in:"; printf '%s\n' "$found"; return 1; }
 }
+inodes() { # the inodes of the stack's Caddyfile and env/demo.caddy, on one line
+  stand_in_exec stat -c %i /home/c4-infra/c4-infra/caddy/Caddyfile /home/c4-infra/c4-infra/caddy/env/demo.caddy \
+    | tr -d '\r' | tr '\n' ' '
+}
+replaced() { # <inodes before>: both files have new inodes
+  local now a b c d
+  now=$(inodes) || return 1
+  read -r a b <<< "$1"
+  read -r c d <<< "$now"
+  [ -n "$b" ] && [ -n "$d" ] && [ "$a" != "$c" ] && [ "$b" != "$d" ] || { echo "before: $1, after: $now"; return 1; }
+}
 same_root() { # stand_in_ca_cert gives the root kept, which isn't empty
   local now
   now=$(stand_in_ca_cert) && [ -n "$root" ] && [ "$now" = "$root" ] || { echo "kept: ${root:0:80}"; echo "now: ${now:0:80}"; return 1; }
@@ -114,12 +125,13 @@ check "RQ-03, no stack: stand_in_ca_cert fails, naming the missing proxy" \
 check "RQ-03, no stack: stand_in_https too" \
   fails_saying "stand_in_https: the stand-in runs no c4-infra.reverse-proxy" stand_in_https faito.c4-soft.com /fr/
 check "the proxy's image is loaded" stand_in_load_image c4-infra/reverse-proxy
-stand_in_exec docker run -d --name c4-infra.reverse-proxy c4-infra/reverse-proxy > /dev/null
+check "a Caddy without local authority starts (its image's own Caddyfile)" \
+  stand_in_exec docker run -d --name c4-infra.reverse-proxy c4-infra/reverse-proxy
 check "RQ-03, a Caddy without local authority: stand_in_ca_cert fails, saying so" \
   fails_saying "stand_in_ca_cert: the stand-in's Caddy has no local authority" stand_in_ca_cert
 check "RQ-03, a Caddy without local authority: stand_in_https too" \
   fails_saying "stand_in_https: the stand-in's Caddy has no local authority" stand_in_https faito.c4-soft.com /fr/
-stand_in_exec docker rm -f c4-infra.reverse-proxy > /dev/null
+stand_in_exec docker rm -f -v c4-infra.reverse-proxy > /dev/null
 
 # AC-01
 check "the applications' image is loaded" stand_in_load_image "$STAND_IN_CADDY_IMAGE"
@@ -139,8 +151,10 @@ check "AC-02: Keycloak's issuer is https://infra.c4-soft.com/auth/realms/master"
   issuer_is https://infra.c4-soft.com/auth/realms/master
 
 # AC-03
+before=$(inodes)
 stand_in_exec touch "$UPLOAD/caddy/Caddyfile" "$UPLOAD/caddy/env/demo.caddy"
-check "AC-03: the stack is redeployed, its Caddyfile and env/demo.caddy replaced" redeploy_stack
+check "AC-03: the stack is redeployed" redeploy_stack
+check "AC-03: its Caddyfile and env/demo.caddy were replaced (new inodes)" replaced "$before"
 check "AC-03: Hurura'a's fixture registers and starts" deploy_app hururaa
 check "AC-03: the root is the same" same_root
 check "AC-03: https://hururaa.c4-soft.com/gateway/ answers 200 from hururaa.gateway" \
