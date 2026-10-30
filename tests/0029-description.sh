@@ -231,10 +231,10 @@ check "(h) an entry of another version without it: named" \
 with_entry README.md "- 2026-10-30 — \`$version-000000000000\`: the same version." > "$work/README-same-version.md"
 check "(h) an entry of the same version without it: not named" not_named "$version-000000000000" "$work/README-same-version.md"
 
-# (a) on copies of the description, one line changed in each, written straight to the file: a CR
-# held in a variable or built inside $(…) is lost under Git Bash
+# (a) on copies of the description, one line changed in each, written straight to the file: under
+# Git Bash, $(…) drops a CR written $'\r' inside it, and the CR before its output's last LF
 key_line=$(grep -n '^[A-Z]' "$DESCRIPTION" | head -n 1 | cut -d: -f1)
-last_line=$(wc -l < "$DESCRIPTION")
+last_line=$(grep -c '' "$DESCRIPTION")
 sed "${key_line}s/\$/\r/" "$DESCRIPTION" > "$work/crlf"
 { head -n -1 "$DESCRIPTION"; printf '%s\r' "$(tail -n 1 "$DESCRIPTION")"; } > "$work/cr-end"
 sed '1s/^#/#\r/' "$DESCRIPTION" > "$work/cr-comment"
