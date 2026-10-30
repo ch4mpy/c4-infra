@@ -14,8 +14,8 @@
 #              docker call; routes.sh makes no demo site for an application whose demo host is "-",
 #              and its dev site; in a scratch stack whose .env says INFRA_ENV=demo, such an
 #              application is refused, before any docker call, and in dev it isn't (0045 AC-02); there
-#              too, a realm export whose permanentLockout isn't false is refused, before any docker
-#              call, and goes past that check in dev (0041 AC-06)
+#              too, a realm export whose permanentLockout, or its attributes' one, isn't false is
+#              refused, before any docker call, and goes past that check in dev (0041 AC-06)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -243,22 +243,34 @@ part_scripts() {
   check "no demo host, in dev: registers (exit 0)" exited 0
   check "no demo host, in dev: not refused for it" eval '! grep -qF "has no demo host" "$work/err"'
 
-  # 0041 AC-06: on the demo host, an export that would lock an account for good
-  local export=$work/lockout/faito-realm.json value
+  # 0041 AC-06: on the demo host, an export that would lock an account for good, at its top level or
+  # in its attributes, which Keycloak writes after them
+  local export=$work/lockout/faito-realm.json pair json problem
+  local refused=(
+    '{"realm": "faito", "permanentLockout": true}|permanentLockout true'
+    '{"realm": "faito", "permanentLockout": "TRUE"}|permanentLockout "TRUE"'
+    '{"realm": "faito", "permanentLockout": 1}|permanentLockout 1'
+    '{"realm": "faito", "attributes": {"permanentLockout": "true"}}|attributes.permanentLockout "true"'
+    '{"realm": "faito", "permanentLockout": false, "attributes": {"permanentLockout": "TRUE"}}|attributes.permanentLockout "TRUE"'
+  )
   mkdir -p "$work/lockout"
   printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
-  for value in true '"TRUE"' 1; do
-    printf '{"realm": "faito", "permanentLockout": %s}\n' "$value" > "$export"
+  for pair in "${refused[@]}"; do
+    json=${pair%%|*}
+    problem=${pair#*|}
+    printf '%s\n' "$json" > "$export"
     run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
-    check "permanentLockout $value, on the demo host: refused (exit non-zero)" exited_non_zero
-    check "permanentLockout $value, on the demo host: it says why" \
-      says "--realm $export: permanentLockout $value, which would let whoever knows a user name lock that account for good: refused"
-    check "permanentLockout $value, on the demo host: no docker call" called_no_docker
+    check "$json, on the demo host: refused (exit non-zero)" exited_non_zero
+    check "$json, on the demo host: it says why" \
+      says "--realm $export: $problem, which would let whoever knows a user name lock that account for good: refused"
+    check "$json, on the demo host: no docker call" called_no_docker
   done
-  for value in '{"realm": "faito", "permanentLockout": false}' '{"realm": "faito"}'; do
-    printf '%s\n' "$value" > "$export"
+  for json in '{"realm": "faito", "permanentLockout": false}' '{"realm": "faito"}' \
+    '{"realm": "faito", "permanentLockout": null}' '{"realm": "faito", "permanentLockout": "false"}' \
+    '{"realm": "faito", "attributes": {"permanentLockout": "false"}}'; do
+    printf '%s\n' "$json" > "$export"
     run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
-    check "$value, on the demo host: past the export's checks" called_docker
+    check "$json, on the demo host: past the export's checks" called_docker
   done
   printf '%s\n' INFRA_ENV=dev > "$stack/.env"
   printf '%s\n' '{"realm": "faito", "permanentLockout": true}' > "$export"

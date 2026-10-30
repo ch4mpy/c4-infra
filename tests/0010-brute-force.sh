@@ -11,7 +11,9 @@
 #     until --reset-realms imports it again (AC-05, 0041 AC-03); a copy holding none of the ten,
 #     imported again, gets RQ-01's ten, all named (0041 AC-02);
 #   - that realm's user locks after its 10th failure, not its 9th, and logs in again a minute later
-#     (AC-03).
+#     (AC-03);
+#   - a copy whose attributes hold failureFactor, imported again, keeps it, the nine others named as
+#     the stack's (0041 AC-07).
 #
 #   bash tests/0010-brute-force.sh
 #
@@ -130,4 +132,12 @@ check "AC-03: after the 10th, it is locked" test "$(disabled)" = true
 check "AC-03: its right password is refused meanwhile" refused_login "$VISITOR_PASSWORD"
 sleep 61
 check "AC-03: a minute later, its right password logs in" visitor_login "$VISITOR_PASSWORD"
+
+# 0041 AC-07: a setting the export's attributes hold is the export's, which Keycloak writes last
+mkdir "$work/attributes"
+jq '.attributes.failureFactor = "3"' < "$work/none/$REALM-realm.json" > "$work/attributes/$REALM-realm.json"
+register attributes.log "$work/attributes/$REALM-realm.json" --reset-realms
+check "0041 AC-07: a copy whose attributes hold failureFactor: the nine others named as the stack's" says attributes.log \
+  "Realm $REALM: brute-force settings from its export, the stack's for bruteForceProtected, permanentLockout, maxTemporaryLockouts, bruteForceStrategy, waitIncrementSeconds, maxFailureWaitSeconds, maxDeltaTimeSeconds, quickLoginCheckMilliSeconds, minimumQuickLoginWaitSeconds"
+check "0041 AC-07: $REALM's failureFactor is its attributes' 3" has_settings "$(jq -cS '.failureFactor = 3' <<< "$EXPECTED")"
 finish
