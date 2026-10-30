@@ -531,8 +531,13 @@ Changelog, newest first (a version change's entry has its `Generated admin clien
   `client_id`), which shifts the arguments of a call that passes them by position;
   `IdentityProviderRepresentation` gains `organizationLinks`, its `organizationId` becomes
   write-only and deprecated; `OrganizationDomainRepresentation` gains `identityProviderAlias` and
-  `autoRedirect`; a role's groups are read as `GroupRepresentation` (`UserRepresentation` in
-  26.7.2). No operation removed.
+  `autoRedirect`; a role's groups, a realm role's or a client role's, are read as
+  `GroupRepresentation` (`UserRepresentation` in 26.7.2); the `configuration` of
+  `ClientPolicyConditionRepresentation` and `ClientPolicyExecutorRepresentation` refers to a new
+  `RawJsonValue` (its generated type may change); the four operations of a client's certificates
+  (`…/certificates/{attr}/download`, `generate`, `generate-and-download`, `upload`) and
+  `OrganizationInvitationRepresentation.inviteLink` become deprecated; a few `400` and `403`
+  responses are added. No operation removed.
 
 ### Routes file
 
