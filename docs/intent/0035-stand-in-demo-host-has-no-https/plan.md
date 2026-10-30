@@ -109,6 +109,8 @@ Unchanged on purpose (IV-01, AC-05): the files of `demo/deploy-files.txt` (`cadd
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
 
+- 2026-10-29 — step 0, `origin/main` merged (c82098b), the facts, Caddy v2.11.4 in throwaway `c4-infra/reverse-proxy` containers: (a) with `{ local_certs; skip_install_trust }` and a `localhost` site, `/data/caddy/pki/authorities/local/` holds `intermediate.crt intermediate.key root.crt root.key`, so C3 reads the planned path; (b) with `skip_install_trust`, the root is in neither `/etc/ssl/certs/ca-certificates.crt` (0 match) nor `/usr/local/share/ca-certificates/` (empty), and Caddy logs "root certificate trust store installation disabled"; without it, the root is in both (1 match, `Caddy_Local_Authority_-_2026_ECC_Root_….crt`), so M2 can KO; (c) the stand-in image: `curl 8.5.0 … OpenSSL/3.0.13`; with `--cacert` alone, `-v` prints `CApath: /etc/ssl/certs`; with `--capath <empty dir>`, `CApath: <that dir>` and `SSL certificate verify ok`; the system store alone exits `60`; `--connect-to ::127.0.0.1:8443` answers `200`; (d) on the stand-in's Docker (Ubuntu), a file mounted over a file of a directory mount: `wrapper` before, `stack-2` once both host files are replaced with `mv` (the mount is lost); two directory mounts: `wrapper=wrapper-2 stack=stack-3` after the files replaced (both live), so C1 A holds and M4 can KO; (e) `caddy adapt` of the stack's `caddy/` with step 3's two mounts, `INFRA_ENV=demo`: exit 0, `apps.tls.automation.policies` `[{"issuers":[{"module":"internal"}]}]`, `apps.pki` `{"certificate_authorities":{"local":{"install_trust":false}}}`: the spliced block is taken as the global options, C1 A stands.
+
 ## Verification
 
 ## Open choices for the engineer
