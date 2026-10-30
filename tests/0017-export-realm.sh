@@ -47,9 +47,9 @@ started=$(keycloak_started)
 exported=$work/export/$REALM-realm.json
 check "export-realm.sh exits 0" logged export.log bash export-realm.sh "$REALM" "$work/export"
 check "it writes $REALM-realm.json" test -s "$exported"
-check "the export is the realm's" jq -e --arg r "$REALM" '.realm == $r' "$exported"
-check "with its user" jq -e '[.users[].username] == ["visitor"]' "$exported"
-check "without its keys: no key provider" jq -e '.components["org.keycloak.keys.KeyProvider"] == []' "$exported"
+check "the export is the realm's" jq -e --arg r "$REALM" '.realm == $r' < "$exported"
+check "with its user" jq -e '[.users[].username] == ["visitor"]' < "$exported"
+check "without its keys: no key provider" jq -e '.components["org.keycloak.keys.KeyProvider"] == []' < "$exported"
 check "without its keys: no private key nor certificate anywhere" no_key
 check "Keycloak kept running (the same start)" test "$(keycloak_started)" = "$started"
 check "and is healthy" test "$(docker inspect -f '{{.State.Health.Status}}' c4-infra.keycloak)" = healthy

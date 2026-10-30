@@ -82,7 +82,8 @@ realm() { # <JSON>: a realm created from it
   admin create realms -f - <<< "$1" > /dev/null
 }
 login_page() { # <realm>: its login page, through the account client
-  curl -s -L -c "$work/page.jar" -b "$work/page.jar" -G --data-urlencode client_id=account --data-urlencode response_type=code \
+  curl -s -L -c "$(host_path "$work/page.jar")" -b "$(host_path "$work/page.jar")" -G \
+    --data-urlencode client_id=account --data-urlencode response_type=code \
     --data-urlencode scope=openid --data-urlencode "redirect_uri=$FRONT/realms/$1/account/" \
     "$FRONT/realms/$1/protocol/openid-connect/auth" > "$work/page.html"
 }
@@ -132,7 +133,7 @@ for client in sim-direct broker; do
   admin update "clients/$client_id/default-client-scopes/$scope_id" -r sim < /dev/null > /dev/null
 done
 token() { # <client> <user> <password>: the token response, in $work/token.json
-  curl -s -o "$work/token.json" -w '%{http_code}' -d grant_type=password -d "client_id=$1" -d "username=$2" \
+  curl -s -o "$(host_path "$work/token.json")" -w '%{http_code}' -d grant_type=password -d "client_id=$1" -d "username=$2" \
     -d "password=$3" -d scope=openid "$FRONT/realms/sim/protocol/openid-connect/token"
 }
 refused_not_set_up() {
@@ -154,16 +155,16 @@ admin update "users/$with_address" -r sim -s 'attributes.picture=["https://sim.t
   -s 'attributes.is_private_email=["true"]' < /dev/null > /dev/null
 
 check "(b) the address optional: the user without one logs in (a direct grant: 200)" test "$(token sim-direct no-address no-address-password)" = 200
-check "(b) its ID token has no email claim" eval 'kc_claims "$(jq -r .id_token "$work/token.json")" | jq -e "has(\"email\") | not" > /dev/null'
+check "(b) its ID token has no email claim" eval 'kc_claims "$(jq -r .id_token < "$work/token.json")" | jq -e "has(\"email\") | not" > /dev/null'
 check "(c) with-address logs in" test "$(token sim-direct with-address with-address-password)" = 200
-id_claims=$(kc_claims "$(jq -r .id_token "$work/token.json")")
+id_claims=$(kc_claims "$(jq -r .id_token < "$work/token.json")")
 check "(c) its ID token holds picture" test "$(jq -r .picture <<< "$id_claims")" = https://sim.test/with-address.png
 check "(c) and is_private_email, a boolean" test "$(jq -c .is_private_email <<< "$id_claims")" = true
-userinfo=$(curl -s -H "Authorization: Bearer $(jq -r .access_token "$work/token.json")" "$FRONT/realms/sim/protocol/openid-connect/userinfo")
+userinfo=$(curl -s -H "Authorization: Bearer $(jq -r .access_token < "$work/token.json")" "$FRONT/realms/sim/protocol/openid-connect/userinfo")
 check "(c) the user info holds both" test "$(jq -c '[.picture, .is_private_email]' <<< "$userinfo")" = '["https://sim.test/with-address.png",true]'
 check "(d) a client without the profile scope logs in" test "$(token sim-no-profile with-address with-address-password)" = 200
-check "(d) its ID token has no name" eval 'kc_claims "$(jq -r .id_token "$work/token.json")" | jq -e "(has(\"name\") or has(\"given_name\") or has(\"family_name\")) | not" > /dev/null'
-check "(d) but the address" test "$(kc_claims "$(jq -r .id_token "$work/token.json")" | jq -r .email)" = with-address@sim.test
+check "(d) its ID token has no name" eval 'kc_claims "$(jq -r .id_token < "$work/token.json")" | jq -e "(has(\"name\") or has(\"given_name\") or has(\"family_name\")) | not" > /dev/null'
+check "(d) but the address" test "$(kc_claims "$(jq -r .id_token < "$work/token.json")" | jq -r .email)" = with-address@sim.test
 
 # (e) realm app brokers sim: the authorization URL on the front end, the rest on the back channel
 realm "$(jq -n --arg front "$FRONT" '{
@@ -185,8 +186,8 @@ browse() { # <url> [curl option…]: the last page in $work/page.html, the callb
   shift
   : > "$work/callback"
   for ((i = 0; i < 15; i++)); do
-    status=$(curl -s -c "$work/browser.jar" -b "$work/browser.jar" -D "$work/browse.h" -o "$work/page.html" \
-      -w '%{http_code}' "$@" "$url")
+    status=$(curl -s -c "$(host_path "$work/browser.jar")" -b "$(host_path "$work/browser.jar")" \
+      -D "$(host_path "$work/browse.h")" -o "$(host_path "$work/page.html")" -w '%{http_code}' "$@" "$url")
     set --
     case "$status" in
       30?)
@@ -221,7 +222,8 @@ check "(e) sim's issuer is the one the provider checks ($issuer)" test "$issuer"
 
 # (f) redirect URIs: a pattern on the infra host's realms
 authorization_status() { # <redirect_uri>
-  curl -s -o /dev/null -w '%{http_code}' -G --data-urlencode client_id=redirects --data-urlencode response_type=code \
+  curl -s -o "$(host_path "$work/authorization.html")" -w '%{http_code}' -G \
+    --data-urlencode client_id=redirects --data-urlencode response_type=code \
     --data-urlencode scope=openid --data-urlencode "redirect_uri=$1" "$FRONT/realms/sim/protocol/openid-connect/auth"
 }
 check "(f) a broker endpoint of a realm of the infra host: accepted (200)" \

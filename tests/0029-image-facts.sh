@@ -107,16 +107,16 @@ docker exec -e KC_CLI_PASSWORD "$NAME" /opt/keycloak/bin/kcadm.sh get serverinfo
 features() { described KC_FEATURES | tr ',' '\n' | tr 'a-z-' 'A-Z_' | grep . | LC_ALL=C sort; }
 for feature in $(features); do
   check "(c) the feature $feature is enabled" \
-    jq -e --arg f "$feature" 'any(.features[]; .name == $f and .enabled)' "$work/serverinfo.json"
+    jq -e --arg f "$feature" 'any(.features[]; .name == $f and .enabled)' < "$work/serverinfo.json"
 done
 other_features() {
   local other
   other=$(jq -r '.features[] | select(.enabled and (.type == "PREVIEW" or .type == "EXPERIMENTAL")) | .name' \
-    "$work/serverinfo.json" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
+    < "$work/serverinfo.json" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
   [ -z "$other" ] || { echo "enabled, not described:"; printf '%s\n' "$other"; return 1; }
 }
 check "(c) no other preview or experimental feature is enabled" other_features
 for theme in simulated-google simulated-facebook simulated-apple; do
-  check "(c) the login theme $theme is there" jq -e --arg t "$theme" 'any(.themes.login[]; .name == $t)' "$work/serverinfo.json"
+  check "(c) the login theme $theme is there" jq -e --arg t "$theme" 'any(.themes.login[]; .name == $t)' < "$work/serverinfo.json"
 done
 finish

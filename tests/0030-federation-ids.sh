@@ -43,8 +43,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-component() { jq -r --arg t "$LDAP" '.components[$t][0].id' "$1"; }
-mappers() { jq -r --arg t "$LDAP" --arg m "$MAPPERS" '.components[$t][0].subComponents[$m][].id' "$1"; }
+component() { jq -r --arg t "$LDAP" '.components[$t][0].id' < "$1"; }
+mappers() { jq -r --arg t "$LDAP" --arg m "$MAPPERS" '.components[$t][0].subComponents[$m][].id' < "$1"; }
 renew() { # <copy>: the script on $work/<copy>.json; its output in <copy>.out, its exit status in <copy>.status
   bash new-realm-ids.sh "$work/$1.json" > "$work/$1.out" 2>&1
   echo $? > "$work/$1.status"
@@ -66,7 +66,7 @@ short_renewed() { # <copy>: its component's id has Keycloak's short form, and is
 linked() { # <copy>: each linked user's federationLink and origin are its own component; the local user has none
   jq -e --arg t "$LDAP" '.components[$t][0].id as $c
     | ([.users[] | select(.username != "verif-local") | .federationLink, .origin] | length == 4 and all(. == $c))
-      and ([.users[] | select(.username == "verif-local") | .federationLink, .origin] | all(. == null))' "$work/$1.json"
+      and ([.users[] | select(.username == "verif-local") | .federationLink, .origin] | all(. == null))' < "$work/$1.json"
 }
 masked() { sed -E "s/$UUID/<uuid>/g; s/\"[A-Za-z0-9_-]{22}\"/\"<short>\"/g" "$1"; }
 same_layout() { # <copy>: the fixture once every id is masked
@@ -105,11 +105,11 @@ check "a readable id: refused, exit 1" exited readable 1
 check "a readable id: named" grep -qF verif-readable "$work/readable.out"
 check "a readable id: the file left as it was" cmp -s "$work/readable.json" "$work/readable.before"
 
-jq --arg c "$(component "$FIXTURE")" '. + {federatedUsers: [{id: ("f:" + $c + ":verif-external")}]}' "$FIXTURE" > "$work/storage.json"
+jq --arg c "$(component "$FIXTURE")" '. + {federatedUsers: [{id: ("f:" + $c + ":verif-external")}]}' < "$FIXTURE" > "$work/storage.json"
 renew storage
 check "a storage id, in jq's layout: exits 0" exited storage 0
 check "a storage id: its component part follows the component" \
-  jq -e --arg t "$LDAP" '.federatedUsers[0].id == "f:" + .components[$t][0].id + ":verif-external"' "$work/storage.json"
+  jq -e --arg t "$LDAP" '.federatedUsers[0].id == "f:" + .components[$t][0].id + ":verif-external"' < "$work/storage.json"
 check "a storage id: the component renewed" short_renewed storage
 
 # Keycloak: a, b and c imported as register-app.sh imports a realm (kcadm, the file on stdin)
