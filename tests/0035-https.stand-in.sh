@@ -23,7 +23,7 @@
 #
 # covers: tests/stand-in-host/ caddy/ compose.yml compose.demo.yml demo/ register-app.sh registry.sh
 # covers: registry.txt routes.sh networks.sh registration-account.sh reverse-proxy/ keycloak/
-# covers: keycloak-import/ tests/fixtures/0002/
+# covers: keycloak-import/ tlds-alpha-by-domain.txt tests/fixtures/0002/
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
@@ -80,10 +80,12 @@ system_store_refuses() { # the stand-in's curl, with the system's store only: ex
   status=$?
   [ "$status" -eq 60 ] || { echo "curl exited $status"; return 1; }
 }
-issuer_is() { # <issuer>: Keycloak's discovery document, through stand_in_https
+issuer_is() { # <issuer>: Keycloak's discovery document, through stand_in_https: 200, that issuer
   local output
-  output=$(stand_in_https infra.c4-soft.com /auth/realms/master/.well-known/openid-configuration 2>&1)
-  [ "$(jq -r .issuer <<< "$output")" = "$1" ] || { printf '%s\n' "$output" | head -c 400; return 1; }
+  output=$(stand_in_https infra.c4-soft.com /auth/realms/master/.well-known/openid-configuration \
+    -w ' http=%{http_code}' 2>&1 | tr -d '\r')
+  [[ $output == *" http=200" ]] && [ "$(jq -r .issuer <<< "${output% http=200}")" = "$1" ] \
+    || { printf '%s\n' "$output" | head -c 400; return 1; }
 }
 no_private_key() { # in the test's files, the stack's upload and directory, the applications' uploads and directories
   local found

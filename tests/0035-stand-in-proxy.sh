@@ -42,8 +42,10 @@ is() { # <file> <jq filter> <expected, compact JSON>
   [ "$actual" = "$3" ] || { echo "$2: $actual"; return 1; }
 }
 
+faito_site() { bash routes.sh generate examples/routes/faito.routes faito demo > "$work/apps/faito.caddy"; }
+
 mkdir "$work/apps"
-bash routes.sh generate examples/routes/faito.routes faito demo > "$work/apps/faito.caddy"
+check "Faito's site generates" faito_site
 check "the demo host's configuration adapts" adapt "$work/host.json"
 check "the stand-in's adapts" adapt "$work/stand-in.json" \
   -v "$(host_path "$PWD/tests/stand-in-host/caddy-env"):/etc/caddy/env:ro" \

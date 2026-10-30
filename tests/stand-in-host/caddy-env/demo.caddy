@@ -1,7 +1,5 @@
-# The stand-in host's env/demo.caddy (tests/stand-in-host/compose.no-acme.yml mounts this directory
-# over the stack's caddy/env/): every site's certificate from Caddy's local authority, whose root goes
-# into no trust store, then the stack's own demo.caddy. A directory is mounted rather than this file
-# over the stack's: a mount over a file is lost once a deployment replaces that file (rsync, tar).
+# compose.no-acme.yml mounts this directory over the stack's caddy/env/, not this file over the
+# stack's demo.caddy: a mount over a file is lost once a deployment replaces that file (rsync, tar).
 {
 	local_certs
 	skip_install_trust
