@@ -13,12 +13,12 @@
 
 ## Requirements
 
-- **RQ-01:** A realm `register-app.sh` creates keeps each of the ten brute-force settings its export holds (`bruteForceProtected`, `permanentLockout`, `maxTemporaryLockouts`, `failureFactor`, `bruteForceStrategy`, `waitIncrementSeconds`, `maxFailureWaitSeconds`, `maxDeltaTimeSeconds`, `quickLoginCheckMilliSeconds`, `minimumQuickLoginWaitSeconds`), as the export says; a setting the export gives as `null` counts as not held. (intent: proposed outcome; PA-01)
+- **RQ-01:** A realm `register-app.sh` creates keeps each of the ten brute-force settings its export holds (`bruteForceProtected`, `permanentLockout`, `maxTemporaryLockouts`, `failureFactor`, `bruteForceStrategy`, `waitIncrementSeconds`, `maxFailureWaitSeconds`, `maxDeltaTimeSeconds`, `quickLoginCheckMilliSeconds`, `minimumQuickLoginWaitSeconds`), as the export says; a setting the export gives as `null` counts as not held. The export holds a setting at its top level or in its `attributes`, which Keycloak writes after the top level when it creates a realm (26.8.1, `DefaultExportImportManager.importRealm`): an attribute wins (v2). (intent: proposed outcome; PA-01)
 - **RQ-02:** Each setting the export doesn't hold takes the stack's value (0010's: detection on, no permanent lockout, no limit of temporary lockouts, 10 failures, linear, 60 s more per failure, at most 900 s, failures forgotten after 43200 s, quick logins under 1000 ms locking 60 s). (intent: proposed outcome)
 - **RQ-03:** For each realm it creates, the registration prints one line naming the settings it took from the stack, or saying that the export holds them all; and one more when the realm has no detection (`bruteForceProtected: false` in its export). (intent: problem, "without a word")
 - **RQ-04:** A realm already in Keycloak is left as it is, as today; `--reset-realms` creates it again under RQ-01 to RQ-03. (0010, constraint)
 - **RQ-05:** README ("Brute-force protection") and `docs/migration.md` state the rule, its consequence for an export with the detection off, how an application sets its own, and the demo host's refusal of RQ-06. (intent: proposed outcome)
-- **RQ-06:** On the demo host (`INFRA_ENV=demo`), `register-app.sh` refuses a realm export whose `permanentLockout` is anything but absent, `null` or `false` (Keycloak reads it as Jackson does: `"TRUE"` and `1` are true; the string `"false"` is accepted, as by the CIMD check of intent 0013), before anything changes, naming the file and the value, whether the realm is already in Keycloak or not; in dev, RQ-01 holds unchanged. (PA-02)
+- **RQ-06:** On the demo host (`INFRA_ENV=demo`), `register-app.sh` refuses a realm export whose `permanentLockout`, at its top level or in its `attributes` (RQ-01), is anything but absent, `null` or `false` (Keycloak reads it as Jackson does: `"TRUE"` and `1` are true; the string `"false"` is accepted, as by the CIMD check of intent 0013), before anything changes, naming the file and the value, whether the realm is already in Keycloak or not; in dev, RQ-01 holds unchanged. (PA-02)
 
 ## Out of scope
 
@@ -64,7 +64,8 @@
 - **AC-03:** Given the realm in Keycloak, when it is registered again without `--reset-realms`, then it is left as it is. (RQ-04)
 - **AC-04:** The master realm has no detection, and the registration account may not change its settings (0010's AC-01 and AC-08, unchanged). (constraint)
 - **AC-05:** README and `docs/migration.md` say that the export decides, the stack's values filling what it doesn't hold, that an export with the detection off registers without one, and that the demo host refuses one that locks an account for good. (RQ-05)
-- **AC-06:** Given `INFRA_ENV=demo` and an export of an application that has a demo host whose `permanentLockout` is `true`, `"TRUE"` or `1`, when `register-app.sh` registers it, then it is refused, naming the file and the value, before any docker call; with `false`, or without the setting, it goes past that check (a docker call); in dev, `true` goes past it. (RQ-06)
+- **AC-06:** Given `INFRA_ENV=demo` and an export of an application that has a demo host whose `permanentLockout` is `true`, `"TRUE"` or `1`, or whose `attributes` hold `permanentLockout: "true"` (even beside a top-level `false`), when `register-app.sh` registers it, then it is refused, naming the file, the place and the value, before any docker call; with `false`, `null`, `"false"`, an attribute `"false"`, or without the setting, it goes past that check (a docker call); in dev, `true` goes past it. (RQ-06)
+- **AC-07:** Given a copy without any of the ten settings at its top level, whose `attributes` hold `failureFactor: "3"`, when `register-app.sh --reset-realms` creates the realm, then it holds 3 failures, and the registration names the nine others as the stack's. (RQ-01, RQ-03)
 
 ## Intent questions
 
@@ -73,4 +74,4 @@ None open.
 ## Change log
 
 - v1, 2026-10-30: drafted and approved in the session (PA-01 decided).
-- v2, 2026-10-30: PA-02, from the review round, decided C: RQ-06 and AC-06 added, RQ-05 and AC-05 extended; approved in the session.
+- v2, 2026-10-30: PA-02, from the review round, decided C: RQ-06 and AC-06 added, RQ-05 and AC-05 extended; the realm's `attributes`, which Keycloak writes last, count as the export's (RQ-01, RQ-06, AC-07), found by the review of RQ-06's diff; approved in the session.
