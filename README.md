@@ -511,13 +511,34 @@ then, pulling it needs a GitHub login with `read:packages`.
   and the dev brute-force settings, the stack's.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
-  refuses a change of `keycloak/` without its entry.
+  refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak
+  admin client of an application that generates it from the description of one Keycloak version's
+  admin API, as the skills' `create-spring-rest-api` does: moving to the new version means
+  generating that client again from the new version's description, then following its changed
+  signatures and fields, a call that passes its arguments by position first (a new parameter can
+  shift them and still compile). Each version change's entry says what changes for such a client,
+  in a sentence that starts with `Generated admin client:` (`Generated admin client: unchanged.`
+  when nothing does); `tests/0029-description.sh` refuses one without it.
 
-Changelog, newest first:
+Changelog, newest first (a version change's entry has its `Generated admin client:` sentence):
 
 - 2026-10-28 — `26.8.1-33909cd89858`: first published; Keycloak 26.8.1, its features
   `token-exchange-delegation`, `parameterized-scopes` and `cimd`, the simulated providers' login
   themes (0016). Asks nothing of an application already on 26.8.1 with these features.
+  Generated admin client: from 26.7.2, two operations added (an organization's identity provider
+  link, a member's membership type); the organizations' list and count, an organization's group by
+  path and the invitation take a new optional parameter (`identityProvider`, `briefRepresentation`,
+  `client_id`), which shifts the arguments of a call that passes them by position;
+  `IdentityProviderRepresentation` gains `organizationLinks`, its `organizationId` becomes
+  write-only and deprecated; `OrganizationDomainRepresentation` gains `identityProviderAlias` and
+  `autoRedirect`; a role's groups, a realm role's or a client role's, are read as
+  `GroupRepresentation` (`UserRepresentation` in 26.7.2); the `configuration` of
+  `ClientPolicyConditionRepresentation` and `ClientPolicyExecutorRepresentation` refers to a new
+  `RawJsonValue` (its generated type may change); four of the six operations on a client's
+  certificates (`…/certificates/{attr}/download`, `generate`, `generate-and-download`, `upload`)
+  and `OrganizationInvitationRepresentation.inviteLink` become deprecated, and by their
+  descriptions `download` and `upload` no longer carry the private key, the certificate only; a few
+  `400` and `403` responses are added. No operation removed.
 
 ### Routes file
 
