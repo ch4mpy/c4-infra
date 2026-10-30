@@ -93,7 +93,13 @@ every time it deploys.
   generated `compose.apps.yml` (the last file of `COMPOSE_FILE`) keeps them attached when the stack
   is recreated. Keycloak's database is on a network of its own, `c4-infra.keycloak-db` (internal),
   which only Keycloak joins; `c4-infra` is the shared services' own network, which no application
-  joins. On the demo host, Mailpit's UI and API ask for the demo's credentials themselves, wherever
+  joins, and their primary one (`priority: 100` in `compose.yml`, intent 0043): removing an
+  application's network leaves them able to restart. An application's first registration changes
+  their compose model (`compose.apps.yml` names its network): the stack's next `docker compose up`,
+  `up.sh` in dev or the next deployment on the demo host, recreates the five, `keycloak-db` aside,
+  and every application's logins and site are cut meanwhile; the ones after it recreate none
+  (intent 0040; on a stand-in demo host, that deployment took 45 s, one that recreates nothing 17 s,
+  every container back healthy). On the demo host, Mailpit's UI and API ask for the demo's credentials themselves, wherever
   they are reached from; what else answers on an application's network is listed in "Reachable from
   an application's network" below.
 - **One compose base, an override per environment.** [`compose.yml`](compose.yml) holds every
@@ -514,8 +520,9 @@ then, pulling it needs a GitHub login with `read:packages`.
   providers'), in the image; the master realm, its administrator and its SMTP settings, the
   stack's, not in it; the simulated realms, not in it: a test imports
   [`keycloak-import/simulated-*-realm.json`](keycloak-import/) with `INFRA_HOST` set to its own host
-  (the files name it), and points its realm's providers there; Mailpit, the registration account
-  and the dev brute-force settings, the stack's.
+  (the files name it), and points its realm's providers there; Mailpit and the registration
+  account, the stack's; the brute-force settings its export doesn't hold, which `register-app.sh`
+  fills with the stack's (intent 0041), not in a test's import of it.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
   refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak

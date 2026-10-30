@@ -97,6 +97,13 @@ part_registry() {
   run_with "$ENTRIES" bash registry.sh entry verif-a
   check "entry verif-a exits 0" exited 0
   check "entry verif-a: demo_host= (its '-', 0045 AC-01)" grep -qx 'demo_host=' "$work/out"
+  # 0045: routes.sh makes no site without a host
+  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a demo
+  check "routes.sh, verif-a on the demo host: exits 1" exited 1
+  check "routes.sh, verif-a on the demo host: prints no site" prints_nothing
+  check "routes.sh, verif-a on the demo host: says why" says 'verif-a has no demo host in the registry (its line says "-"): no site for it'
+  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a dev
+  check "routes.sh, verif-a in dev: its site on verif-a.dev.localhost" grep -qx 'verif-a.dev.localhost {' "$work/out"
   run_with "$ENTRIES" bash registry.sh entry tickee
   check "entry tickee exits 0" exited 0
   check "entry tickee: n=3" grep -qx 'n=3' "$work/out"
@@ -225,6 +232,7 @@ part_scripts() {
   check "no demo host, on the demo host: no docker call" called_no_docker
   printf '%s\n' INFRA_ENV=dev > "$stack/.env"
   run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app verif-a
+  check "no demo host, in dev: registers (exit 0)" exited 0
   check "no demo host, in dev: not refused for it" eval '! grep -qF "has no demo host" "$work/err"'
 }
 

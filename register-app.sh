@@ -415,9 +415,20 @@ if [ ${#realms[@]} -gt 0 ]; then
   fi
   # What the account may do with each realm, before anything changes (probe: `get
   # realms/<realm>/roles`). A realm there but out of the account's reach stops the registration.
-  declare -A realm_found=()
+  declare -A realm_found=() realm_filled=() realm_off=()
+  stack_keys=$(printf '%s ' "${stack_brute_force[@]%%=*}")
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
+    # before anything changes: the stack's settings the export doesn't hold, in the stack's order,
+    # and whether it turns the detection off
+    if ! settings=$(jq -r --arg keys "${stack_keys% }" 'if type != "object" then error("not an object") else
+        (($keys | split(" ")) - [to_entries[] | select(.value != null) | .key] | join(" ")),
+        (.bruteForceProtected == false) end' < "$file" | tr -d '\r'); then
+      echo "--realm $file: not a realm export (a JSON object); nothing was registered." >&2
+      exit 1
+    fi
+    realm_filled[$realm]=${settings%%$'\n'*}
+    realm_off[$realm]=${settings##*$'\n'}
     status=0
     probe "$realm" || status=$?
     case "$status" in
@@ -446,25 +457,19 @@ if [ ${#realms[@]} -gt 0 ]; then
       fi
     fi
     echo "Importing realm $realm"
-    held=$(jq -r 'to_entries[] | select(.value != null) | .key' < "$file" | tr -d '\r')
     brute_force=()
-    filled=()
     for setting in "${stack_brute_force[@]}"; do
-      if ! grep -qx "${setting%%=*}" <<< "$held"; then
-        brute_force+=(-s "$setting")
-        filled+=("${setting%%=*}")
-      fi
+      [[ " ${realm_filled[$realm]} " != *" ${setting%%=*} "* ]] || brute_force+=(-s "$setting")
     done
     # on stdin: nothing to copy into the container, whatever the file's owner and mode; under the
     # file's name, the realm of the entry checked above, whatever its "realm" field says
     account -i create realms -f - -s "realm=$realm" "${brute_force[@]}" < "$file"
-    if [ ${#filled[@]} -eq 0 ]; then
+    if [ -z "${realm_filled[$realm]}" ]; then
       echo "Realm $realm: brute-force settings from its export, all of them"
     else
-      stack_list=$(printf '%s, ' "${filled[@]}")
-      echo "Realm $realm: brute-force settings from its export, the stack's for ${stack_list%, }"
+      echo "Realm $realm: brute-force settings from its export, the stack's for ${realm_filled[$realm]// /, }"
     fi
-    if [ "$(jq -r '.bruteForceProtected' < "$file" | tr -d '\r')" = false ]; then
+    if [ "${realm_off[$realm]}" = true ]; then
       echo "Realm $realm: no brute-force detection, as its export says (README.md, \"Brute-force protection\")"
     fi
   done

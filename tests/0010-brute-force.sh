@@ -32,7 +32,7 @@ VISITOR_PASSWORD=visitor-password
 EXPECTED='{"bruteForceProtected":true,"bruteForceStrategy":"LINEAR","failureFactor":10,"maxDeltaTimeSeconds":43200,"maxFailureWaitSeconds":900,"maxTemporaryLockouts":0,"minimumQuickLoginWaitSeconds":60,"permanentLockout":false,"quickLoginCheckMilliSeconds":1000,"waitIncrementSeconds":60}'
 SETTINGS="{$(jq -r 'keys | join(", ")' <<< "$EXPECTED")}"
 # the fixture's export: its three settings, RQ-01's seven others
-FROM_EXPORT='{"bruteForceProtected":false,"bruteForceStrategy":"MULTIPLE","failureFactor":30,"maxDeltaTimeSeconds":43200,"maxFailureWaitSeconds":900,"maxTemporaryLockouts":0,"minimumQuickLoginWaitSeconds":60,"permanentLockout":false,"quickLoginCheckMilliSeconds":1000,"waitIncrementSeconds":60}'
+FROM_EXPORT=$(jq -cS '. + {bruteForceProtected: false, bruteForceStrategy: "MULTIPLE", failureFactor: 30}' <<< "$EXPECTED")
 export MSYS_NO_PATHCONV=1
 
 umask 077

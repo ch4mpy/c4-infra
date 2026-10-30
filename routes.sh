@@ -97,6 +97,10 @@ routes_generate() { # <routes file> <dev|demo>
       return 1
       ;;
   esac
+  if [ -z "$host" ]; then
+    echo "$REG_APP has no $env host in the registry (its line says \"-\"): no site for it" >&2
+    return 1
+  fi
   if [ ! -f "$file" ]; then
     echo "The routes file $file is missing" >&2
     return 1
