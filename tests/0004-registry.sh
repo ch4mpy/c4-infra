@@ -3,13 +3,16 @@
 #
 #   bash tests/0004-registry.sh [registry|scripts|docs]...   (every part by default)
 #
-#   registry   registry.sh on registry.txt and on the fixtures of tests/fixtures/0004/: the four
-#              applications' entries (AC-06), the duplicates and the malformed lines `check` refuses
-#              (AC-03), `next` (AC-04), `entry` and `upstream` as their output contract says (plan, RQ-03)
+#   registry   registry.sh on registry.txt, valid whatever the applications' lines say (0044), and on
+#              the fixtures of tests/fixtures/0004/: the entries of entries.txt (AC-06), two of them
+#              with "-" as their demo host (0045 AC-01), the duplicates and the malformed lines `check`
+#              refuses (AC-03), `next` (AC-04), `entry` and `upstream` as their output contract says
+#              (plan, RQ-03)
 #   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
-#              docker call
+#              docker call; in a scratch stack whose .env says INFRA_ENV=demo, an application whose
+#              demo host is "-" is refused, before any docker call, and in dev it isn't (0045 AC-02)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -23,7 +26,7 @@ source tests/lib/assert.sh
 source tests/lib/stubs.sh
 
 FIXTURES=$PWD/tests/fixtures/0004
-TICKEE_LINE='^3 +tickee +tickee,brasserie,tenant2,tenant3 +tickee-api +tickee +tickee\.dev\.localhost +tickee\.c4-soft\.com$'
+ENTRIES=$FIXTURES/entries.txt
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -53,9 +56,9 @@ prints_nothing() {
   [ ! -s "$work/out" ] || { echo "stdout:"; cat "$work/out"; return 1; }
 }
 
-# "<fields> <app>" for each entry of registry.txt
+# "<fields> <app>" for each entry of entries.txt
 entries() {
-  grep -vE '^[[:space:]]*(#|$)' registry.txt | awk '{ print NF, $2 }'
+  grep -vE '^[[:space:]]*(#|$)' "$ENTRIES" | awk '{ print NF, $2 }'
 }
 
 has_entry() { # <app>: one line of seven fields
@@ -74,21 +77,27 @@ refused() { # <fixture> <text…>: check exits 1, saying each text
 }
 
 upstream_is() { # <role> <env> <url>
-  run_with "" bash registry.sh upstream faito "$1" "$2"
+  run_with "$ENTRIES" bash registry.sh upstream faito "$1" "$2"
   check "upstream faito $1 $2 is $3" prints "$3"
   check "upstream faito $1 $2 exits 0" exited 0
 }
 
 part_registry() {
-  # AC-06
+  # 0044: registry.txt valid, whatever the applications' lines hold
   run_with "" bash registry.sh check
-  check "entries: check passes on registry.txt" exited 0
+  check "registry.txt: check passes" exited 0
+  check "registry.txt: check prints nothing" prints_nothing
+  # AC-06, on entries.txt; 0045 AC-01: two demo hosts "-", no host name claimed for them
+  run_with "$ENTRIES" bash registry.sh check
+  check "entries: check passes on entries.txt, two of its demo hosts '-'" exited 0
   check "entries: check prints nothing" prints_nothing
-  for app in turu hururaa tickee faito; do
+  for app in turu hururaa tickee faito verif-a verif-b; do
     check "entries: $app has one entry of seven fields" has_entry "$app"
   done
-  check "entries: Tickee's line" grep -qE "$TICKEE_LINE" registry.txt
-  run_with "" bash registry.sh entry tickee
+  run_with "$ENTRIES" bash registry.sh entry verif-a
+  check "entry verif-a exits 0" exited 0
+  check "entry verif-a: demo_host= (its '-', 0045 AC-01)" grep -qx 'demo_host=' "$work/out"
+  run_with "$ENTRIES" bash registry.sh entry tickee
   check "entry tickee exits 0" exited 0
   check "entry tickee: n=3" grep -qx 'n=3' "$work/out"
   check "entry tickee: realms=tickee,brasserie,tenant2,tenant3" grep -qx 'realms=tickee,brasserie,tenant2,tenant3' "$work/out"
@@ -126,7 +135,7 @@ part_registry() {
   check "next, 1, 2 and 4 taken: exits 0" exited 0
 
   # entry's output contract
-  run_with "" bash registry.sh entry faito
+  run_with "$ENTRIES" bash registry.sh entry faito
   check "entry faito prints the eight fields" prints "$(printf '%s\n' n=4 prefix=14 app=faito realms=faito \
     rabbitmq_user=faito-api themes= dev_host=faito.dev.localhost demo_host=faito.c4-soft.com)"
   check "entry faito exits 0" exited 0
@@ -152,7 +161,7 @@ part_registry() {
   upstream_is en demo http://faito.frontend:80
   # 0013: the MCP server's container port, which the README fixes
   upstream_is mcp demo http://faito.mcp:9080
-  run_with "" bash registry.sh upstream faito admin dev
+  run_with "$ENTRIES" bash registry.sh upstream faito admin dev
   check "upstream faito admin dev (unknown role) exits 1" exited 1
   run_with "" bash registry.sh upstream verif gateway dev
   check "upstream verif gateway dev (unknown application) exits 1" exited 1
@@ -203,6 +212,20 @@ part_scripts() {
   check "unknown app: its message names registry.txt" says registry.txt
   check "unknown app: its message names bash registry.sh next" says 'bash registry.sh next'
   check "unknown app: no docker call" called_no_docker
+
+  # 0045 AC-02: an application whose demo host is "-", registered on the demo host
+  local stack=$work/stack
+  mkdir -p "$stack"
+  cp registry.sh routes.sh networks.sh register-app.sh registration-account.sh tlds-alpha-by-domain.txt "$stack/"
+  printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app verif-a
+  check "no demo host, on the demo host: register-app.sh --app verif-a exits non-zero" exited_non_zero
+  check "no demo host, on the demo host: it says why" \
+    says 'verif-a has no demo host in the registry (its line says "-"): it isn'"'"'t deployed on the demo host; nothing was registered.'
+  check "no demo host, on the demo host: no docker call" called_no_docker
+  printf '%s\n' INFRA_ENV=dev > "$stack/.env"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app verif-a
+  check "no demo host, in dev: not refused for it" eval '! grep -qF "has no demo host" "$work/err"'
 }
 
 # The README's "Port registry" section, up to the next heading

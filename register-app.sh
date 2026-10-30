@@ -144,6 +144,10 @@ if ! registry_check; then
   exit 1
 fi
 registry_entry "$app" || exit 1
+if [ "$INFRA_ENV" = demo ] && [ -z "$REG_DEMO_HOST" ]; then
+  echo "$app has no demo host in the registry (its line says \"-\"): it isn't deployed on the demo host; nothing was registered." >&2
+  exit 1
+fi
 if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1

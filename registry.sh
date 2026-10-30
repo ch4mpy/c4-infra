@@ -8,9 +8,10 @@
 #                                                       exit 1 when every one is taken
 #   bash registry.sh entry <app>                        the entry, one key=value per line: n, prefix,
 #                                                       app, realms, rabbitmq_user, themes, dev_host,
-#                                                       demo_host (lists comma-separated, empty for
-#                                                       "-"); exit 1 when <app> isn't in the
-#                                                       registry, 2 when the registry is invalid
+#                                                       demo_host (lists comma-separated; empty for
+#                                                       "-", demo_host too); exit 1 when <app> isn't
+#                                                       in the registry, 2 when the registry is
+#                                                       invalid
 #   bash registry.sh upstream <app> <role> <dev|demo>   the URL the reverse proxy routes <role> to
 #                                                       (gateway, mcp, fr, en, ui); exit 1 for an
 #                                                       unknown application or role (or an invalid
@@ -25,8 +26,9 @@
 #                              (among them, an entry claiming Keycloak's master realm, a theme built
 #                              into Keycloak, or RabbitMQ's administrator, RABBITMQ_ADMIN_USER)
 #   registry_entry <app>       sets REG_N REG_APP REG_REALMS REG_RABBITMQ_USER REG_THEMES REG_DEV_HOST
-#                              REG_DEMO_HOST (lists as in the file, empty for "-"); returns 1, saying
-#                              how to register, when <app> isn't in the registry
+#                              REG_DEMO_HOST (lists as in the file; empty for "-", REG_DEMO_HOST
+#                              too); returns 1, saying how to register, when <app> isn't in the
+#                              registry
 #   registry_next              prints the next free number; returns 1 when 1 to 38 are all taken
 #   registry_upstream <role> <dev|demo>   prints the upstream of <role> for the entry registry_entry set
 #   dotenv_value <file> <key>  prints KEY's value in a .env file, as compose reads it (below): the one
@@ -202,10 +204,11 @@ registry_check() {
       || _registry_problem "$file:$number: RabbitMQ user '$rabbitmq_user' is not '-' nor lowercase letters, digits, '_' and '-'"
     [ "$themes" = - ] || [[ $themes =~ $list ]] \
       || _registry_problem "$file:$number: themes '$themes' is not '-' nor a comma-separated list of lowercase letters, digits, '_' and '-'"
-    for value in "$dev_host" "$demo_host"; do
-      [[ $value =~ $host ]] \
-        || _registry_problem "$file:$number: host name '$value' is not a host name (lowercase, with a domain)"
-    done
+    [[ $dev_host =~ $host ]] \
+      || _registry_problem "$file:$number: host name '$dev_host' is not a host name (lowercase, with a domain)"
+    # "-": an application the demo host doesn't deploy (its registration there is refused)
+    [ "$demo_host" = - ] || [[ $demo_host =~ $host ]] \
+      || _registry_problem "$file:$number: host name '$demo_host' is not a host name (lowercase, with a domain), nor '-' as a demo host"
 
     _registry_claim number "$n" "$app" "$number"
     _registry_claim application "$app" "$app" "$number"
@@ -242,9 +245,11 @@ registry_check() {
     # one namespace for both columns: a demo host can't be another application's dev host; nor its
     # MCP origin, which no other entry may take either, as a host or as an application's name
     _registry_claim "host name" "$dev_host" "$app" "$number"
-    _registry_claim "host name" "$demo_host" "$app" "$number"
     _registry_claim "host name" "$(registry_mcp_host "$dev_host")" "$app's MCP origin" "$number"
-    _registry_claim "host name" "$(registry_mcp_host "$demo_host")" "$app's MCP origin" "$number"
+    if [ "$demo_host" != - ]; then
+      _registry_claim "host name" "$demo_host" "$app" "$number"
+      _registry_claim "host name" "$(registry_mcp_host "$demo_host")" "$app's MCP origin" "$number"
+    fi
     _registry_claim application "$app-mcp" "$app's MCP origin" "$number"
   done <<< "$lines"
 
@@ -259,6 +264,7 @@ registry_entry() {
     [ "$realms" != - ] || realms=
     [ "$rabbitmq_user" != - ] || rabbitmq_user=
     [ "$themes" != - ] || themes=
+    [ "$demo_host" != - ] || demo_host=
     REG_N=$n
     REG_APP=$app
     REG_REALMS=$realms

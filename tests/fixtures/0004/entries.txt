@@ -1,0 +1,9 @@
+# tests/0004-registry.sh reads the registry's entries here, not in registry.txt, whose lines are the
+# applications' own (intent 0044): the first four as registry.txt's on 2026-10-30, and two
+# applications the demo host doesn't deploy, their demo host "-" (intent 0045).
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+5 verif-a verif-a - - verif-a.dev.localhost -
+6 verif-b - - - verif-b.dev.localhost -
