@@ -8,8 +8,11 @@
 #     answers 200 from faito.frontend, curl verifying against the root alone (its CAfile the root,
 #     its CApath an empty directory), and the stand-in's own store refuses the site (curl exits 60);
 #   - AC-02: Keycloak's discovery on https://infra.c4-soft.com answers, its issuer on https;
-#   - AC-03: the stack redeployed as the workflow does, its Caddyfile and env/demo.caddy replaced
-#     (rsync), then Hurura'a's fixture registered: the root is the same, both sites answer;
+#   - AC-03: the stack redeployed as the workflow does, twice, its Caddyfile and env/demo.caddy
+#     replaced (rsync) each time; the second deployment keeps the proxy's container (the first may
+#     recreate it, Faito's network joined), so its mounts see the files replaced, as a deployment
+#     that changes only caddy/ does; then Hurura'a's fixture registered: the root is the same, both
+#     sites answer;
 #   - AC-06: the checkout unchanged, no private key in the test's files or the uploads, the root in no
 #     trust store of the stand-in or of its containers, no stand_in_https directory left.
 #
@@ -100,6 +103,14 @@ replaced() { # <inodes before>: both files have new inodes
   read -r c d <<< "$now"
   [ -n "$b" ] && [ -n "$d" ] && [ "$a" != "$c" ] && [ "$b" != "$d" ] || { echo "before: $1, after: $now"; return 1; }
 }
+proxy_container() { # the proxy's container id and start
+  stand_in_exec docker inspect -f '{{.Id}} {{.State.StartedAt}}' c4-infra.reverse-proxy | tr -d '\r'
+}
+redeployed_keeping_proxy() { # redeploy_stack, the proxy's container the same before and after
+  local before after
+  before=$(proxy_container) && redeploy_stack && after=$(proxy_container) || return 1
+  [ -n "$before" ] && [ "$after" = "$before" ] || { echo "before: $before, after: $after"; return 1; }
+}
 same_root() { # stand_in_ca_cert gives the root kept, which isn't empty
   local now
   now=$(stand_in_ca_cert) && [ -n "$root" ] && [ "$now" = "$root" ] || { echo "kept: ${root:0:80}"; echo "now: ${now:0:80}"; return 1; }
@@ -155,6 +166,10 @@ before=$(inodes)
 stand_in_exec touch "$UPLOAD/caddy/Caddyfile" "$UPLOAD/caddy/env/demo.caddy"
 check "AC-03: the stack is redeployed" redeploy_stack
 check "AC-03: its Caddyfile and env/demo.caddy were replaced (new inodes)" replaced "$before"
+before=$(inodes)
+stand_in_exec touch "$UPLOAD/caddy/Caddyfile" "$UPLOAD/caddy/env/demo.caddy"
+check "AC-03: redeployed again, the proxy's container kept" redeployed_keeping_proxy
+check "AC-03: its Caddyfile and env/demo.caddy were replaced again" replaced "$before"
 check "AC-03: Hurura'a's fixture registers and starts" deploy_app hururaa
 check "AC-03: the root is the same" same_root
 check "AC-03: https://hururaa.c4-soft.com/gateway/ answers 200 from hururaa.gateway" \
