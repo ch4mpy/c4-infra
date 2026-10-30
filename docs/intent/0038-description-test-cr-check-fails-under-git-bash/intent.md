@@ -1,12 +1,12 @@
 # Intent: tests/0029-description.sh's carriage-return check fails under Git Bash on a description without one
 
-- Author: Jérôme Wacongne (product owner, tech lead); drafted by the agent during 0036's implementation, awaiting the PO's read
+- Author: Jérôme Wacongne (product owner, tech lead); drafted by the agent during 0036's implementation
 - Kind: bug
 - Source: conversation (2026-10-29, 0036's step 1: a KO no change of 0036 explains)
 - Spec needed: yes
-- Status: proposed
+- Status: accepted
 - Opened: 2026-10-29
-- Decided: —
+- Decided: 2026-10-30
 - Supersedes: —
 - Mode: bootstrap
 
@@ -35,4 +35,3 @@ Success criterion: on the Windows workstation, `bash tests/0029-description.sh` 
 ## Open questions
 
 - Whether a check of the whole suite looks for other `$'…'` escapes inside a command substitution (none other found on 2026-10-29: the other `$'\r'` are parameter expansions) — the spec, or the plan if no spec is needed.
-- Spec needed: likely not, for a fix this size — the PO.
