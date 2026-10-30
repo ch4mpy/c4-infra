@@ -371,18 +371,25 @@ Keycloak's host name too, recreates Keycloak's).
 
 ### Brute-force protection
 
-Every application's realm imported since intent 0010 locks an account for a while after repeated
-failed logins, in dev as on the demo host: after 10 failures, the account is refused for a minute, even
-with its right password; each further failure adds a minute, up to 15; the failures are forgotten
-12 hours after the last one; nothing locks an account for good (Keycloak's temporary lockout,
-linear strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart
-lock the account for a minute, whatever their count.
+An application's realm locks an account as its export says (intent 0041): each brute-force setting
+the export holds is kept, the detection's switch included. c4-infra's settings (intent 0010) fill
+the ones it doesn't hold: after 10 failures, the account is refused for a minute, even with its
+right password; each further failure adds a minute, up to 15; the failures are forgotten 12 hours
+after the last one; nothing locks an account for good (Keycloak's temporary lockout, linear
+strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart lock the
+account for a minute, whatever their count. In dev as on the demo host.
 
-- An application's realm gets these settings each time `register-app.sh` imports it, whatever its
-  export says (`brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak
-  keeps its own settings until it is imported again: one registered before intent 0010 gets them
-  with its next `--reset-realms`, which loses its users, or, keeping them, from an administrator in
-  the console (*Realm settings* → *Security defenses* → *Brute force detection*, the values above).
+- A Keycloak export holds all ten settings (`bruteForceProtected`, `permanentLockout`,
+  `maxTemporaryLockouts`, `failureFactor`, `bruteForceStrategy`, `waitIncrementSeconds`,
+  `maxFailureWaitSeconds`, `maxDeltaTimeSeconds`, `quickLoginCheckMilliSeconds`,
+  `minimumQuickLoginWaitSeconds`), with Keycloak's defaults when nobody set them: the detection
+  off. An application sets its own in its realm (*Realm settings* → *Security defenses* → *Brute
+  force detection*), then exports it; an export with the detection off registers without one, and
+  the registration says so. To get c4-infra's settings, an export leaves the ten out.
+- `register-app.sh` prints, for each realm it imports, the settings c4-infra's filled
+  (`stack_brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak keeps
+  its own settings until it is imported again: with `--reset-realms`, which loses its users, or,
+  keeping them, from an administrator in the console (the page above).
 - The master realm has none: its console is public on the demo host, and anyone could keep its
   administrators locked out. Nothing limits guessing there: on the demo host, every administrator
   of the master realm gets a long random password (`openssl rand -base64 32`), the one of the
