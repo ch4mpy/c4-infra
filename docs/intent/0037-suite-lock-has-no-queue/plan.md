@@ -142,3 +142,4 @@ Unchanged on purpose: the lock's container, name and labels (RQ-05); `tests/0017
 | --- | --- | --- |
 | AC-06 | OK | the rerun: the header names `c4-infra.suite.queue`, `StartedAt`, "the run at place 1 tries the lock" (absent from `main`'s header), `place in the queue`; CLAUDE.md the order and the place line |
 | No regression | OK for this change | `0019-collation`: `every check passed`; the five other failures of the full run fail the same way at `origin/main` |
+- The product owner at delivery (2026-10-30): delivered in one batch with 0036 and 0035, after 0036; the batch's `bash tests/run.sh --all` before the push of `main`, accepted if its only failures are the five pre-existing ones. The change touches `CLAUDE.md`, the agent's configuration: the project has no evals (`git ls-files` names none), so no eval report. AC-05's proof stays reached by chance (the overtaking case).
