@@ -511,13 +511,25 @@ then, pulling it needs a GitHub login with `read:packages`.
   and the dev brute-force settings, the stack's.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
-  refuses a change of `keycloak/` without its entry.
+  refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak
+  admin client of an application that generates it from the description of Keycloak's admin API, as
+  the skills' `create-spring-rest-api` does: moving to the new version regenerates that client, so
+  the application rebuilds and follows its changed signatures and fields, a call that passes its
+  arguments by position first. Each version change's entry says what changes for such a client
+  (`Generated admin client: …`, or `unchanged`); `tests/0029-description.sh` refuses one without it.
 
-Changelog, newest first:
+Changelog, newest first (a version change's entry has its `Generated admin client:` sentence):
 
 - 2026-10-28 — `26.8.1-33909cd89858`: first published; Keycloak 26.8.1, its features
   `token-exchange-delegation`, `parameterized-scopes` and `cimd`, the simulated providers' login
   themes (0016). Asks nothing of an application already on 26.8.1 with these features.
+  Generated admin client: from 26.7.2, two operations added (an organization's identity provider
+  link, a member's membership type); the organizations' list and count, an organization's group by
+  path and the invitation take a new optional parameter (`identityProvider`, `briefRepresentation`,
+  `client_id`); `IdentityProviderRepresentation` gains `organizationLinks`, its `organizationId`
+  becomes write-only and deprecated; `OrganizationDomainRepresentation` gains
+  `identityProviderAlias` and `autoRedirect`; a role's groups are read as `GroupRepresentation`.
+  Nothing removed.
 
 ### Routes file
 
