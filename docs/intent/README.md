@@ -85,4 +85,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0033 | [A demo host backup cut by its time limit may leave its dump running, a restore has no time limit, and four backup paths are untested](0033-backup-timeout-leaves-dump-running/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0034 | [tests/0007-dev.sh's isolation checks pass when the application's network doesn't exist](0034-isolation-checks-pass-without-network/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0037 | [A run waiting for the suite's lock can be overtaken by later runs, without bound](0037-suite-lock-has-no-queue/intent.md) | bug | accepted | 2026-10-29 | 2026-10-29 |
-| 0038 | [tests/0029-description.sh's carriage-return check fails under Git Bash on a description without one](0038-description-test-cr-check-fails-under-git-bash/intent.md) | bug | accepted | 2026-10-29 | 2026-10-30 |
+| 0038 | [tests/0029-description.sh's carriage-return check fails under Git Bash on a description without one](0038-description-test-cr-check-fails-under-git-bash/intent.md) | bug | specified | 2026-10-29 | 2026-10-30 |
