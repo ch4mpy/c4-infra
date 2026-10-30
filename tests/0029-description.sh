@@ -3,7 +3,9 @@
 # read, says what keycloak/ builds:
 #
 #   - (a) its form: comments, blank lines and KEY=value lines whose values bash, Git Bash and Java's
-#     properties read alike (no quote, space, $ or backslash), no CR;
+#     properties read alike (no quote, space, $ or backslash), no CR; on copies, each refused naming
+#     its one changed line alone: a CR before LF, a CR ending the last line, a CR inside a comment, a
+#     space in a value, a lowercase key, a quoted value;
 #   - (b) sourced by bash, each value is its line's text;
 #   - (c) its keys are KC_VERSION, KC_PUBLISHED_IMAGE and every ENV KC_* of keycloak/Dockerfile, with
 #     the Dockerfile's values: each difference named, both ways, here and on copies (a feature
@@ -148,6 +150,15 @@ refused_naming() { # <text> <command…>: the command fails, its output holding 
   local output
   ! output=$("${@:2}" 2>&1) && grep -qF -- "$1" <<< "$output" || { echo "output:"; printf '%s\n' "$output"; return 1; }
 }
+refused_lines() { # <line numbers> <description>: form refuses it, naming these lines and no other
+  local output named
+  ! output=$(form "$2" 2>&1) || { echo "accepted"; return 1; }
+  named=$(sed -n 's/^\([0-9][0-9]*\):.*/\1/p' <<< "$output" | LC_ALL=C sort -un | paste -sd ' ' -)
+  [ "$named" = "$1" ] || { echo "lines named: $named"; printf '%s\n' "$output"; return 1; }
+}
+crs() { # <file>: its CR bytes, counted without reading it as text
+  od -An -tx1 "$1" | tr -s ' ' '\n' | grep -cx 0d
+}
 
 check "(a) the description's lines are comments or KEY=value, no CR" form "$DESCRIPTION"
 check "(b) sourced by bash, each value is its line's text" sourced_as_written "$DESCRIPTION"
@@ -219,6 +230,23 @@ check "(h) an entry of another version without it: named" \
 with_entry README.md "- 2026-10-30 — \`$version-000000000000\`: the same version." > "$work/README-same-version.md"
 check "(h) an entry of the same version without it: not named" not_named "$version-000000000000" "$work/README-same-version.md"
 
-printf 'KC_VERSION="26.8.1"\n' > "$work/quoted"
-check "(a) a quoted value: refused" refused_naming 'KC_VERSION="26.8.1"' form "$work/quoted"
+# (a) on copies of the description, one line changed in each, written straight to the file: a CR
+# held in a variable or built inside $(…) is lost under Git Bash
+key_line=$(grep -n '^[A-Z]' "$DESCRIPTION" | head -n 1 | cut -d: -f1)
+last_line=$(wc -l < "$DESCRIPTION")
+sed "${key_line}s/\$/\r/" "$DESCRIPTION" > "$work/crlf"
+{ head -n -1 "$DESCRIPTION"; printf '%s\r' "$(tail -n 1 "$DESCRIPTION")"; } > "$work/cr-end"
+sed '1s/^#/#\r/' "$DESCRIPTION" > "$work/cr-comment"
+sed "${key_line}s/\$/ x/" "$DESCRIPTION" > "$work/space"
+sed "${key_line}s/^KC_/kc_/" "$DESCRIPTION" > "$work/lowercase"
+sed "${key_line}s/=\(.*\)\$/=\"\1\"/" "$DESCRIPTION" > "$work/quoted"
+for copy in crlf cr-end cr-comment; do
+  check "(a) the copy $copy holds one CR" test "$(crs "$work/$copy")" = 1
+done
+check "(a) a CRLF line end: refused, naming line $key_line alone" refused_lines "$key_line" "$work/crlf"
+check "(a) a CR ending the last line, no LF: refused, naming line $last_line alone" refused_lines "$last_line" "$work/cr-end"
+check "(a) a CR inside a comment: refused, naming line 1 alone" refused_lines 1 "$work/cr-comment"
+check "(a) a space in a value: refused, naming line $key_line alone" refused_lines "$key_line" "$work/space"
+check "(a) a lowercase key: refused, naming line $key_line alone" refused_lines "$key_line" "$work/lowercase"
+check "(a) a quoted value: refused" refused_lines "$key_line" "$work/quoted"
 finish
