@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-29, the verification of the skills' intent 0060)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-29
 - Decided: 2026-10-29
 - Supersedes: —
