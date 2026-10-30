@@ -131,3 +131,14 @@ Unchanged on purpose: the lock's container, name and labels (RQ-05); `tests/0017
 | AC-06 | OK, proof incomplete | the same run: the header names `c4-infra.suite.queue`, `StartedAt`, `place in the queue`; CLAUDE.md the order and the place line; when a run tries the lock is read at `tests/lib/suite-lock.sh:15`, not checked |
 | AC-07 | OK | Git Bash: the run above; Linux: `tests/0037-queue-linux.stand-in.sh` in the full run, `ok - tests/0037-queue.sh passes on the stand-in's Linux Docker`, `every check passed` |
 | No regression | KO | the full run's FAILED list; 0019-collation this change's (frozen test), the five others pre-existing |
+
+### Verification — c86531f (after the product owner's edits of the frozen test)
+
+- The KO above is fixed: the product owner allowed the three edits of `tests/0037-queue.sh` (Deviations, 2026-10-30): `LC_ALL=C sort -n` at :122, CLAUDE.md in its `# covers:`, AC-06's header check naming "the run at place 1 tries the lock".
+- Rerun of what changed since 9fd5d93: `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed 9fd5d93 --all` → `total: 61.1 s for 5 test(s)`, `verification passed (--changed: 5 of 81 tests)` (2026-10-30, `~/.cache/c4-infra-tests/0037-rerun.log`): `0019-collation`, `0037-queue` (50 `ok`), `0037-queue-linux.stand-in`, `0016-no-real-provider`, `0032-demo-github-only`. It waited in the queue for 0035's run (`waiting for the run of /d/workspaces/c4-infra-0035, started 2026-10-30 02:55:49`, `place in the queue: 1`), which held the lock through `main`'s library.
+- Still open: the five pre-existing failures of the full run (none this change's); AC-05's proof reached by chance (the overtaking case).
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-06 | OK | the rerun: the header names `c4-infra.suite.queue`, `StartedAt`, "the run at place 1 tries the lock" (absent from `main`'s header), `place in the queue`; CLAUDE.md the order and the place line |
+| No regression | OK for this change | `0019-collation`: `every check passed`; the five other failures of the full run fail the same way at `origin/main` |
