@@ -395,14 +395,14 @@ bash "$INFRA_DIR/networks.sh" ensure "$app"
 # (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session lives in the container's /dev/shm (memory
 # only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  # Every imported realm gets c4-infra's brute-force protection, whatever its export says (intent
-  # 0010): a temporary lockout after 10 failures, 1 more minute per further failure, at most 15,
-  # never for good (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already
-  # in Keycloak keeps its own until it is imported again.
-  brute_force=(-s bruteForceProtected=true -s permanentLockout=false -s maxTemporaryLockouts=0
-    -s failureFactor=10 -s bruteForceStrategy=LINEAR -s waitIncrementSeconds=60
-    -s maxFailureWaitSeconds=900 -s maxDeltaTimeSeconds=43200 -s quickLoginCheckMilliSeconds=1000
-    -s minimumQuickLoginWaitSeconds=60)
+  # The brute-force settings an imported realm's export holds are kept as it says, the detection's
+  # switch included; c4-infra's fill the ones it doesn't hold (intents 0010, 0041): a temporary
+  # lockout after 10 failures, 1 more minute per further failure, at most 15, never for good
+  # (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already in Keycloak
+  # keeps its own until it is imported again.
+  stack_brute_force=(bruteForceProtected=true permanentLockout=false maxTemporaryLockouts=0
+    failureFactor=10 bruteForceStrategy=LINEAR waitIncrementSeconds=60 maxFailureWaitSeconds=900
+    maxDeltaTimeSeconds=43200 quickLoginCheckMilliSeconds=1000 minimumQuickLoginWaitSeconds=60)
   kc_session=$ACCOUNT_CONFIG
   if [ -z "$client_id" ] || ! account_login; then
     [ -z "${login_output:-}" ] || printf '%s\n' "$login_output" | tail -n 3 >&2
@@ -442,10 +442,27 @@ if [ ${#realms[@]} -gt 0 ]; then
       fi
     fi
     echo "Importing realm $realm"
+    held=$(jq -r 'to_entries[] | select(.value != null) | .key' < "$file" | tr -d '\r')
+    brute_force=()
+    filled=()
+    for setting in "${stack_brute_force[@]}"; do
+      if ! grep -qx "${setting%%=*}" <<< "$held"; then
+        brute_force+=(-s "$setting")
+        filled+=("${setting%%=*}")
+      fi
+    done
     # on stdin: nothing to copy into the container, whatever the file's owner and mode; under the
     # file's name, the realm of the entry checked above, whatever its "realm" field says
     account -i create realms -f - -s "realm=$realm" "${brute_force[@]}" < "$file"
-    echo "Realm $realm: brute-force protection set (README.md, \"Brute-force protection\")"
+    if [ ${#filled[@]} -eq 0 ]; then
+      echo "Realm $realm: brute-force settings from its export, all of them"
+    else
+      stack_list=$(printf '%s, ' "${filled[@]}")
+      echo "Realm $realm: brute-force settings from its export, the stack's for ${stack_list%, }"
+    fi
+    if [ "$(jq -r '.bruteForceProtected' < "$file" | tr -d '\r')" = false ]; then
+      echo "Realm $realm: no brute-force detection, as its export says (README.md, \"Brute-force protection\")"
+    fi
   done
 fi
 
