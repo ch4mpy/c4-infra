@@ -11,8 +11,9 @@
 #   scripts    up.sh and register-app.sh with fake docker, getent and powershell.exe (answering
 #              127.0.0.1, so that up.sh's resolution check passes): a registry with a duplicate stops
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
-#              docker call; in a scratch stack whose .env says INFRA_ENV=demo, an application whose
-#              demo host is "-" is refused, before any docker call, and in dev it isn't (0045 AC-02)
+#              docker call; routes.sh makes no demo site for an application whose demo host is "-",
+#              and its dev site; in a scratch stack whose .env says INFRA_ENV=demo, such an
+#              application is refused, before any docker call, and in dev it isn't (0045 AC-02)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -97,13 +98,6 @@ part_registry() {
   run_with "$ENTRIES" bash registry.sh entry verif-a
   check "entry verif-a exits 0" exited 0
   check "entry verif-a: demo_host= (its '-', 0045 AC-01)" grep -qx 'demo_host=' "$work/out"
-  # 0045: routes.sh makes no site without a host
-  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a demo
-  check "routes.sh, verif-a on the demo host: exits 1" exited 1
-  check "routes.sh, verif-a on the demo host: prints no site" prints_nothing
-  check "routes.sh, verif-a on the demo host: says why" says 'verif-a has no demo host in the registry (its line says "-"): no site for it'
-  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a dev
-  check "routes.sh, verif-a in dev: its site on verif-a.dev.localhost" grep -qx 'verif-a.dev.localhost {' "$work/out"
   run_with "$ENTRIES" bash registry.sh entry tickee
   check "entry tickee exits 0" exited 0
   check "entry tickee: n=3" grep -qx 'n=3' "$work/out"
@@ -219,6 +213,14 @@ part_scripts() {
   check "unknown app: its message names registry.txt" says registry.txt
   check "unknown app: its message names bash registry.sh next" says 'bash registry.sh next'
   check "unknown app: no docker call" called_no_docker
+
+  # 0045: routes.sh makes no site without a host
+  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a demo
+  check "routes.sh, verif-a on the demo host: exits 1" exited 1
+  check "routes.sh, verif-a on the demo host: prints no site" prints_nothing
+  check "routes.sh, verif-a on the demo host: says why" says 'verif-a has no demo host in the registry (its line says "-"): no site for it'
+  run_with "$ENTRIES" bash routes.sh generate examples/routes/faito.routes verif-a dev
+  check "routes.sh, verif-a in dev: its site on verif-a.dev.localhost" grep -qx 'verif-a.dev.localhost {' "$work/out"
 
   # 0045 AC-02: an application whose demo host is "-", registered on the demo host
   local stack=$work/stack
