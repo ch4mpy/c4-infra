@@ -13,7 +13,9 @@
 #              both (AC-03, RQ-04), an application missing from it is refused (AC-01), before any
 #              docker call; routes.sh makes no demo site for an application whose demo host is "-",
 #              and its dev site; in a scratch stack whose .env says INFRA_ENV=demo, such an
-#              application is refused, before any docker call, and in dev it isn't (0045 AC-02)
+#              application is refused, before any docker call, and in dev it isn't (0045 AC-02); there
+#              too, a realm export whose permanentLockout isn't false is refused, before any docker
+#              call, and goes past that check in dev (0041 AC-06)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -185,6 +187,10 @@ called_no_docker() {
   [ ! -s "$work/docker.log" ] || { echo "called:"; head -n 5 "$work/docker.log"; return 1; }
 }
 
+called_docker() {
+  [ -s "$work/docker.log" ] || { echo "no docker call; stderr:"; cat "$work/err"; return 1; }
+}
+
 stopped() { # <label> <both entries>: the last run exited ≠ 0, naming both entries, before any docker call
   local label=$1 both=$2
   check "$label: exits non-zero" exited_non_zero
@@ -236,6 +242,28 @@ part_scripts() {
   run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app verif-a
   check "no demo host, in dev: registers (exit 0)" exited 0
   check "no demo host, in dev: not refused for it" eval '! grep -qF "has no demo host" "$work/err"'
+
+  # 0041 AC-06: on the demo host, an export that would lock an account for good
+  local export=$work/lockout/faito-realm.json value
+  mkdir -p "$work/lockout"
+  printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
+  for value in true '"TRUE"' 1; do
+    printf '{"realm": "faito", "permanentLockout": %s}\n' "$value" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "permanentLockout $value, on the demo host: refused (exit non-zero)" exited_non_zero
+    check "permanentLockout $value, on the demo host: it says why" \
+      says "--realm $export: permanentLockout $value, which would let whoever knows a user name lock that account for good: refused"
+    check "permanentLockout $value, on the demo host: no docker call" called_no_docker
+  done
+  for value in '{"realm": "faito", "permanentLockout": false}' '{"realm": "faito"}'; do
+    printf '%s\n' "$value" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "$value, on the demo host: past the export's checks" called_docker
+  done
+  printf '%s\n' INFRA_ENV=dev > "$stack/.env"
+  printf '%s\n' '{"realm": "faito", "permanentLockout": true}' > "$export"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+  check "permanentLockout true, in dev: past the export's checks" called_docker
 }
 
 # The README's "Port registry" section, up to the next heading

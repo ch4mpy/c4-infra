@@ -11,7 +11,8 @@
 #                   a realm of the application's registry entry. The realm is imported only when
 #                   Keycloak doesn't have it yet, so that the users and clients created since
 #                   survive; --reset-realms deletes it first. It is imported under the name of the
-#                   file: the file's own "realm" field can't name another.
+#                   file: the file's own "realm" field can't name another. On the demo host, an
+#                   export whose permanentLockout isn't false is refused (intent 0041).
 #   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
 #                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
 #                   restarts Keycloak (once). A theme holding a link or a special file, or a
@@ -297,6 +298,19 @@ cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its 
     (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
       | "realm attribute \(.): \($unread)")' < "$1"
 }
+# On the demo host, a realm export that would lock an account for good (intent 0041, PA-02):
+# whoever knows a user name could lock it on the public demo. Keycloak reads permanentLockout as
+# Jackson does ("TRUE" and 1 are true): only false is accepted, or none (the stack's).
+lockout_problems=()
+lockout_check() { # <realm file>
+  local value
+  if ! value=$(jq -c '.permanentLockout // false | select(. != false and . != "false")' < "$1"); then
+    lockout_problems+=("--realm $1: not JSON that jq can read: refused")
+    return
+  fi
+  value=${value%$'\r'}
+  [ -z "$value" ] || lockout_problems+=("--realm $1: permanentLockout $value, which would let whoever knows a user name lock that account for good: refused")
+}
 if [ ${#realms[@]} -gt 0 ] && ! command -v jq > /dev/null; then
   echo "register-app.sh needs jq to read a realm export (README.md, \"Development\"); nothing was registered." >&2
   exit 1
@@ -324,6 +338,7 @@ for file in "${realms[@]}"; do
       problem=${problem%$'\r'}
       [ -z "$problem" ] || realm_problems+=("--realm $file: $problem: refused")
     done <<< "$found"
+    [ "$INFRA_ENV" != demo ] || lockout_check "$file"
   fi
 done
 if [ -n "$themes" ]; then
@@ -365,6 +380,11 @@ fi
 if [ ${#realm_problems[@]} -gt 0 ]; then
   printf '%s\n' "${realm_problems[@]}" >&2
   echo "A realm's client policies fetch client metadata documents over https from named domains only (README.md, \"What an application provides\"); nothing was registered." >&2
+  exit 1
+fi
+if [ ${#lockout_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${lockout_problems[@]}" >&2
+  echo "On the demo host, a realm's export never locks an account for good (README.md, \"Brute-force protection\"); nothing was registered." >&2
   exit 1
 fi
 

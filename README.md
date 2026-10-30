@@ -392,6 +392,9 @@ account for a minute, whatever their count. In dev as on the demo host.
   off. An application sets its own in its realm (*Realm settings* → *Security defenses* → *Brute
   force detection*), then exports it; an export with the detection off registers without one, and
   the registration says so. To get c4-infra's settings, an export leaves the ten out.
+- On the demo host, an export that would lock an account for good (`permanentLockout` anything but
+  `false`) is refused, before anything changes: on the public demo, whoever knows a user name could
+  lock that account (intent 0041). In dev, it registers as it says.
 - `register-app.sh` prints, for each realm it imports, the settings c4-infra's filled
   (`stack_brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak keeps
   its own settings until it is imported again: with `--reset-realms`, which loses its users, or,
