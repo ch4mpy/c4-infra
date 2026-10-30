@@ -40,8 +40,9 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 form() { # <description>: every line a comment, blank or KEY=value of the safe characters, no CR
-  local bad
-  bad=$(grep -nvE '^(#.*|[A-Z][A-Z0-9_]*=[A-Za-z0-9._,/:@+-]*|)$' "$1"; grep -n $'\r' "$1")
+  local bad cr=$'\r'
+  # cr outside $(…), where Git Bash drops it; -U: Git Bash's grep strips a CR before LF without it
+  bad=$(grep -nvE '^(#.*|[A-Z][A-Z0-9_]*=[A-Za-z0-9._,/:@+-]*|)$' "$1"; grep -nU "$cr" "$1")
   [ -z "$bad" ] || { echo "lines:"; printf '%s\n' "$bad"; return 1; }
 }
 sourced_as_written() { # <description>: bash's value of each key is its line's text
