@@ -14,7 +14,8 @@
 #              none. For intermediate checks: the full run stays the proof of a change.
 #
 # Every tracked script must be declared by a test: the run refuses one that isn't before any test.
-# One run at a time per Docker: a run waits for another's end (tests/lib/suite-lock.sh).
+# One run at a time per Docker: the runs that wait take the lock in the order they arrived
+# (tests/lib/suite-lock.sh).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/suite-lock.sh
