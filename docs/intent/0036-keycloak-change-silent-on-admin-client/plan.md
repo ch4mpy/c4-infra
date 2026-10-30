@@ -79,3 +79,23 @@ Unchanged on purpose (the intent's constraints): `keycloak/`, `keycloak-image.pr
 - 2026-10-29 — step 3, the verifier's recheck: the operations' summaries, left aside above, change for two of the deprecated ones: `…/certificates/{attr}/download` from "containing private key and public certificate" to "containing the public certificate", `…/upload` from "Upload certificate and eventually private key" to "Upload only certificate, not private key" (`comm -3` of the two `*.flat`, `> summary` lines: these two, and the two added operations' own). The entry now says it, "by their descriptions" (the server's behaviour isn't measured here), and "four of the six operations on a client's certificates" (`GET …/certificates/{attr}` and `POST …/upload-certificate` aren't deprecated).
 
 ## Verification
+
+### Verification — 75f09c3
+
+- **KO, pre-existing, not this change's:** `tests/0029-description.sh`'s check (a) fails under Git Bash on the Windows workstation, on `main` (8f0a090) too: Git Bash drops the CR of `$'\r'` inside `$(…)` (*Deviations*, step 1). So no run below ends `verification passed`. Bug intent 0038 (proposed, on its branch).
+- Verification command: `TMPDIR=~/.cache/c4-infra-tests bash tests/run.sh --changed --all` at 3ecf4d3 → `total: 14.5 s for 7 test(s)` / `FAILED:` / `  tests/0029-description.sh`, its only KO (a); 0004-registry, 0016-no-real-provider, 0019-collation, 0027-docs, 0032-demo-github-only, 0033-docs `every check passed` (2026-10-29). After the fixes, `… --changed 3ecf4d3` at 69b72ba, `--changed 69b72ba` at ad5c5e6, `--changed ad5c5e6` at 75f09c3 → each `FAILED:` / `  tests/0029-description.sh`, (a) only, the five others `every check passed`.
+- Risk tier: standard (documentation and a test; no risk rule applies).
+- Reviews: bootstrap mode, 1 round; bugs (`code-review`, high): 9 findings, 4 fixed (69b72ba: no promise of a regeneration the skills don't do yet, the shifted arguments, the former type, the sentence's exact form), 4 answered (*Deviations*, step 3: `not_named`, `entries()`'s blank line and unknown first line, the pattern written three times), 1 pre-existing ((a), → 0038). The diff's comments: the new functions' one-line documentation comments and the header's (h) lines, none narrating.
+- Proof before the change: step 1 at b0f5b82, the (h) checks KO on the README without the sentence, the two copies `ok`; the verifier's mutations M1 (the token removed from the bullet) and M2 (from the entry) each turn their (h) check KO.
+- Verifier: three passes. 6/7, KO the first entry incomplete → d1a5855; 3/4, KO (minor) the certificates' summaries → 18bdd17; 4/4 at 75f09c3.
+- Not verifiable here: the test under bash on Ubuntu (the Windows workstation only; the verifier ran the (h) functions under `mawk` in `ubuntu:24.04`, same results); the bullet's guidance beyond its sentence (regenerate, follow the signatures, positional calls first) is proven by reading: the check guards the sentence, not the prose.
+- Files outside the plan: none (`git diff --name-only origin/main...HEAD`: `README.md`, `tests/0029-description.sh`, the intent's `intent.md`, `plan.md`, `docs/intent/README.md`).
+- Pre-existing findings (not fixed, out of scope): (a) above → 0038.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Success criterion, part 1: the README says it in the section | OK | `ok - (h) the bullet on a change names the generated admin client` (75f09c3); KO at b0f5b82; M1 KO |
+| Success criterion, part 2: each version change's entry names what changes (or that nothing does) | OK | `ok - (h) each version change's entry names the generated admin client`, `ok - (h) an entry of another version without it: named`, `ok - (h) an entry of the same version without it: not named`; M2 KO; the functions on copies (wrapped sentence, zero entries, a version change under a same-version entry), under Git Bash and `mawk` |
+| The first entry's differences are Keycloak's | OK | `jq` over every scalar of keycloak.org's 26.7.2 and 26.8.1 descriptions (`comm -3`: 76 lines, the responses' codes, the operations' summaries), by the author and the verifier: every difference named, nothing claimed beyond them |
+| Constraint: the image, `keycloak/`, `keycloak-image.properties` unchanged | OK | `git diff --stat origin/main...HEAD -- keycloak/ keycloak-image.properties .github/ docs/migration.md` prints nothing; (b) to (e) `ok` |
+| No regression | OK but (a) | the runs above: the five other tests `every check passed`; 0029's (f) and (h) `ok` |
