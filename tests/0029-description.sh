@@ -17,7 +17,11 @@
 #   - (f) the README's "Keycloak in an application's tests" holds a dated changelog entry for that
 #     tag: a change of keycloak/ without its entry fails (a README copy without it: named);
 #   - (g) the section names the description, start-dev and KC_DB=dev-file; docs/migration.md
-#     points to it.
+#     points to it;
+#   - (h) its bullet on a change names the generated admin client's sentence, and the changelog
+#     entry of each version change (another version than the entry below it, or the oldest) holds
+#     "Generated admin client:" (on copies: an entry of another version without it, named; one of
+#     the same version without it, not named).
 #
 #   bash tests/0029-description.sh
 #
@@ -107,6 +111,39 @@ section() { # <README>: its "Keycloak in an application's tests" section
 changelog_entry() { # <README> <tag>: a dated entry of the section's changelog names the tag
   section "$1" | grep -qE "^- [0-9]{4}-[0-9]{2}-[0-9]{2} — \`${2//./\\.}\`" || { echo "no changelog entry for $2"; return 1; }
 }
+change_bullet() { # <README>: the section's bullet on a change of the stack's Keycloak, its lines joined
+  section "$1" | awk '/^- \*\*A change\*\*/ { inside = 1; printf "%s", $0; next }
+    inside && /^  / { sub(/^ +/, " "); printf "%s", $0; next } inside { exit }'
+}
+entries() { # <README>: each entry of the section's changelog on one line: its tag, a tab, its lines joined
+  section "$1" | awk '/^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { if (entry != "") print entry
+      tag = $0; sub(/^[^`]*`/, "", tag); sub(/`.*$/, "", tag); entry = tag "\t" $0; next }
+    entry != "" && /^  / { sub(/^ +/, " "); entry = entry $0; next }
+    entry != "" { print entry; entry = "" }
+    END { if (entry != "") print entry }'
+}
+admin_client_named() { # <README>: the entry of each version change (another version than the entry below it, or the oldest) names the generated admin client
+  local lines i tag below missing=0
+  mapfile -t lines < <(entries "$1")
+  [ "${#lines[@]}" -gt 0 ] || { echo "no changelog entry read"; return 1; }
+  for i in "${!lines[@]}"; do
+    tag=${lines[i]%%$'\t'*} below=
+    [ $((i + 1)) -ge "${#lines[@]}" ] || below=${lines[i + 1]%%$'\t'*}
+    [ "${tag%-*}" != "${below%-*}" ] || continue
+    grep -qF 'Generated admin client:' <<< "${lines[i]#*$'\t'}" \
+      || { echo "$tag: a version change whose entry doesn't name the generated admin client"; missing=1; }
+  done
+  return "$missing"
+}
+with_entry() { # <README> <entry line>: a copy whose changelog starts with that entry
+  awk -v entry="$2" '/^### Keycloak in an application.s tests$/ { inside = 1 }
+    inside && !done && /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { print entry; done = 1 } { print }' "$1"
+}
+not_named() { # <tag> <README>: admin_client_named names no entry of that tag
+  local output
+  output=$(admin_client_named "$2" 2>&1)
+  ! grep -qF -- "$1:" <<< "$output" || { echo "output:"; printf '%s\n' "$output"; return 1; }
+}
 refused_naming() { # <text> <command…>: the command fails, its output holding the text
   local output
   ! output=$("${@:2}" 2>&1) && grep -qF -- "$1" <<< "$output" || { echo "output:"; printf '%s\n' "$output"; return 1; }
@@ -171,6 +208,16 @@ for text in keycloak-image.properties start-dev KC_DB=dev-file; do
   check "(g) the section names $text" grep -qF -- "$text" <(section README.md)
 done
 check "(g) docs/migration.md points to it" grep -qF "#keycloak-in-an-applications-tests" docs/migration.md
+
+check "(h) the bullet on a change names the generated admin client" \
+  grep -qF 'Generated admin client:' <(change_bullet README.md)
+check "(h) each version change's entry names the generated admin client" admin_client_named README.md
+with_entry README.md "- 2026-10-30 — \`$version.0-000000000000\`: another version." > "$work/README-other-version.md"
+check "(h) an entry of another version without it: named" \
+  refused_naming "$version.0-000000000000: a version change whose entry doesn't name the generated admin client" \
+  admin_client_named "$work/README-other-version.md"
+with_entry README.md "- 2026-10-30 — \`$version-000000000000\`: the same version." > "$work/README-same-version.md"
+check "(h) an entry of the same version without it: not named" not_named "$version-000000000000" "$work/README-same-version.md"
 
 printf 'KC_VERSION="26.8.1"\n' > "$work/quoted"
 check "(a) a quoted value: refused" refused_naming 'KC_VERSION="26.8.1"' form "$work/quoted"

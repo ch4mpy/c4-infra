@@ -86,3 +86,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0034 | [tests/0007-dev.sh's isolation checks pass when the application's network doesn't exist](0034-isolation-checks-pass-without-network/intent.md) | bug | delivered | 2026-10-28 | 2026-10-28 |
 | 0037 | [A run waiting for the suite's lock can be overtaken by later runs, without bound](0037-suite-lock-has-no-queue/intent.md) | bug | accepted | 2026-10-29 | 2026-10-29 |
 | 0038 | [tests/0029-description.sh's carriage-return check fails under Git Bash on a description without one](0038-description-test-cr-check-fails-under-git-bash/intent.md) | bug | specified | 2026-10-29 | 2026-10-30 |
+| 0035 | [The stand-in demo host can't serve an application over HTTPS](0035-stand-in-demo-host-has-no-https/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
+| 0036 | [A change of the stack's Keycloak doesn't say that an application's generated admin client moves with it](0036-keycloak-change-silent-on-admin-client/intent.md) | change | delivered | 2026-10-29 | 2026-10-29 |
+| 0037 | [A run waiting for the suite's lock can be overtaken by later runs, without bound](0037-suite-lock-has-no-queue/intent.md) | bug | delivered | 2026-10-29 | 2026-10-29 |
+| 0039 | [Four Keycloak tests fail under Git Bash on the Windows workstation: the native jq and curl can't reach their files](0039-keycloak-tests-fail-under-git-bash/intent.md) | bug | specified | 2026-10-30 | 2026-10-30 |

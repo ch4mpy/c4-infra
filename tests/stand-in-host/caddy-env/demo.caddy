@@ -1,0 +1,8 @@
+# compose.no-acme.yml mounts this directory over the stack's caddy/env/, not this file over the
+# stack's demo.caddy: a mount over a file is lost once a deployment replaces that file (rsync, tar).
+{
+	local_certs
+	skip_install_trust
+}
+
+import /etc/caddy-stack-env/demo.caddy

@@ -10,6 +10,7 @@ RUN apt-get update \
   && mkdir -p /run/sshd \
   && ssh-keygen -A
 
+COPY caddy-env/ /etc/c4-stand-in/caddy-env/
 COPY entrypoint.sh /usr/local/bin/stand-in-entrypoint
 RUN chmod 755 /usr/local/bin/stand-in-entrypoint
 ENTRYPOINT ["/usr/local/bin/stand-in-entrypoint"]
