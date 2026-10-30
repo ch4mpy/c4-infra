@@ -5,7 +5,7 @@
 #
 #   bash tests/0037-queue-linux.stand-in.sh      (bash tests/run.sh --all runs it)
 #
-# covers: tests/lib/suite-lock.sh tests/0037-queue.sh tests/fixtures/0037/
+# covers: tests/lib/suite-lock.sh tests/0037-queue.sh tests/fixtures/0037/ CLAUDE.md
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
