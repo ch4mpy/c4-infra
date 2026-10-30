@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-29, 0036's step 1: a KO no change of 0036 explains)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-29
 - Decided: 2026-10-30
 - Supersedes: —

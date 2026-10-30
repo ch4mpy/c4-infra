@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-30: the five failures `origin/main` has too, 0037's plan, Deviations)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —
