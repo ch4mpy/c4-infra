@@ -18,7 +18,8 @@
 #   stand_in_env <dir>               writes <dir>/.env with demo/write-env.sh, run inside the
 #                                    stand-in (a Linux shell, as the workflow's runner), with a random
 #                                    value for each secret `write-env.sh --required` names; then keeps
-#                                    Let's Encrypt out (compose.no-acme.yml)
+#                                    Let's Encrypt out and gives Caddy its local authority
+#                                    (compose.no-acme.yml)
 #   stand_in_accounts <app>…         the demo host's accounts (intent 0002), as docs/demo-setup.md
 #                                    prepares them: a key pair per account, generated inside the
 #                                    stand-in ($STAND_IN_KEYS), `vps-bootstrap.sh c4-infra` and
@@ -32,8 +33,27 @@
 #                                    <account>, with its key (stand_in_accounts), the host key pinned;
 #                                    -i passes stdin, which the caller always redirects
 #   stand_in_ssh_command <account>   that ssh command line (for rsync -e), inside the stand-in
+#   stand_in_ca_cert                 the root certificate (PEM, no key) of the local authority the
+#                                    stand-in's Caddy issues every site's certificate from, once the
+#                                    stack is deployed; exit 1, saying why, when the stack or the
+#                                    authority isn't there
+#   stand_in_https <host> <path> [curl option…]
+#                                    one request to https://<host><path> from inside the stand-in,
+#                                    every host and port sent to its Caddy, that root the only trust
+#                                    anchor; first waits up to 15 s for the site's certificate; curl's
+#                                    exit status, or stand_in_ca_cert's failures. The caller's paths
+#                                    (-o, -D, -c, -b) are the stand-in's
 #   stand_in_down                    stops and removes the stand-in (its Docker volume stays: the
 #                                    pulled images)
+#
+# HTTPS (intent 0035): on the stand-in, Caddy issues each site's certificate from its own local
+# authority (tests/stand-in-host/caddy-env/, which compose.no-acme.yml mounts), never from Let's
+# Encrypt; the real demo host's configuration is unchanged. Nothing trusts that root but a client
+# given it: stand_in_ca_cert's, or stand_in_https's own copy, removed after its request. A client of
+# its own reaches a site by its name from inside the stand-in, which publishes no port: `curl
+# --connect-to ::127.0.0.1: --cacert <root> --capath <an empty directory> https://<site>/…` (an
+# empty --capath, or curl also reads the system's). The authority's keys stay in the stand-in's
+# caddy_data volume, inside $STAND_IN_VOLUME, until the next stand_in_up removes it.
 #
 # The Docker volume $STAND_IN_VOLUME (c4-infra-stand-in-docker) holds the stand-in's /var/lib/docker
 # between runs. STAND_IN_NAME and STAND_IN_VOLUME, from the environment, name another stand-in, beside
@@ -226,6 +246,49 @@ stand_in_accounts() { # <app>…
     sh "$(stand_in_ssh_command c4-infra)" || { _stand_in_ssh_diagnose c4-infra; return 1; }
   stand_in_ssh c4-infra "cd ~/c4-infra && bash ./demo/deploy.sh < /dev/null > ~/deploy.log 2>&1" \
     || { stand_in_exec tail -n 30 /home/c4-infra/deploy.log; return 1; }
+}
+
+# Shell code for the stand-in: read_root <caller> prints the root of the proxy's local authority,
+# waited for up to 10 s, or says why there is none and returns 1. Never reads its key.
+_STAND_IN_ROOT_READER='
+read_root() {
+  if [ -z "$(docker ps -q -f "name=^c4-infra.reverse-proxy\$")" ]; then
+    echo "$1: the stand-in runs no c4-infra.reverse-proxy (the stack isn'"'"'t deployed: stand_in_accounts)" >&2
+    return 1
+  fi
+  for i in $(seq 1 50); do
+    docker exec c4-infra.reverse-proxy sh -c "test -s \"\$0\" && cat \"\$0\"" \
+      /data/caddy/pki/authorities/local/root.crt 2> /dev/null && return 0
+    sleep 0.2
+  done
+  echo "$1: the stand-in'"'"'s Caddy has no local authority (is compose.no-acme.yml in the stack'"'"'s COMPOSE_FILE?)" >&2
+  return 1
+}
+'
+
+stand_in_ca_cert() {
+  stand_in_exec sh -c "$_STAND_IN_ROOT_READER"'read_root stand_in_ca_cert' | tr -d '\r'
+  return "${PIPESTATUS[0]}"
+}
+
+stand_in_https() { # <host> <path> [curl option…]
+  stand_in_exec sh -c "$_STAND_IN_ROOT_READER"'
+    host=$1 path=$2
+    shift 2
+    dir=$(mktemp -d /tmp/stand_in_https.XXXXXX) || exit 1
+    trap "rm -rf $dir" EXIT
+    mkdir "$dir/capath"
+    read_root stand_in_https > "$dir/root.crt" || exit 1
+    # a site'"'"'s certificate is issued in the background after a start or a reload
+    tries=0
+    until curl -s -o /dev/null --cacert "$dir/root.crt" --capath "$dir/capath" --connect-to ::127.0.0.1: \
+      "https://$host/"; do
+      [ $? -eq 35 ] && [ "$tries" -lt 75 ] || break
+      tries=$((tries + 1))
+      sleep 0.2
+    done
+    curl -sS --cacert "$dir/root.crt" --capath "$dir/capath" --connect-to ::127.0.0.1: "$@" "https://$host$path"' \
+    sh "$@"
 }
 
 stand_in_down() {
