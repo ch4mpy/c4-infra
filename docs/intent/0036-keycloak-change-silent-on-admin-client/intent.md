@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-29, the skills' intent 0111, its spec's PA-01 C: a line in c4-infra's changelog convention)
 - Spec needed: no
-- Status: accepted
+- Status: planned
 - Opened: 2026-10-29
 - Decided: 2026-10-29
 - Supersedes: —
