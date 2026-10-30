@@ -87,3 +87,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0035 | [The stand-in demo host can't serve an application over HTTPS](0035-stand-in-demo-host-has-no-https/intent.md) | change | delivered | 2026-10-28 | 2026-10-28 |
 | 0036 | [A change of the stack's Keycloak doesn't say that an application's generated admin client moves with it](0036-keycloak-change-silent-on-admin-client/intent.md) | change | delivered | 2026-10-29 | 2026-10-29 |
 | 0037 | [A run waiting for the suite's lock can be overtaken by later runs, without bound](0037-suite-lock-has-no-queue/intent.md) | bug | delivered | 2026-10-29 | 2026-10-29 |
+| 0039 | [Four Keycloak tests fail under Git Bash on the Windows workstation: the native jq and curl can't reach their files](0039-keycloak-tests-fail-under-git-bash/intent.md) | bug | accepted | 2026-10-30 | 2026-10-30 |
