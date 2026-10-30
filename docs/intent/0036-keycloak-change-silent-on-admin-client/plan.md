@@ -70,5 +70,7 @@ Unchanged on purpose (the intent's constraints): `keycloak/`, `keycloak-image.pr
 ## Deviations
 
 - 2026-10-29 — step 0: `git merge origin/main` didn't conflict, git kept both index rows (0036, then 0037) — no impact.
+- 2026-10-29 — step 1, `TMPDIR=~/.cache/c4-infra-tests bash tests/0029-description.sh` before the README changes, exit 1, as planned: `KO - (h) the bullet on a change names the generated admin client`; `KO - (h) each version change's entry names the generated admin client` / `26.8.1-33909cd89858: a version change whose entry doesn't name the generated admin client`; `ok - (h) an entry of another version without it: named`; `ok - (h) an entry of the same version without it: not named`.
+- 2026-10-29 — step 1, pre-existing, not this change's: under Git Bash on the Windows workstation, `KO - (a) the description's lines are comments or KEY=value, no CR`, every line listed. `main` (8f0a090, a detached worktree) fails it the same way. Cause: Git Bash's bash drops the CR of `$'\r'` written inside `$(…)` (`form()`, `tests/0029-description.sh:42`), so `grep -n ''` lists every line; `cr=$'\r'` built outside the substitution gives 0 lines, and Linux's grep gives 0 lines on the same file (`ubuntu:24.04`). Not fixed here (another bug, outside this plan's files' scope): reported first in the verification, and a bug intent for the morning. Impact: the verification's run shows this KO on the Windows workstation.
 
 ## Verification
