@@ -93,7 +93,13 @@ every time it deploys.
   generated `compose.apps.yml` (the last file of `COMPOSE_FILE`) keeps them attached when the stack
   is recreated. Keycloak's database is on a network of its own, `c4-infra.keycloak-db` (internal),
   which only Keycloak joins; `c4-infra` is the shared services' own network, which no application
-  joins. On the demo host, Mailpit's UI and API ask for the demo's credentials themselves, wherever
+  joins, and their primary one (`priority: 100` in `compose.yml`, intent 0043): removing an
+  application's network leaves them able to restart. An application's first registration changes
+  their compose model (`compose.apps.yml` names its network): the stack's next `docker compose up`,
+  `up.sh` in dev or the next deployment on the demo host, recreates the five, `keycloak-db` aside,
+  and every application's logins and site are cut meanwhile; the ones after it recreate none
+  (intent 0040; on a stand-in demo host, that deployment took 45 s, one that recreates nothing 17 s,
+  every container back healthy). On the demo host, Mailpit's UI and API ask for the demo's credentials themselves, wherever
   they are reached from; what else answers on an application's network is listed in "Reachable from
   an application's network" below.
 - **One compose base, an override per environment.** [`compose.yml`](compose.yml) holds every
@@ -371,18 +377,33 @@ Keycloak's host name too, recreates Keycloak's).
 
 ### Brute-force protection
 
-Every application's realm imported since intent 0010 locks an account for a while after repeated
-failed logins, in dev as on the demo host: after 10 failures, the account is refused for a minute, even
-with its right password; each further failure adds a minute, up to 15; the failures are forgotten
-12 hours after the last one; nothing locks an account for good (Keycloak's temporary lockout,
-linear strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart
-lock the account for a minute, whatever their count.
+An application's realm locks an account as its export says (intent 0041): each brute-force setting
+the export holds is kept, the detection's switch included. c4-infra's settings (intent 0010) fill
+the ones it doesn't hold: after 10 failures, the account is refused for a minute, even with its
+right password; each further failure adds a minute, up to 15; the failures are forgotten 12 hours
+after the last one; nothing locks an account for good (Keycloak's temporary lockout, linear
+strategy). Keycloak's quick-login rule comes on top: two failures less than a second apart lock the
+account for a minute, whatever their count. In dev as on the demo host.
 
-- An application's realm gets these settings each time `register-app.sh` imports it, whatever its
-  export says (`brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak
-  keeps its own settings until it is imported again: one registered before intent 0010 gets them
-  with its next `--reset-realms`, which loses its users, or, keeping them, from an administrator in
-  the console (*Realm settings* → *Security defenses* → *Brute force detection*, the values above).
+- A Keycloak export holds all ten settings (`bruteForceProtected`, `permanentLockout`,
+  `maxTemporaryLockouts`, `failureFactor`, `bruteForceStrategy`, `waitIncrementSeconds`,
+  `maxFailureWaitSeconds`, `maxDeltaTimeSeconds`, `quickLoginCheckMilliSeconds`,
+  `minimumQuickLoginWaitSeconds`), with Keycloak's defaults when nobody set them: the detection
+  off. An application sets its own in its realm (*Realm settings* → *Security defenses* → *Brute
+  force detection*), then exports it; an export with the detection off registers without one, and
+  the registration says so. To get c4-infra's settings, an export leaves the ten out.
+- An export holds a setting at its top level or in its `attributes`, which Keycloak writes last
+  when it creates a realm: an attribute wins.
+- On the demo host, an export that would lock an account for good, or for more than 15 minutes at
+  a time, is refused, before anything changes: `permanentLockout` anything but `false`,
+  `maxFailureWaitSeconds` anything but a number up to 900, `maxSecondaryAuthFailures` (the wrong
+  second-factor codes after which Keycloak disables the account) anything but 0, at its top level
+  or in its `attributes`. On the public demo, whoever knows a user name could otherwise lock that account
+  (intent 0041). An export may go below 15 minutes. In dev, it registers as it says.
+- `register-app.sh` prints, for each realm it imports, the settings c4-infra's filled
+  (`stack_brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak keeps
+  its own settings until it is imported again: with `--reset-realms`, which loses its users, or,
+  keeping them, from an administrator in the console (the page above).
 - The master realm has none: its console is public on the demo host, and anyone could keep its
   administrators locked out. Nothing limits guessing there: on the demo host, every administrator
   of the master realm gets a long random password (`openssl rand -base64 32`), the one of the
@@ -507,8 +528,9 @@ then, pulling it needs a GitHub login with `read:packages`.
   providers'), in the image; the master realm, its administrator and its SMTP settings, the
   stack's, not in it; the simulated realms, not in it: a test imports
   [`keycloak-import/simulated-*-realm.json`](keycloak-import/) with `INFRA_HOST` set to its own host
-  (the files name it), and points its realm's providers there; Mailpit, the registration account
-  and the dev brute-force settings, the stack's.
+  (the files name it), and points its realm's providers there; Mailpit and the registration
+  account, the stack's; the brute-force settings its export doesn't hold, which `register-app.sh`
+  fills with the stack's (intent 0041), not in a test's import of it.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
   refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak
@@ -620,6 +642,10 @@ next to it):
 The demo host deploys GitHub projects, each from its own GitHub Actions workflow. A GitLab project
 (immo) isn't deployed by this stack: the migration guide's "In dev" applies to it, not its demo
 steps ([docs/migration.md](docs/migration.md)).
+
+It only shows: a use case, a hypothesis made tangible. It never hosts an acceptance-testing
+campaign, and it can be reset at any time, redeployed from scratch, the applications' test data
+included (product owner, 2026-10-30).
 
 It runs the same stack as the workstation on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:

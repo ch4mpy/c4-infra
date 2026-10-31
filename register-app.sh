@@ -11,7 +11,10 @@
 #                   a realm of the application's registry entry. The realm is imported only when
 #                   Keycloak doesn't have it yet, so that the users and clients created since
 #                   survive; --reset-realms deletes it first. It is imported under the name of the
-#                   file: the file's own "realm" field can't name another.
+#                   file: the file's own "realm" field can't name another. On the demo host, an
+#                   export that would lock an account for good (permanentLockout,
+#                   maxSecondaryAuthFailures) or for more than 15 minutes (maxFailureWaitSeconds),
+#                   at its top level or in its attributes, is refused (intent 0041).
 #   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
 #                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
 #                   restarts Keycloak (once). A theme holding a link or a special file, or a
@@ -144,6 +147,10 @@ if ! registry_check; then
   exit 1
 fi
 registry_entry "$app" || exit 1
+if [ "$INFRA_ENV" = demo ] && [ -z "$REG_DEMO_HOST" ]; then
+  echo "$app has no demo host in the registry (its line says \"-\"): it isn't deployed on the demo host; nothing was registered." >&2
+  exit 1
+fi
 if [ -n "$rabbitmq_user" ] && { ! [[ "$rabbitmq_password_env" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [ -z "${!rabbitmq_password_env:-}" ]; }; then
   echo "--rabbitmq-user needs --rabbitmq-password-env <a variable holding the password>" >&2
   exit 1
@@ -293,6 +300,38 @@ cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its 
     (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
       | "realm attribute \(.): \($unread)")' < "$1"
 }
+# On the demo host, a realm export that would lock an account for good, or for more than 15 minutes
+# at a time (intent 0041, PA-02, PA-03). Keycloak 26.8.1 reads permanentLockout as Jackson does
+# ("TRUE" and 1 are true), caps every temporary lockout at maxFailureWaitSeconds, disables an
+# account for good after maxSecondaryAuthFailures wrong second-factor codes when it isn't 0
+# (DefaultBruteForceProtector.failure), and, creating a realm, writes its attributes after its
+# fields (DefaultExportImportManager.importRealm): in either place, only these values are accepted,
+# or none (the stack's).
+lockout_problems=()
+lockout_check() { # <realm file>
+  local found problem
+  if ! found=$(jq -r '
+      def number: if type != "string" then . elif test("^[+-]?[0-9]+$") then tonumber? // null else null end;
+      def accepted($key): . == null or
+        if $key == "permanentLockout" then . == false or . == "false"
+        elif $key == "maxFailureWaitSeconds" then number | type == "number" and . <= 900
+        else number == 0 end;
+      def harm: {
+        permanentLockout: "whoever knows a user name lock that account for good",
+        maxFailureWaitSeconds: "whoever knows a user name lock that account for more than 15 minutes at a time",
+        maxSecondaryAuthFailures: "whoever knows its password lock that account for good with wrong second-factor codes"
+      }[.];
+      ("permanentLockout", "maxFailureWaitSeconds", "maxSecondaryAuthFailures") as $key
+      | ([$key, .[$key]], (.attributes | objects | ["attributes.\($key)", .[$key]]))
+      | select(.[1] | accepted($key) | not) | "\(.[0]) \(.[1] | tojson), which would let \($key | harm)"' < "$1"); then
+    lockout_problems+=("--realm $1: not JSON that jq can read: refused")
+    return
+  fi
+  while IFS= read -r problem; do
+    problem=${problem%$'\r'}
+    [ -z "$problem" ] || lockout_problems+=("--realm $1: $problem: refused")
+  done <<< "$found"
+}
 if [ ${#realms[@]} -gt 0 ] && ! command -v jq > /dev/null; then
   echo "register-app.sh needs jq to read a realm export (README.md, \"Development\"); nothing was registered." >&2
   exit 1
@@ -320,6 +359,7 @@ for file in "${realms[@]}"; do
       problem=${problem%$'\r'}
       [ -z "$problem" ] || realm_problems+=("--realm $file: $problem: refused")
     done <<< "$found"
+    [ "$INFRA_ENV" != demo ] || lockout_check "$file"
   fi
 done
 if [ -n "$themes" ]; then
@@ -363,6 +403,11 @@ if [ ${#realm_problems[@]} -gt 0 ]; then
   echo "A realm's client policies fetch client metadata documents over https from named domains only (README.md, \"What an application provides\"); nothing was registered." >&2
   exit 1
 fi
+if [ ${#lockout_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${lockout_problems[@]}" >&2
+  echo "On the demo host, a realm's export never locks an account for good, nor for more than 15 minutes at a time (README.md, \"Brute-force protection\"); nothing was registered." >&2
+  exit 1
+fi
 
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
@@ -395,14 +440,14 @@ bash "$INFRA_DIR/networks.sh" ensure "$app"
 # (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session lives in the container's /dev/shm (memory
 # only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  # Every imported realm gets c4-infra's brute-force protection, whatever its export says (intent
-  # 0010): a temporary lockout after 10 failures, 1 more minute per further failure, at most 15,
-  # never for good (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already
-  # in Keycloak keeps its own until it is imported again.
-  brute_force=(-s bruteForceProtected=true -s permanentLockout=false -s maxTemporaryLockouts=0
-    -s failureFactor=10 -s bruteForceStrategy=LINEAR -s waitIncrementSeconds=60
-    -s maxFailureWaitSeconds=900 -s maxDeltaTimeSeconds=43200 -s quickLoginCheckMilliSeconds=1000
-    -s minimumQuickLoginWaitSeconds=60)
+  # The brute-force settings an imported realm's export holds are kept as it says, the detection's
+  # switch included; c4-infra's fill the ones it doesn't hold (intents 0010, 0041): a temporary
+  # lockout after 10 failures, 1 more minute per further failure, at most 15, never for good
+  # (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already in Keycloak
+  # keeps its own until it is imported again.
+  stack_brute_force=(bruteForceProtected=true permanentLockout=false maxTemporaryLockouts=0
+    failureFactor=10 bruteForceStrategy=LINEAR waitIncrementSeconds=60 maxFailureWaitSeconds=900
+    maxDeltaTimeSeconds=43200 quickLoginCheckMilliSeconds=1000 minimumQuickLoginWaitSeconds=60)
   kc_session=$ACCOUNT_CONFIG
   if [ -z "$client_id" ] || ! account_login; then
     [ -z "${login_output:-}" ] || printf '%s\n' "$login_output" | tail -n 3 >&2
@@ -411,9 +456,23 @@ if [ ${#realms[@]} -gt 0 ]; then
   fi
   # What the account may do with each realm, before anything changes (probe: `get
   # realms/<realm>/roles`). A realm there but out of the account's reach stops the registration.
-  declare -A realm_found=()
+  declare -A realm_found=() realm_filled=() realm_off=()
+  stack_keys=$(printf '%s ' "${stack_brute_force[@]%%=*}")
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
+    # before anything changes: the stack's settings the export doesn't hold, in the stack's order,
+    # and whether it turns the detection off; its attributes hold settings too, and win over its
+    # fields when Keycloak creates the realm (lockout_check, above)
+    if ! settings=$(jq -r --arg keys "${stack_keys% }" 'if type != "object" then error("not an object") else
+        [.attributes | objects | to_entries[] | select(.value != null)] as $attributes
+        | (($keys | split(" ")) - [to_entries[] | select(.value != null) | .key] - [$attributes[].key] | join(" ")),
+          (([$attributes[] | select(.key == "bruteForceProtected") | .value] + [.bruteForceProtected])[0]
+            | . != null and (tostring | ascii_downcase) != "true") end' < "$file" | tr -d '\r'); then
+      echo "--realm $file: not a realm export (a JSON object); nothing was registered." >&2
+      exit 1
+    fi
+    realm_filled[$realm]=${settings%%$'\n'*}
+    realm_off[$realm]=${settings##*$'\n'}
     status=0
     probe "$realm" || status=$?
     case "$status" in
@@ -442,10 +501,21 @@ if [ ${#realms[@]} -gt 0 ]; then
       fi
     fi
     echo "Importing realm $realm"
+    brute_force=()
+    for setting in "${stack_brute_force[@]}"; do
+      [[ " ${realm_filled[$realm]} " != *" ${setting%%=*} "* ]] || brute_force+=(-s "$setting")
+    done
     # on stdin: nothing to copy into the container, whatever the file's owner and mode; under the
     # file's name, the realm of the entry checked above, whatever its "realm" field says
     account -i create realms -f - -s "realm=$realm" "${brute_force[@]}" < "$file"
-    echo "Realm $realm: brute-force protection set (README.md, \"Brute-force protection\")"
+    if [ -z "${realm_filled[$realm]}" ]; then
+      echo "Realm $realm: brute-force settings from its export, all of them"
+    else
+      echo "Realm $realm: brute-force settings from its export, the stack's for ${realm_filled[$realm]// /, }"
+    fi
+    if [ "${realm_off[$realm]}" = true ]; then
+      echo "Realm $realm: no brute-force detection, as its export says (README.md, \"Brute-force protection\")"
+    fi
   done
 fi
 

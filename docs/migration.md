@@ -39,7 +39,8 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
      virtual host; on the demo host its account, intent 0002; its network `c4-infra.<app>`, in dev
      as on the demo host, intent 0007); `realms`, `rabbitmq-user` and `themes` what its
      registrations may create or change (intent 0002); `dev-host` and `demo-host` the host names
-     its site is served on (intent 0003).
+     its site is served on (intent 0003), `demo-host` `-` for a project the demo host doesn't
+     deploy, whose registration there is refused (intent 0045).
 
    Every port of the project moves into its block:
 
@@ -50,6 +51,7 @@ On a branch of its own (each project's SDLC: an intent, then a plan), from a cle
    | REST API / management | 8080 / 8081 | p180 / p181 |
    | MCP server / management | 9080 / 9081 | p280 / p281 |
    | REST API database | 2633 | p633 |
+   | a service of the project's own a developer reaches from the workstation | its own | a free port of the block, its own port's last three digits where free (Tickee's directory: 3389 → p389) |
    | `openapi` profile: gateway / REST API | dev ports | p090 / p190, passed as `--server.port` |
    | `openapi` profile: their management | dev ports + 1 | p091 / p191, passed as `--management.server.port` (else they take the dev applications' p081 / p181) |
 
@@ -221,9 +223,12 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    `org.keycloak.keys.KeyProvider` components (the dev keys are in the repository), issuer host
    `infra.c4-soft.com`, the BFF's redirect URIs on `<project>.c4-soft.com`, back-channel logout on
    `http://<project>.gateway:7080/gateway/logout/connect/back-channel/<registration>`, SMTP
-   `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings needn't be
-   rendered: `register-app.sh` replaces them at import with c4-infra's (README, "Brute-force
-   protection"), in dev as on the demo host.
+   `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings are its own:
+   `register-app.sh` keeps those its export holds, the detection's switch included, and gives the
+   others c4-infra's (README, "Brute-force protection"), in dev as on the demo host; the demo host
+   refuses an export that would lock an account for good or for more than 15 minutes at a time:
+   `permanentLockout` not `false`, `maxFailureWaitSeconds` anything but a number up to 900,
+   `maxSecondaryAuthFailures` not 0, at its top level or in its `attributes`.
 5. **Its workflow**, as `<project>@<vps>`, a job of its repository's `demo` environment, restricted
    to the branch it deploys from, which alone holds the deployment's secrets (`VPS_HOST`,
    `VPS_SSH_KEY`, `VPS_KNOWN_HOSTS`, and the registry's token when its images aren't on GHCR:
@@ -339,15 +344,16 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
   it in dev, edit it, run `bash ../c4-infra/register-app.sh --app tickee --themes keycloak/themes`
   (or `deploy-dev.sh`), then reload the login page: the dev Keycloak caches no theme and isn't
   restarted, so the other applications' sessions stay valid.
-- `tenant2` federates Tickee's own LDAP server, `ldap://tickee.ldap-tenant2:389`: its `ldap2`
-  container, now started by the project's own compose (move `ldap2` out of `compose-keycloak.yml`),
-  on Tickee's own network `c4-infra.tickee` (external), in dev as in the demo. Tickee runs,
-  monitors and upgrades it: the stack provides no directory (intent 0023). Keycloak, attached to
-  that network by Tickee's registration, federates it, and no other application's container
-  reaches it.
-- The realm `tickee` has two BFF clients with back-channel logout (`gateway` and `tickee-bff`):
-  both URLs move to the gateway's port.
-- Demo: steps above (Tickee's `ldap2` container joins `c4-infra.tickee`).
+- `tenant2` federates Tickee's own directory, 389 Directory Server, `ldap://tickee.ldap-tenant2:3389`,
+  without a periodic sync: its `ldap2` container, started by the project's own compose
+  (`compose-ldap.yml`, published on `127.0.0.1:13389` in dev), on Tickee's own network
+  `c4-infra.tickee` (external), in dev as in the demo. Tickee runs, monitors and upgrades it: the
+  stack provides no directory (intent 0023). Keycloak, attached to that network by Tickee's
+  registration, federates it, and no other application's container reaches it.
+- The realm `tickee` has one BFF client with back-channel logout, `tickee-bff` (its former
+  `gateway` client was removed at the migration): its URL moves to the gateway's port.
+- Demo: steps above (Tickee's `ldap2` container joins `c4-infra.tickee`; its database and its
+  directory's volume backed up by `c4-app`, labelled `postgres` and `volumes`).
 
 ### Faito (n° 4, ports 14xxx, realm `faito`)
 

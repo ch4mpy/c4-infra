@@ -9,7 +9,8 @@
 #   name (c4-infra, keycloak, keycloak-db, mailpit, rabbitmq, grafana-lgtm, reverse-proxy);
 # - realms, themes: its Keycloak realms and themes, comma-separated, "-" for none;
 # - rabbitmq-user: its RabbitMQ user, "-" for none;
-# - dev-host, demo-host: its host names, in dev and on the demo host (reserved before it deploys there).
+# - dev-host, demo-host: its host names, in dev and on the demo host (reserved before it deploys there);
+#   demo-host "-" for an application the demo host doesn't deploy, whose registration there is refused.
 #
 # Columns are separated by spaces, and no value holds one. No two lines share a number, a name, a realm,
 # a theme, a RabbitMQ user or a host name.
@@ -21,4 +22,4 @@
 2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
 3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
 4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
-5 immo immo - immo immo.dev.localhost immo.c4-soft.com
+5 immo immo - immo immo.dev.localhost -

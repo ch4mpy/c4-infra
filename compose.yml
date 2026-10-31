@@ -31,6 +31,9 @@ networks:
     # a fixed name: the shared services' own network, which no application joins (intent 0007). Each
     # application has its own, c4-infra.<app>: its registration creates it and attaches the shared
     # services but keycloak-db to it (networks.sh), compose.apps.yml (COMPOSE_FILE) keeps them there.
+    # Each shared service gives it priority 100: compose makes the network of highest priority, then
+    # the first key, a container's primary one, c4-infra.<app> sorts before default, and Docker can't
+    # restart a container whose primary network is gone (intent 0043).
     name: c4-infra
   keycloak-db:
     # Keycloak's database, which only Keycloak and its one-shot import reach (intents 0007, RQ-03, and
@@ -55,7 +58,7 @@ services:
     container_name: c4-infra.reverse-proxy
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    networks: {default: {priority: 100}}
     environment:
       INFRA_HOST: ${INFRA_HOST}
       # picks caddy/env/dev.caddy or caddy/env/demo.caddy, when Caddy starts: register-app.sh only
@@ -147,7 +150,7 @@ services:
     container_name: c4-infra.keycloak
     restart: unless-stopped
     logging: *default-logging
-    networks: [default, keycloak-db]
+    networks: {default: {priority: 100}, keycloak-db: {}}
     # plain HTTP inside the Docker network: the reverse proxy is the only way in from outside. No
     # import: keycloak-import created the master realm before it starts.
     command:
@@ -184,7 +187,7 @@ services:
     container_name: c4-infra.mailpit
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    networks: {default: {priority: 100}}
     volumes:
       - mailpit_data:/data
     environment:
@@ -205,7 +208,7 @@ services:
     hostname: rabbitmq
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    networks: {default: {priority: 100}}
     # its node name, rabbit@rabbitmq, resolves to the loopback first, where epmd and the Erlang
     # distribution listen (below): its own tools (rabbitmqctl, the healthcheck) reach it there
     extra_hosts:
@@ -239,7 +242,7 @@ services:
     container_name: c4-infra.grafana-lgtm
     restart: unless-stopped
     logging: *default-logging
-    networks: [default]
+    networks: {default: {priority: 100}}
     environment:
       GF_SERVER_ROOT_URL: https://${INFRA_HOST}/grafana
       GF_SERVER_SERVE_FROM_SUB_PATH: 'true'
