@@ -4,7 +4,8 @@
 # `register-app.sh --index-only` started together, ten times, the second's registry naming fewer
 # applications, so that their pages differ. Each time the page starts with <!doctype html>, ends
 # with </body></html>, holds one <!doctype and is one of the two pages; no temporary page nor lock
-# is left. No Docker.
+# is left. Then the lock (0053's writer): one held makes the next writer wait, one older than 60 s is
+# taken over. No Docker.
 #
 #   bash tests/0053-index-writers.sh
 #
@@ -66,5 +67,25 @@ for ((round = 1; round <= ROUNDS; round++)); do
   check "round $round: one whole page, one of the two" whole
   check "round $round: no temporary page nor lock left" nothing_left
 done
+
+# The lock itself: two writers rarely overlap long enough to mix their pages, so the lock is checked
+# on its own. A writer holding it makes the next one wait; a killed writer's, older than 60 s, is taken over.
+lock=$stack/caddy/html/.index.lock
+index "$all" > /dev/null 2>&1
+mkdir "$lock"
+index "$work/fewer.txt" > "$work/b.log" 2>&1 &
+b=$!
+sleep 1
+check "a held lock: the next writer waits" eval 'cmp -s "$page" "$work/all.html" && kill -0 "$b"'
+rmdir "$lock"
+wait "$b"
+status_b=$?
+check "a held lock: once released, the writer writes its page" \
+  eval '[ "$status_b" -eq 0 ] && cmp -s "$page" "$work/fewer.html" || { cat "$work/b.log"; false; }'
+mkdir "$lock"
+touch -d '2 minutes ago' "$lock"
+check "a lock older than 60 s: taken over" index "$all"
+check "a lock older than 60 s: the page written" cmp -s "$page" "$work/all.html"
+check "a lock older than 60 s: nothing left" nothing_left
 
 finish

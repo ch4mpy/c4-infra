@@ -79,10 +79,14 @@ own() { # <path>…
 RABBITMQ=c4-infra.rabbitmq
 
 # What a registration leaves behind, removed on exit whatever happens: the admin CLI's session in
-# the Keycloak container, RabbitMQ's working directory
+# the Keycloak container, RabbitMQ's working directory, the landing page's lock
 kc_session=""
 work=""
+index_lock=""
 cleanup() {
+  if [ -n "$index_lock" ]; then
+    rmdir "$index_lock" 2> /dev/null || true
+  fi
   if [ -n "$kc_session" ]; then
     docker exec "$KEYCLOAK" rm -f "$kc_session" > /dev/null 2>&1 || true
   fi
@@ -168,13 +172,35 @@ accounts_section() { # <snapshot>
   echo '</ul>'
 }
 
+# Takes the landing page's lock, caddy/html/.index.lock (mkdir: atomic under Git Bash too, which has
+# no flock), into index_lock, retrying for 30 s; a lock older than 60 s, a killed writer's, is taken
+# over. Returns 1, saying which lock, when it can't be taken.
+take_index_lock() {
+  local lock=$INFRA_DIR/caddy/html/.index.lock attempt
+  for ((attempt = 0; attempt < 150; attempt++)); do
+    if mkdir "$lock" 2> /dev/null; then
+      index_lock=$lock
+      return 0
+    fi
+    if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2> /dev/null)" ]; then
+      rmdir "$lock" 2> /dev/null || true
+      continue
+    fi
+    sleep 0.2
+  done
+  echo "The landing page's lock $lock was held for 30 s: another registration or a deployment is writing the page (or remove that directory if none is); the page wasn't written." >&2
+  return 1
+}
+
 # The landing page (intent 0048): in dev the shared services; each registered application, linked to
 # its host name in this environment (registry.txt), with its accounts; the simulated providers' users.
 # No script, nothing to fetch: Caddy serves it with a policy that allows neither (caddy/Caddyfile).
 write_index() {
   local site name host realm user password page
   mkdir -p "$INFRA_DIR/caddy/html"
-  # a name of its own: two registrations, or a registration and a deployment, may write the page at once
+  # Built under a name of its own, then copied into index.html under a lock: a file renamed over it
+  # stays unseen through Docker Desktop's bind mount on Linux (tests/0053-mount-facts.sh), and two
+  # registrations, or a registration and a deployment, may write the page at once
   page=$(mktemp "$INFRA_DIR/caddy/html/.index.XXXXXX")
   {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -210,8 +236,12 @@ write_index() {
     done
     echo '</body></html>'
   } > "$page"
-  chmod 644 "$page"
-  mv "$page" "$INFRA_DIR/caddy/html/index.html"
+  take_index_lock || { rm -f "$page"; return 1; }
+  cat "$page" > "$INFRA_DIR/caddy/html/index.html"
+  chmod 644 "$INFRA_DIR/caddy/html/index.html"
+  rm -f "$page"
+  rmdir "$index_lock"
+  index_lock=""
   own "$INFRA_DIR/caddy/html"
 }
 
