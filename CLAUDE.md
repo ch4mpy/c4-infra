@@ -2,6 +2,8 @@
 
 c4-infra: the infrastructure the c4-soft applications share on one machine (development workstation, demo VPS). [README.md](README.md) holds the design, the port registry and what an application provides; [docs/migration.md](docs/migration.md) how a former project moves onto it.
 
+The demo host only shows use cases: it never hosts an acceptance-testing campaign, and can be reset at any time, redeployed from scratch with the applications' test data (README, "Demo host"; product owner, 2026-10-30).
+
 ## Repository layout
 
 - Intent home: `docs/intent/`, one sub-folder per change (`NNNN-<slug>/`), see [docs/intent/README.md](docs/intent/README.md).

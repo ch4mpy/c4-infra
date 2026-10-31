@@ -394,9 +394,12 @@ account for a minute, whatever their count. In dev as on the demo host.
   the registration says so. To get c4-infra's settings, an export leaves the ten out.
 - An export holds a setting at its top level or in its `attributes`, which Keycloak writes last
   when it creates a realm: an attribute wins.
-- On the demo host, an export that would lock an account for good (`permanentLockout`, or its
-  attributes' one, anything but `false`) is refused, before anything changes: on the public demo,
-  whoever knows a user name could lock that account (intent 0041). In dev, it registers as it says.
+- On the demo host, an export that would lock an account for good, or for more than 15 minutes at
+  a time, is refused, before anything changes: `permanentLockout` anything but `false`,
+  `maxFailureWaitSeconds` above 900, `maxSecondaryAuthFailures` (the wrong second-factor codes
+  after which Keycloak disables the account) anything but 0, at its top level or in its
+  `attributes`. On the public demo, whoever knows a user name could otherwise lock that account
+  (intent 0041). An export may go below 15 minutes. In dev, it registers as it says.
 - `register-app.sh` prints, for each realm it imports, the settings c4-infra's filled
   (`stack_brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak keeps
   its own settings until it is imported again: with `--reset-realms`, which loses its users, or,
@@ -639,6 +642,10 @@ next to it):
 The demo host deploys GitHub projects, each from its own GitHub Actions workflow. A GitLab project
 (immo) isn't deployed by this stack: the migration guide's "In dev" applies to it, not its demo
 steps ([docs/migration.md](docs/migration.md)).
+
+It only shows: a use case, a hypothesis made tangible. It never hosts an acceptance-testing
+campaign, and it can be reset at any time, redeployed from scratch, the applications' test data
+included (product owner, 2026-10-30).
 
 It runs the same stack as the workstation on one Ubuntu VPS, deployed by
 [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) on every push to `main`:
