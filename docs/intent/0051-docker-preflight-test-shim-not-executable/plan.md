@@ -70,14 +70,14 @@ Machine: the product owner's Linux workstation (Ubuntu 26.04.1 LTS, Docker 29.x)
   - answered: the planted lines plant a `prune` only, not `rm`, `rmi`, `volume rm`, `network rm` (`:204-206`): the matcher is 0049's, unchanged; RQ-04 asks for a planted prune and an empty window, both proven
 - Mutation check (bug), at cc9770d by the verifier, `LC_ALL=C C4_DOCKER_REAP=labelled`: AC-03's mutant (the `chmod` line removed) → `KO - AC-07: docker is the shim, and its calls are logged`, `docker is /usr/local/bin/docker: the shim …/shim/docker is not found or not executable`, `3 check(s) failed`, `exit 1`; AC-04's mutant (`docker_reap` → `true`, the second deviation) → `KO - AC-07: the shim saw the preflight's reaping, before the tests`, AC-03 ×4 KO, `5 check(s) failed`, `exit 1` (the same at 0d3abf9 by the orchestrator)
 - Verifier: 6/7 criteria OK, 0 KO — table below
-- Not verifiable here: AC-02 (Git Bash on the Windows workstation): for the product owner, on that workstation
+- AC-02, 2026-10-31, run by the product owner on the Windows workstation (Git Bash) at `a6e61c1`: `bash tests/0049-docker-preflight.sh` → `every check passed`, `exit 0` (its `Killed` line is AC-03's own kill of run A; the CRLF warnings and hook lines come from that workstation's global git configuration, applied to the test's throwaway repository).
 - Files outside the plan: none (`spec.md`, the approved spec)
 - Pre-existing findings (not fixed, out of scope): "the shim saw the preflight's reaping, before the tests" (`tests/0049-docker-preflight.sh:268`) greps the whole log and never compares the call's time with the first test's start, so its "before" is unchecked → bug intent suggested
 
 | Criterion | Result | Evidence |
 | --- | --- | --- |
 | AC-01 | OK | `LC_ALL=C C4_DOCKER_REAP=labelled bash tests/0049-docker-preflight.sh` at cc9770d (verifier) and at 0d3abf9 (orchestrator): `ok - AC-07: docker is the shim, and its calls are logged`, `ok - AC-07: the shim saw the preflight's reaping, before the tests`, `every check passed`, exit 0 |
-| AC-02 | not verifiable | Git Bash on Windows: to run on the product owner's Windows workstation |
+| AC-02 | OK (2026-10-31, the PO) | Windows workstation, Git Bash, at `a6e61c1`: `bash tests/0049-docker-preflight.sh` → `every check passed`, `exit 0`; `ok - AC-07: docker is the shim, and its calls are logged`, `ok - AC-07: the shim saw the preflight's reaping, before the tests` |
 | AC-03 | OK | the `chmod` mutant: the guard KO before run E naming the shim, `3 check(s) failed`, exit 1 |
 | AC-04 | OK | the `docker_reap` → `true` mutant: `KO - AC-07: the shim saw the preflight's reaping, before the tests`, the guard ok, exit 1 |
 | AC-05 | OK | `ok - AC-07: the window's check fails on a prune in it`, `… fails on a log with no call in it`, `… passes on a read in it`; the real run's `ok - AC-07: no prune nor removal …`; in AC-03's mutant the same check KO, `no docker call logged between the first test's start and the last test's end` |
