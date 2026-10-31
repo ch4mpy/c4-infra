@@ -19,6 +19,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 
 FIXTURE=tests/fixtures/0030/verif-ldap-realm.json
@@ -37,7 +39,7 @@ host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else prin
 umask 022
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f "$NAME" > /dev/null 2>&1
+  docker rm -f -v "$NAME" > /dev/null 2>&1
   docker network rm "$NETWORK" > /dev/null 2>&1
   rm -rf "$work"
 }
@@ -122,10 +124,10 @@ admin() { # <kcadm args…>: as the throwaway's administrator, the request's JSO
     --no-config --server "$SERVER" --realm master --user admin 2> "$work/admin.err"
 }
 said() { echo "kcadm:"; cat "$work/admin.err"; return 1; }
-docker rm -f "$NAME" > /dev/null 2>&1
+docker rm -f -v "$NAME" > /dev/null 2>&1
 docker network rm "$NETWORK" > /dev/null 2>&1
-docker network create "$NETWORK" > /dev/null
-docker run -d --name "$NAME" --network "$NETWORK" --env-file "$(host_path "$work/admin.env")" \
+docker network create "${C4_LABELS[@]}" "$NETWORK" > /dev/null
+docker run "${C4_LABELS[@]}" -d --name "$NAME" --network "$NETWORK" --env-file "$(host_path "$work/admin.env")" \
   "$IMAGE" start-dev --db=dev-file > /dev/null
 check "the throwaway Keycloak answers its readiness probe" kc_throwaway_ready "$NAME"
 

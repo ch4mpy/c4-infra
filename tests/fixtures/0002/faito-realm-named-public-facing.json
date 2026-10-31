@@ -1,1 +1,45 @@
-{"realm":"public-facing","enabled":true,"displayName":"faito-realm-named-public-facing (0002 fixture)"}
+{
+  "realm": "public-facing",
+  "enabled": true,
+  "displayName": "faito-realm-named-public-facing (0002 fixture)",
+  "roles": {
+    "realm": [ { "name": "manager" }, { "name": "worker" } ],
+    "client": { "faito-api": [ { "name": "read" }, { "name": "write" } ] }
+  },
+  "clients": [
+    {
+      "clientId": "faito-api",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ],
+  "groups": [
+    { "name": "managers", "path": "/managers", "realmRoles": [ "manager" ], "clientRoles": { "faito-api": [ "write", "read" ] } },
+    { "name": "a&b<c", "path": "/a&b<c", "realmRoles": [ "worker" ] }
+  ],
+  "users": [
+    {
+      "username": "ann",
+      "enabled": true,
+      "email": "ann@faito.test",
+      "emailVerified": true,
+      "firstName": "Ann",
+      "lastName": "Faito",
+      "groups": [ "/managers" ],
+      "credentials": [ { "type": "password", "value": "ann-password", "temporary": false } ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@faito.test",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Faito",
+      "groups": [ "/a&b<c" ],
+      "credentials": [ { "type": "password", "value": "bob-password", "temporary": false } ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # 0007 fixture (tests/0007-compose-check.stand-in.sh): a service that builds, named demo-gateway:
 # compose names its image faito-demo-gateway, which is also the name of an application faito-demo's
-# built gateway; sudo c4-app up refuses it before any container starts (review round 2, 2026-10-22)
+# built gateway; sudo c4-app up refuses it because it builds, as every build since intent 0011, before any container starts
 services:
   demo-gateway:
     container_name: faito.demo-gateway

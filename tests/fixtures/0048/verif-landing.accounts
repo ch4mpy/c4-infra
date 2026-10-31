@@ -1,0 +1,4 @@
+# tests/0048-landing-page.sh: the accounts the landing page lists (realm, username, dev password)
+verif-landing ann ann-password
+
+verif-landing bob -

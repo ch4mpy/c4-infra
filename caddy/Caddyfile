@@ -102,6 +102,16 @@ import env/{$INFRA_ENV}.caddy
 
 	import env-infra-routes
 
+	# the landing page register-app.sh writes (intent 0048): the applications and their accounts, on
+	# Keycloak's origin, so no script, no form, no frame, nothing fetched; not to be indexed
+	handle / {
+		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		header X-Robots-Tag "noindex"
+		root * /etc/caddy/html
+		rewrite * /index.html
+		file_server
+	}
+
 	handle {
 		respond "c4-infra: the applications are on their own host names" 404
 	}

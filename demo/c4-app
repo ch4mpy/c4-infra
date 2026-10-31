@@ -19,7 +19,13 @@
 #   sudo c4-app register <option>…  bash /home/c4-infra/c4-infra/register-app.sh --app <application>
 #                                   with register-app.sh's options (README.md) but --app: paths are
 #                                   relative to ~/<application>/, and --rabbitmq-password-env <VAR>
-#                                   takes VAR from ~/<application>/.env
+#                                   takes VAR from ~/<application>/.env; with --accounts <file>, each
+#                                   account gets the password root keeps for it, or a new one drawn
+#                                   (each one with --new-passwords), which register-app.sh sets in
+#                                   Keycloak (intent 0048)
+#   sudo c4-app accounts            the application's accounts and their passwords, <realm>
+#                                   <username> <password> a line, as its last registration with
+#                                   --accounts set them
 #   sudo c4-app backup              backs up what the project declares (intent 0027), read from its
 #                                   running containers: a service labelled c4-infra.backup: postgres
 #                                   dumped hot in its container (pg_dump -Fc), one labelled volumes
@@ -129,6 +135,8 @@ Usage, from an application's account:
   sudo c4-app down
   sudo c4-app register [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
                        [--rabbitmq-user <user> --rabbitmq-password-env <VAR of .env>] [--reset-realms]
+                       [--accounts <file> [--new-passwords]]
+  sudo c4-app accounts                  (the demo accounts' passwords, as the last registration set them)
   sudo c4-app backup                    (the services labelled c4-infra.backup: postgres or volumes,
                                         into /var/backups/c4-apps/<app>/, nightly at 03:45 too)
   sudo c4-app restore [<stamp> --yes]
@@ -235,6 +243,9 @@ incoming=$STAGING_ROOT/.$app.incoming
 snap=$STAGING_ROOT/.run.$app
 snap_src=$snap/src
 model=$snap/model.json
+# root-only (0600), outside anything a container may mount and anything a run wipes: the passwords of
+# the application's demo accounts (intent 0048), <realm> <username> <password> a line
+passwords=$STAGING_ROOT/.$app.passwords
 # 0750 root:<app>: the application reads its backups, never writes there
 backups=$BACKUP_ROOT/$app
 
@@ -538,8 +549,41 @@ cmd_pull() {
   return "$status"
 }
 
+# A demo account's password (intent 0048): 24 characters of base64url, drawn again until it holds a
+# lowercase and an uppercase letter, a digit and - or _
+draw_password() {
+  local password
+  while :; do
+    password=$(head -c 18 /dev/urandom | base64 | tr '+/' '-_')
+    if [[ $password =~ [a-z] && $password =~ [A-Z] && $password =~ [0-9] && $password =~ [-_] ]]; then
+      printf '%s' "$password"
+      return
+    fi
+  done
+}
+
+# The accounts file's <realm> <username> pairs, each with the password the store keeps for it, or a new
+# one (every one with <draw all> true): the lines register-app.sh sets in Keycloak and the store keeps
+account_passwords() { # <staged accounts file> <draw all: true or false>
+  local line realm user password rest
+  local -A kept=() listed=()
+  if ! $2 && [ -f "$passwords" ]; then
+    while read -r realm user password; do
+      [ -z "$realm" ] || kept["$realm $user"]=$password
+    done < "$passwords"
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    [[ ! $line =~ ^[[:space:]]*(#|$) ]] || continue
+    read -r realm user rest <<< "$line"
+    [ -n "$user" ] && [ -z "${listed["$realm $user"]:-}" ] || continue
+    listed["$realm $user"]=true
+    printf '%s %s %s\n' "$realm" "$user" "${kept["$realm $user"]:-$(draw_password)}"
+  done < "$1"
+}
+
 cmd_register() {
-  local args=() var value
+  local args=() var value accounts="" new_passwords=false drawn=""
   copy_in
   snapshot_src
   while [ $# -gt 0 ]; do
@@ -549,6 +593,16 @@ cmd_register() {
         value=$(staged_path "$2") || exit 1
         args+=("$1" "$value")
         shift 2
+        ;;
+      --accounts)
+        [ $# -ge 2 ] || usage
+        accounts=$(staged_path "$2") || exit 1
+        args+=("$1" "$accounts")
+        shift 2
+        ;;
+      --new-passwords)
+        new_passwords=true
+        shift
         ;;
       --rabbitmq-user)
         [ $# -ge 2 ] || usage
@@ -572,10 +626,32 @@ cmd_register() {
         shift
         ;;
       --app) fail "the application is the account's own ($app): no --app" ;;
-      *) fail "unknown option $1 (register takes --realm, --themes, --proxy, --rabbitmq-user, --rabbitmq-password-env, --reset-realms)" ;;
+      *) fail "unknown option $1 (register takes --realm, --themes, --proxy, --rabbitmq-user, --rabbitmq-password-env, --reset-realms, --accounts, --new-passwords)" ;;
     esac
   done
+  if [ -n "$accounts" ]; then
+    # in register-app.sh's environment only, under a name of c4-app's: never on a command line
+    drawn=$(account_passwords "$accounts" "$new_passwords")
+    export C4_APP_ACCOUNT_PASSWORDS=$drawn
+    args+=(--account-passwords-env C4_APP_ACCOUNT_PASSWORDS)
+  elif $new_passwords; then
+    fail "--new-passwords draws the passwords of the accounts --accounts lists: give it too"
+  fi
   bash "$STACK/register-app.sh" --app "$app" "${args[@]}" < /dev/null
+  # kept once the registration succeeded: after a failed one, Keycloak may hold some new passwords
+  # the store doesn't, until the next registration sets the store's again
+  if [ -n "$accounts" ]; then
+    install -m 0600 -o root -g root /dev/null "$passwords.new"
+    [ -z "$drawn" ] || printf '%s\n' "$drawn" > "$passwords.new"
+    mv "$passwords.new" "$passwords"
+  fi
+}
+
+# The application's demo accounts and their passwords, as its last registration with --accounts set
+# them (intent 0048): its workflow publishes them where only the project's members read
+cmd_accounts() {
+  [ $# -eq 0 ] || usage
+  [ ! -f "$passwords" ] || cat "$passwords"
 }
 
 # A database's dump, run in its own container: a fixed script, its user and database read there; exec'd,
@@ -1209,6 +1285,7 @@ case "$command" in
     docker compose -p "$app" down --remove-orphans
     ;;
   register) cmd_register "$@" ;;
+  accounts) cmd_accounts "$@" ;;
   backup) cmd_backup "$@" ;;
   restore) cmd_restore "$@" ;;
   *) usage ;;

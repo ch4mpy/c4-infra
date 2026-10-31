@@ -5,7 +5,9 @@
 # Mailpit asks for its credentials, not Caddy). /mailpit/ asks for them and RabbitMQ has no route
 # (AC-03), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-06). Since intent 0013,
 # Turu's MCP origin (turu-mcp.c4-soft.com) reaches an echo stand-in of its MCP server (turu.mcp:9080)
-# with X-Forwarded-Host and -Proto, without the single-page-app headers.
+# with X-Forwarded-Host and -Proto, without the single-page-app headers. Since intent 0048, / serves the
+# landing page (a page of the test's), with a policy that allows no script and X-Robots-Tag noindex;
+# another path still answers 404.
 #
 #   bash tests/0003-demo-edge.sh
 #
@@ -14,6 +16,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 # the reverse proxy's image (compose.yml)
 CADDY_IMAGE=caddy:2.11.4-alpine
@@ -29,45 +33,50 @@ host_path() {
 
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
   docker network rm "$NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
 cleanup
-mkdir -p "$work/apps" "$work/test"
+mkdir -p "$work/apps" "$work/test" "$work/html"
+printf '<p>the landing page</p>\n' > "$work/html/index.html"
+# the mount point of the test's page, which Docker can't create inside the read-only configuration
+# (git ignores it: up.sh and the registrations write the page there)
+mkdir -p caddy/html
 
 # the demo's Mailpit credentials: a random password, its bcrypt hash in Mailpit's MP_UI_AUTH, as
 # compose.demo.yml writes it (taken by `docker run -e NAME` from this environment, never on a
 # command line)
 password=$(openssl rand -hex 12)
-MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
+MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run "${C4_LABELS[@]}" --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
 MP_UI_AUTH=demo:$MAILPIT_UI_PASSWORD_HASH
 export MP_UI_AUTH
 
-docker network create "$NAME" > /dev/null
+docker network create "${C4_LABELS[@]}" "$NAME" > /dev/null
 # the shared services, as echo upstreams under their service names
 for service in keycloak:8080 grafana-lgtm:3000 rabbitmq:15672; do
-  MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
     -e PORT="${service#*:}" -e STAND_IN_NAME="${service%:*}" \
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
     "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null
 done
 # Turu's MCP server, under its demo name (intent 0013), and Turu's site as register-app.sh generates it
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-turu-mcp" --network "$NAME" --network-alias turu.mcp \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-turu-mcp" --network "$NAME" --network-alias turu.mcp \
   -e PORT=9080 -e STAND_IN_NAME=turu-mcp -v "$(host_path "$PWD/tests/fixtures/0013"):/stand-in:ro" \
   "$CADDY_IMAGE" caddy run --config /stand-in/forwarded-upstream.caddy --adapter caddyfile > /dev/null
 bash routes.sh generate examples/routes/turu.routes turu demo > "$work/apps/turu.caddy"
 # Mailpit, the stack's image (compose.yml), under its web root as on the demo host
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
   -e MP_WEBROOT=/mailpit/ -e MP_UI_AUTH axllent/mailpit:v1.31.0 > /dev/null
 # the demo configuration as it is, under a wrapper that only swaps Let's Encrypt for Caddy's own CA;
 # Caddy has no Mailpit credential
 printf '{\n\tlocal_certs\n\tskip_install_trust\n}\n\nimport /etc/caddy/Caddyfile\n' > "$work/test/Caddyfile"
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
   -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \
+  -v "$(host_path "$work/html"):/etc/caddy/html:ro" \
   "$PROXY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
 
 # Requests https://<host>:$PORT<path>: sets $work/code, $work/headers (no \r) and $work/body
@@ -126,7 +135,14 @@ fetch /rabbitmq/
 check "/rabbitmq/: 404" answered 404
 check "/rabbitmq/: not RabbitMQ's" body_holds 'c4-infra: the applications are on their own host names'
 fetch /
-check "/: 404 (no landing page on the demo host)" answered 404
+check "/: the landing page (intent 0048)" answered 200
+check "/: the page served" body_holds '<p>the landing page</p>'
+check "/: its policy allows no script, form, frame nor fetch" header_is Content-Security-Policy \
+  "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+check "/: not to be indexed" header_is X-Robots-Tag noindex
+fetch /nowhere
+check "/nowhere: 404" answered 404
+check "/nowhere: the shared host's answer" body_holds 'c4-infra: the applications are on their own host names'
 
 # the headers every site sends, HSTS on the demo host
 fetch /auth/realms/faito

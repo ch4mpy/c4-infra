@@ -36,6 +36,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/stubs.sh
 
 PROXY_IMAGE=c4-infra/reverse-proxy
@@ -55,7 +57,7 @@ host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else prin
 
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
   docker network rm "$NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
@@ -69,15 +71,15 @@ for app in verif verif-down; do
 done
 printf '{\n\tlocal_certs\n\tskip_install_trust\n}\n\nimport /etc/caddy/Caddyfile\n' > "$work/test/Caddyfile"
 
-docker network create "$NAME" > /dev/null
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-frontend" --network "$NAME" --network-alias verif.frontend \
+docker network create "${C4_LABELS[@]}" "$NAME" > /dev/null
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-frontend" --network "$NAME" --network-alias verif.frontend \
   -v "$(host_path "$PWD/$FIXTURES"):/fixture:ro" "$UPSTREAM_IMAGE" caddy run --config /fixture/frontend.caddy --adapter caddyfile > /dev/null
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-dev" --network "$NAME" -p "127.0.0.1:$DEV_PORT:443" \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-dev" --network "$NAME" -p "127.0.0.1:$DEV_PORT:443" \
   -e INFRA_ENV=dev -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$PWD/certs"):/certs:ro" \
   "$PROXY_IMAGE" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-demo" --network "$NAME" -p "127.0.0.1:$DEMO_PORT:443" \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-demo" --network "$NAME" -p "127.0.0.1:$DEMO_PORT:443" \
   -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \

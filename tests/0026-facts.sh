@@ -31,6 +31,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
+COMPOSE_LABELS="{c4-infra.owner: c4-infra, c4-infra.run: \"$C4_INFRA_RUN\", c4-infra.created: \"$(date +%s)\", c4-infra.ttl: \"14400\", c4-infra.lock: \"${C4_DOCKER_LOCK:-}\"}"
 
 CADDY_IMAGE=caddy:2.11.4-alpine
 STILL_PROJECT=c4-infra-0026-facts-still
@@ -68,10 +71,13 @@ part_docker() {
   local first second third last size
   # (a) one service, then the same with the bound only
   cat > "$work/still.yml" <<EOF
+networks:
+  default: {labels: $COMPOSE_LABELS}
 services:
   still:
     image: $CADDY_IMAGE
     container_name: $STILL
+    labels: $COMPOSE_LABELS
     command: [caddy, respond, --listen, ':7080', facts]
 EOF
   { cat "$work/still.yml"; printf '    logging:\n      driver: json-file\n      options:\n        max-size: 10m\n        max-file: "3"\n'; } > "$work/still-bounded.yml"
@@ -89,10 +95,13 @@ EOF
 
   # (b), (c) a bounded container printing 60 MiB, a line apart first and last
   cat > "$work/talker.yml" <<EOF
+networks:
+  default: {labels: $COMPOSE_LABELS}
 services:
   talker:
     image: $CADDY_IMAGE
     container_name: $TALKER
+    labels: $COMPOSE_LABELS
     init: true
     logging:
       driver: json-file
@@ -237,7 +246,7 @@ part_lgtm() {
   # (a string, not @tsv: @tsv doubles the backslashes of a Windows path)
   done < <(jq -r '.services["grafana-lgtm"].volumes // [] | .[] | "\(.type)\t\(.source // "")\t\(.target)\t\(.read_only // false)"' <<< "$config")
   docker rm -f -v "$LGTM" > /dev/null 2>&1
-  MSYS_NO_PATHCONV=1 docker run -d --name "$LGTM" --env-file "$(host_path "$work/env")" "${mounts[@]}" "$image" > /dev/null
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$LGTM" --env-file "$(host_path "$work/env")" "${mounts[@]}" "$image" > /dev/null
   check "(d) a throwaway $image starts ($LGTM, no published port)" \
     test "$(docker inspect -f '{{.State.Running}}' "$LGTM" 2> /dev/null)" = true
   waited=0
@@ -256,7 +265,7 @@ part_lgtm() {
   check_settings "(d)"
 
   # Tempo prints its default, 336h0m0s, for the flag's value: the flag at another value, in a Tempo alone
-  MSYS_NO_PATHCONV=1 docker run -d --name "$TEMPO" --entrypoint /otel-lgtm/tempo/tempo "$image" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$TEMPO" --entrypoint /otel-lgtm/tempo/tempo "$image" \
     -config.file=/otel-lgtm/tempo-config.yaml -backend-worker.compaction.block-retention=335h > /dev/null
   tempo_alone() {
     local i

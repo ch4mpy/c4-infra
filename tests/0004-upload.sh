@@ -10,6 +10,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 WORKFLOW=.github/workflows/deploy-demo.yml
 REMOTE='"$VPS:~/c4-infra/"'
@@ -27,7 +29,7 @@ check "the workflow uploads with rsync -az" test -n "$line"
 check "its destination is $REMOTE (replaced by $DEST here)" test "$upload" != "$command"
 echo "# $upload"
 
-arrived=$(MSYS_NO_PATHCONV=1 docker run --rm -v "$(host_path "$PWD"):/src:ro" -w /src alpine:3 \
+arrived=$(MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm -v "$(host_path "$PWD"):/src:ro" -w /src alpine:3 \
   sh -c "apk add --no-cache rsync > /dev/null && $upload && ls -1 $DEST" 2>&1)
 status=$?
 check "the upload command runs (exit $status)" test "$status" -eq 0

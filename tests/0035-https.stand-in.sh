@@ -3,7 +3,8 @@
 # trusts in its own client alone (tests/lib/stand-in-host.sh: stand_in_ca_cert, stand_in_https):
 #
 #   - RQ-03: with no stack, then with a Caddy that has no local authority, both functions exit 1,
-#     saying why;
+#     saying why; then, a proxy holding a root while the stand-in's 443 accepts connections and never
+#     answers, stand_in_https returns non-zero within 45 s instead of waiting without end (intent 0047);
 #   - AC-01: Faito's fixture registered and started with sudo c4-app: https://faito.c4-soft.com/fr/
 #     answers 200 from faito.frontend, curl verifying against the root alone (its CAfile the root,
 #     its CApath an empty directory), and the stand-in's own store refuses the site (curl exits 60);
@@ -145,6 +146,38 @@ check "RQ-03, a Caddy without local authority: stand_in_ca_cert fails, saying so
 check "RQ-03, a Caddy without local authority: stand_in_https too" \
   fails_saying "stand_in_https: the stand-in's Caddy has no local authority" stand_in_https faito.c4-soft.com /fr/
 stand_in_exec docker rm -f -v c4-infra.reverse-proxy > /dev/null
+
+# a root to read (any certificate), and on the stand-in's 443 a listener that accepts and never answers
+stall_bounded() {
+  local listener pid start status elapsed
+  stand_in_exec docker run -d --name c4-infra.reverse-proxy c4-infra/reverse-proxy sh -c \
+    'mkdir -p /data/caddy/pki/authorities/local && cp /etc/ssl/certs/ca-certificates.crt /data/caddy/pki/authorities/local/root.crt && exec sleep 600' \
+    > /dev/null || return 1
+  listener=$(stand_in_exec -i sh -s <<'EOF'
+setsid perl -MIO::Socket::INET -e '
+  my $s = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => 443, Listen => 5, ReuseAddr => 1) or die "$!";
+  my @held; while (my $c = $s->accept) { push @held, $c }' < /dev/null > /dev/null 2>&1 &
+echo $!
+EOF
+)
+  start=$SECONDS
+  stand_in_https faito.c4-soft.com /fr/ > /dev/null 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2> /dev/null && [ $((SECONDS - start)) -lt 60 ]; do sleep 1; done
+  if kill -0 "$pid" 2> /dev/null; then
+    kill "$pid"
+    status="did not return within 60 s"
+  else
+    wait "$pid"
+    status=$?
+  fi
+  elapsed=$((SECONDS - start))
+  stand_in_exec kill "${listener%$'\r'}" 2> /dev/null
+  stand_in_exec docker rm -f -v c4-infra.reverse-proxy > /dev/null
+  # 28, the stall's own status: another (7, 1) would mean the listener or the root never was there
+  [ "$status" = 28 ] && [ "$elapsed" -le 45 ] || { echo "$status after $elapsed s"; return 1; }
+}
+check "0047 RQ-04: a site that accepts and never answers ends stand_in_https's wait within 45 s, status 28" stall_bounded
 
 # AC-01
 check "the applications' image is loaded" stand_in_load_image "$STAND_IN_CADDY_IMAGE"

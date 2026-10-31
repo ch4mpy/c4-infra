@@ -1,5 +1,5 @@
-# 0007 fixture (tests/0007-compose-check.stand-in.sh): a build with a privileged step, host entitlements and the agent's ssh,
-# which sudo c4-app up refuses before any container starts (review round 1, 2026-10-22)
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): a build with a privileged step, host entitlements and the agent's ssh;
+# sudo c4-app up refuses it because it builds, as every build since intent 0011, before any container starts
 services:
   gateway:
     image: caddy:2.11.4-alpine

@@ -22,6 +22,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
+COMPOSE_LABELS="{c4-infra.owner: c4-infra, c4-infra.run: \"$C4_INFRA_RUN\", c4-infra.created: \"$(date +%s)\", c4-infra.ttl: \"14400\", c4-infra.lock: \"${C4_DOCKER_LOCK:-}\"}"
 source tests/lib/keycloak.sh
 
 IMAGE=c4-infra/keycloak
@@ -39,7 +42,7 @@ host_path() {
 umask 077
 work=$(mktemp -d)
 remove_throwaways() {
-  docker rm -f $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1
   docker volume rm -f "$VOLUME" > /dev/null 2>&1
 }
 cleanup() {
@@ -65,19 +68,19 @@ import_env() { # <file> <smtp host>
 # <log> <env file>: the one-shot import on the throwaway volume, its output in $work/<log>, shown
 # when it fails
 import_once() {
-  docker run --rm --name "$PREFIX-import" --env-file "$(host_path "$2")" \
+  docker run "${C4_LABELS[@]}" --rm --name "$PREFIX-import" --env-file "$(host_path "$2")" \
     -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
     "$IMAGE" "${IMPORT_ARGS[@]}" > "$work/$1" 2>&1 < /dev/null || { tail -n 10 "$work/$1"; return 1; }
 }
 # A Keycloak on that volume, with no import and none of the import's variables
 serve() {
-  docker run -d --name "$PREFIX-serve" -v "$VOLUME:/opt/keycloak/data" "$IMAGE" start-dev --db=dev-file > /dev/null
+  docker run "${C4_LABELS[@]}" -d --name "$PREFIX-serve" -v "$VOLUME:/opt/keycloak/data" "$IMAGE" start-dev --db=dev-file > /dev/null
 }
 ready() { kc_throwaway_ready "$PREFIX-serve"; }
 # stopped, its file database closed (a killed Keycloak loses its last writes there)
 stop_serving() {
   docker stop -t 60 "$PREFIX-serve" > /dev/null 2>&1
-  docker rm "$PREFIX-serve" > /dev/null 2>&1
+  docker rm -v "$PREFIX-serve" > /dev/null 2>&1
 }
 admin() { # <kcadm args…>: the import's administrator, with the admin CLI
   docker exec -e KC_CLI_PASSWORD "$PREFIX-serve" "$KCADM" "$@" \
@@ -96,7 +99,7 @@ says() { # <log> <text>
 }
 
 # (a)
-docker volume create "$VOLUME" > /dev/null
+docker volume create "${C4_LABELS[@]}" "$VOLUME" > /dev/null
 import_env "$work/first.env" first-smtp-host
 check "(a) the one-shot import on an empty database exits 0 (${IMPORT_ARGS[*]})" import_once first.log "$work/first.env"
 check "(a) it imports the master realm" says first.log "Realm 'master' imported"
@@ -115,15 +118,19 @@ check "(b) the master realm keeps the first SMTP host" smtp_host_is first-smtp-h
 stop_serving
 
 # (c)
-cat > "$work/compose.yml" <<'YAML'
+cat > "$work/compose.yml" <<YAML
+networks:
+  default: {labels: $COMPOSE_LABELS}
 services:
   once:
     image: caddy:2.11.4-alpine
     command: ["sh", "-c", "exit 0"]
     restart: "no"
+    labels: $COMPOSE_LABELS
   service:
     image: caddy:2.11.4-alpine
     command: ["caddy", "respond", "--listen", ":8080", "ok"]
+    labels: $COMPOSE_LABELS
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
       interval: 1s

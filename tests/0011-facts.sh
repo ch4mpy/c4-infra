@@ -18,6 +18,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
+COMPOSE_LABELS="{c4-infra.owner: c4-infra, c4-infra.run: \"$C4_INFRA_RUN\", c4-infra.created: \"$(date +%s)\", c4-infra.ttl: \"14400\", c4-infra.lock: \"${C4_DOCKER_LOCK:-}\"}"
 export MSYS_NO_PATHCONV=1
 
 PROJECT=c4-0011-facts
@@ -26,7 +29,7 @@ CADDY=c4-0011-caddy
 IMAGE=caddy:2.11.4-alpine
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f "$CADDY" > /dev/null 2>&1
+  docker rm -f -v "$CADDY" > /dev/null 2>&1
   (cd "$work/empty" && docker compose -p "$PROJECT" down -v > /dev/null 2>&1)
   docker volume rm "${PROJECT}_cache" > /dev/null 2>&1
   rm -rf "$work"
@@ -44,10 +47,11 @@ services:
     command: [caddy, respond, --listen, ':7080', facts]
     networks: [internal]
     volumes: [cache:/cache]
+    labels: $COMPOSE_LABELS
 networks:
-  internal: {}
+  internal: {labels: $COMPOSE_LABELS}
 volumes:
-  cache: {}
+  cache: {labels: $COMPOSE_LABELS}
 EOF
 project_containers() { docker ps -aq --filter "label=com.docker.compose.project=$1" | tr -d '\r'; }
 gone() { # <project>
@@ -86,7 +90,7 @@ answers_soon() {
   done
   probe
 }
-docker run -d --name "$CADDY" "$IMAGE" > /dev/null
+docker run "${C4_LABELS[@]}" -d --name "$CADDY" "$IMAGE" > /dev/null
 check "(c) a throwaway Caddy's admin API answers the probe" answers_soon
 docker exec "$CADDY" sh -c 'printf ":80 {\n\tstub-refused-directive\n}\n" > /tmp/refused.Caddyfile'
 docker exec "$CADDY" caddy reload --config /tmp/refused.Caddyfile --adapter caddyfile > "$work/reload.log" 2>&1

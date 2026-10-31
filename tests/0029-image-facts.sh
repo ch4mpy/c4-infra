@@ -11,7 +11,8 @@
 #   - (c) started as the README says, `-e KC_DB=dev-file <image> start-dev` and a bootstrap
 #     administrator, nothing else: ready, the master realm answering over plain HTTP under /auth,
 #     the description's features enabled and no other preview or experimental one, the simulated
-#     providers' login themes there.
+#     providers' login themes there; the check of the other features fails on a server information
+#     it can't read features from (intent 0047).
 #
 #   bash tests/0029-image-facts.sh [<image>]   (c4-infra/keycloak, up.sh's build, by default; the
 #                                              published reference after its publication)
@@ -22,6 +23,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 
 IMAGE=${1:-c4-infra/keycloak}
@@ -36,11 +39,11 @@ described() { sed -n "s/^$1=//p" "$DESCRIPTION"; }
 umask 022
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f "$NAME" > /dev/null 2>&1
+  docker rm -f -v "$NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
-docker rm -f "$NAME" > /dev/null 2>&1
+docker rm -f -v "$NAME" > /dev/null 2>&1
 
 # (a) what the image says
 docker image inspect "$IMAGE" > /dev/null 2>&1 || docker pull --quiet "$IMAGE" > /dev/null
@@ -65,7 +68,7 @@ credential_free() {
 }
 check "(b) no environment variable or label holds a credential" credential_free
 files() { # <image>: each file of /opt/keycloak and its checksum (the image has no awk)
-  docker run --rm --entrypoint bash "$1" -c 'cd /opt/keycloak && find . \( -type f -o -type l \) -print0 | LC_ALL=C sort -z \
+  docker run "${C4_LABELS[@]}" --rm --entrypoint bash "$1" -c 'cd /opt/keycloak && find . \( -type f -o -type l \) -print0 | LC_ALL=C sort -z \
     | xargs -0 sha256sum | while read -r sum file; do printf "%s %s\n" "$file" "$sum"; done'
 }
 files "quay.io/keycloak/keycloak:$version" > "$work/upstream"
@@ -93,7 +96,7 @@ KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD
 printf '%s\n' KC_BOOTSTRAP_ADMIN_USERNAME=admin "KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_CLI_PASSWORD" > "$work/admin.env"
 chmod 600 "$work/admin.env"
-docker run -d --name "$NAME" --env-file "$(host_path "$work/admin.env")" -e KC_DB=dev-file "$IMAGE" start-dev > /dev/null
+docker run "${C4_LABELS[@]}" -d --name "$NAME" --env-file "$(host_path "$work/admin.env")" -e KC_DB=dev-file "$IMAGE" start-dev > /dev/null
 check "(c) started with KC_DB=dev-file and start-dev: ready" kc_throwaway_ready "$NAME"
 master_answers() {
   docker exec "$NAME" bash -c 'exec 3<> /dev/tcp/localhost/8080
@@ -109,13 +112,18 @@ for feature in $(features); do
   check "(c) the feature $feature is enabled" \
     jq -e --arg f "$feature" 'any(.features[]; .name == $f and .enabled)' < "$work/serverinfo.json"
 done
-other_features() {
-  local other
+other_features() { # [<server information file>]
+  local file=${1:-$work/serverinfo.json} other
+  jq -e '.features | type == "array" and length > 0' < "$file" > /dev/null 2>&1 \
+    || { echo "no feature read from $file"; return 1; }
   other=$(jq -r '.features[] | select(.enabled and (.type == "PREVIEW" or .type == "EXPERIMENTAL")) | .name' \
-    < "$work/serverinfo.json" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
+    < "$file" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
   [ -z "$other" ] || { echo "enabled, not described:"; printf '%s\n' "$other"; return 1; }
 }
 check "(c) no other preview or experimental feature is enabled" other_features
+: > "$work/empty.json"
+fails_on_nothing() { ! other_features "$work/empty.json" > /dev/null 2>&1; }
+check "(c) that check fails when it reads no feature (an empty server information)" fails_on_nothing
 for theme in simulated-google simulated-facebook simulated-apple; do
   check "(c) the login theme $theme is there" jq -e --arg t "$theme" 'any(.themes.login[]; .name == $t)' < "$work/serverinfo.json"
 done

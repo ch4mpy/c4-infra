@@ -24,6 +24,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 THROWAWAY=c4probe-lgtm
 INTERNAL_PORTS=(7946 9095 9096 9097 13133)
@@ -115,7 +117,7 @@ part_throwaway() {
   # (a string, not @tsv: @tsv doubles the backslashes of a Windows path)
   done < <(jq -r '.services["grafana-lgtm"].volumes // [] | .[] | "\(.type)\t\(.source // "")\t\(.target)\t\(.read_only // false)"' <<< "$config")
   docker rm -f -v "$THROWAWAY" > /dev/null 2>&1
-  MSYS_NO_PATHCONV=1 docker run -d --name "$THROWAWAY" --env-file "$(host_path "$work/env")" "${mounts[@]}" "$image" > /dev/null
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$THROWAWAY" --env-file "$(host_path "$work/env")" "${mounts[@]}" "$image" > /dev/null
   check "a throwaway $image starts ($THROWAWAY, no published port)" \
     test "$(docker inspect -f '{{.State.Running}}' "$THROWAWAY" 2> /dev/null)" = true
   until MSYS_NO_PATHCONV=1 docker exec "$THROWAWAY" test -f /tmp/ready < /dev/null 2> /dev/null; do
@@ -220,7 +222,7 @@ EOF
   check "(c) the image's healthcheck passes, every component checked" healthcheck_passes "$THROWAWAY"
 
   # (d)
-  MSYS_NO_PATHCONV=1 docker run --rm --entrypoint cat "$image" /otel-lgtm/tempo-config.yaml < /dev/null | tr -d '\r' > "$work/image-tempo.yaml"
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm --entrypoint cat "$image" /otel-lgtm/tempo-config.yaml < /dev/null | tr -d '\r' > "$work/image-tempo.yaml"
   sed -n '/^[^#]/,$p' grafana-lgtm/tempo-config.yaml | tr -d '\r' | grep -vxF -- "$ADDED_LINE" > "$work/copy-tempo.yaml"
   check "(d) grafana-lgtm/tempo-config.yaml adds $ADDED_LINE" grep -qxF -- "$ADDED_LINE" grafana-lgtm/tempo-config.yaml
   check "(d) the image's tempo-config.yaml is read ($image)" test -s "$work/image-tempo.yaml"

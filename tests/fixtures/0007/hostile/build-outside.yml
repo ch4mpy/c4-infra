@@ -1,5 +1,5 @@
-# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a build context outside Faito's directory, Hurura'a's (an escape of RQ-09's kind),
-# which sudo c4-app up refuses before any container starts
+# 0007 fixture (tests/0007-compose-check.stand-in.sh): Faito's compose.yml with a build context outside Faito's directory, Hurura'a's (an escape of RQ-09's kind);
+# sudo c4-app up refuses it because it builds, as every build since intent 0011, before any container starts
 services:
   gateway:
     image: caddy:2.11.4-alpine

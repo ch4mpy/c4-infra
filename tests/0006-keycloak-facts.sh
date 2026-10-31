@@ -27,6 +27,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 IMAGE=c4-infra/keycloak
 NAME=c4-infra.0006-facts
@@ -45,7 +47,7 @@ host_path() {
 
 umask 077
 work=$(mktemp -d)
-trap 'docker rm -f "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
+trap 'docker rm -f -v "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
 
 # The throwaway's secrets, in this shell's environment: docker exec takes them by name (-e NAME)
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
@@ -103,9 +105,9 @@ ready() {
 }
 
 check "Faito's realm export is there ($FAITO_REALM)" test -f "$FAITO_REALM"
-docker rm -f "$NAME" > /dev/null 2>&1
+docker rm -f -v "$NAME" > /dev/null 2>&1
 check "a throwaway Keycloak of $IMAGE starts (start-dev, in-memory database)" \
-  docker run -d --name "$NAME" --env-file "$(host_path "$work/kc.env")" "$IMAGE" start-dev --db=dev-mem
+  docker run "${C4_LABELS[@]}" -d --name "$NAME" --env-file "$(host_path "$work/kc.env")" "$IMAGE" start-dev --db=dev-mem
 check "it is ready" ready
 
 # The account, as registration-account.sh creates it: every flow off but the service account, its

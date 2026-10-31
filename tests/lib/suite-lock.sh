@@ -106,12 +106,12 @@ suite_lock_take() {
         0)
           SUITE_LOCK_FD=$_suite_lock_pipe
           exec {ticket_fd}>&-
-          docker rm -f "$ticket" > /dev/null 2>&1 {SUITE_LOCK_FD}>&-
+          docker rm -f -v "$ticket" > /dev/null 2>&1 {SUITE_LOCK_FD}>&-
           return 0
           ;;
         1)
           exec {ticket_fd}>&-
-          docker rm -f "$ticket" > /dev/null 2>&1
+          docker rm -f -v "$ticket" > /dev/null 2>&1
           return 1
           ;;
       esac

@@ -19,6 +19,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 FIXTURES=tests/fixtures/0003
 CADDY_IMAGE=caddy:2.11.4-alpine
@@ -52,19 +54,19 @@ cleanup() {
   done
   MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null 2>&1
   bash register-app.sh --index-only
-  docker rm -f $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
 
 # An echo stand-in on 127.0.0.1:<port> (https: with the shared leaf)
 stand_in() { # <name> <port> <http|https>
-  MSYS_NO_PATHCONV=1 docker run -d --name "$STAND_IN-$2" -p "127.0.0.1:$2:$2" -e PORT="$2" -e STAND_IN_NAME="$1" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$STAND_IN-$2" -p "127.0.0.1:$2:$2" -e PORT="$2" -e STAND_IN_NAME="$1" \
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" -v "$(host_path "$PWD/certs"):/certs:ro" \
     "$CADDY_IMAGE" caddy run --config "/stand-in/$3.caddy" --adapter caddyfile > /dev/null
 }
 
-docker rm -f $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
+docker rm -f -v $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
 stand_in verif-gateway 47080 https
 stand_in verif-fr 47200 http
 stand_in verif-en 47205 http
