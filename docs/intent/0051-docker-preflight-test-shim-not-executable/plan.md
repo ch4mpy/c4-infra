@@ -83,3 +83,5 @@ Machine: the product owner's Linux workstation (Ubuntu 26.04.1 LTS, Docker 29.x)
 | AC-05 | OK | `ok - AC-07: the window's check fails on a prune in it`, `… fails on a log with no call in it`, `… passes on a read in it`; the real run's `ok - AC-07: no prune nor removal …`; in AC-03's mutant the same check KO, `no docker call logged between the first test's start and the last test's end` |
 | AC-06 | OK | the spec's four greps rerun: every stub run through `PATH` or `JAVA_HOME` made executable (`chmod +x`, `tests/lib/stubs.sh:39`, `tests/lib/argv-log.sh:19`, `install -m 0755`), the 0049 shim at `:123` |
 | AC-07 | OK | `bash -n` exit 0; the two `--changed` runs above; `git diff df14155 -- tests/0049-docker-preflight.sh`: four check labels added (the guard, the three planted lines), none removed, `# covers:` and the namespace unchanged |
+
+- Deployment: deploy-demo run 41231025027 on f174779 (the merge), `success` (both jobs: images, VPS); nothing the demo host runs changed, no check after deployment in this plan.
