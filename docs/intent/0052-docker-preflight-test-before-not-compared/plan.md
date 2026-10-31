@@ -47,3 +47,33 @@ All in `tests/0049-docker-preflight.sh`; its `# covers:` line, label namespace, 
 - 2026-10-31 — the review round's fix (32a86dc) changes the six planted checks of step 1, which the plan said the fix wouldn't touch: each KO case now asserts the cause `reaped_before_tests` prints (`reap_refused`), and `reap_planted` takes the order log, so the no-start case reuses it; labels unchanged. A strengthening, not a weakening: against the pre-fix `grep -q` body, five of the six are KO (the "log without it" case too, which printed no cause); against the fix, all ok.
 
 ## Verification
+
+Bootstrap mode (intent home's `Mode` line): no PR, no stage label, gates decided in this session; the release gate does not hold pushes to `main`.
+
+### Verification — 32a86dc
+
+Machine: the product owner's Linux workstation (Ubuntu 26.04.1 LTS, Docker 29.x), locale `fr_FR.UTF-8`, the runs under `LC_ALL=C` (deviation above), `TMPDIR=/home/jerome/.cache/c4-infra-tests`.
+
+- **KO first:** under `fr_FR.UTF-8`, `bash tests/0049-docker-preflight.sh` at 32a86dc → `4 check(s) failed` (`AC-09: the host's memory from MemAvailable (Linux)`, `AC-09: Docker's VM measured`, `AC-05: the shortage named`, `AC-09: the VM's disk read from df's line, what a pull prints first aside`), `exit 1`: 0050's decimal comma, pre-existing on `main`, not 0052's; the six planted reaping checks and `ok - AC-07: the shim saw the preflight's reaping, before the tests` ok under both locales.
+- Red (step 1, 8869741, the planted checks alone, no Docker): `KO - AC-07: the reaping's check fails on a reap after the first test's start`, `… after the last test's end`, `… during the tests beside one before`, `… on an order log without a start`; `4 check(s) failed`, `exit 1`. Green (6174b65): the nine planted checks ok, `every check passed`, `exit 0`; `LC_ALL=C bash tests/0049-docker-preflight.sh` → `every check passed`, `exit 0` (19.6 s).
+- Verification command: `LC_ALL=C C4_DOCKER_REAP=labelled bash tests/run.sh --changed` → `verification passed (--changed: 5 of 89 tests)`, `run.sh exit 0` (2026-10-31, 08:59), at 6174b65
+- Rerun after the fixes: `LC_ALL=C C4_DOCKER_REAP=labelled bash tests/run.sh --changed 6174b65` → `verification passed (--changed: 4 of 89 tests)`, `run.sh exit 0` (09:02), at 32a86dc
+- `bash -n tests/0049-docker-preflight.sh` → exit 0
+- Durations: lock —, bugs review 2m06s @08:59, security review —, fix round 0m17s @09:02, run 0m23s @08:59, reruns 0m27s (first verdict —) @09:02, verifier 1m58s @09:04; total 6m25s (08:59–09:06)
+- Risk tier: standard (tests only)
+- Reviews: bootstrap mode: 1 round, on 546078e..6174b65 (/home/jerome/workspaces/c4-infra-0052); bugs (`code-review`, high): covered 546078e..6174b65, 0 Important, 7 details: 3 fixed (32a86dc), 4 answered; security and quality: not run (bootstrap, standard risk); the comments the diff adds read: one-line function headers and a section title, none says what the code does
+  - fixed: the planted KO checks accepted any failure, not its cause (`tests/0049-docker-preflight.sh:225`): `reap_refused` now requires the printed cause; the reaper's pattern padded with spaces then trimmed for the message (`:213`): passed bare, padded in `index`; the no-start case duplicated `reap_planted`'s body in an `eval` (`:230`): `reap_planted` takes the order log
+  - answered: only the reaper's container listing is compared, not its network, volume or image listings (`:214`): RQ-01 defines the reaper call as `ps -a --filter label=<ns>.run`, the first of `docker_reap`'s calls, which `docker_preflight` makes before the others in one function; "the first test's start" is the fake test's own `E start`, not `run.sh`'s lane setup (`:191`): the spec's definition (RQ-01, `order.log`), the same window the 0049 check reads; `window_edge` takes any word but `start` as `end` (`:193`): two callers, both literal; `reaped_before_tests` and `cleaning_during_tests` keep their own empty-edge guard (`:214`): PA-01 A shares the edge's reading, each check keeps its own causes
+- Mutation check (bug): the planted checks at 8869741 (the pre-fix `grep -q` body) → `4 check(s) failed`, `exit 1` (this session and the verifier); the strengthened checks of 32a86dc against that body → `5 check(s) failed`, `exit 1`. AC-04's mutant (the Proof's `sed` command, run E's holder calls `docker_reap`) at 32a86dc → `KO - AC-07: the shim saw the preflight's reaping, before the tests`, `1793473421584709369 ps -a --filter label=c4-test-0049-859091.run --format … at or after the first test's start 1793473421358971654`, `1 check(s) failed`, `exit 1` (the window check ok, the reap removing nothing); the same rerun by the verifier, `exit 1`
+- Verifier: 4/5 criteria OK, 0 KO — table below
+- Not verifiable here: AC-02 (Git Bash on the Windows workstation): for the product owner, on that workstation (2026-10-31)
+- Files outside the plan: none
+- Pre-existing findings (not fixed, out of scope): none
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 | OK | `LC_ALL=C bash tests/0049-docker-preflight.sh` in the two `--changed` runs (6174b65, 32a86dc): `ok - AC-07: the shim saw the preflight's reaping, before the tests`, `ok - AC-07: no prune nor removal …`, `every check passed` |
+| AC-02 | not verifiable | Git Bash on Windows: for the product owner's Windows workstation (2026-10-31): `bash tests/0049-docker-preflight.sh` → `every check passed`, with the six `ok - AC-07: the reaping's check …` lines and `ok - AC-07: the shim saw the preflight's reaping, before the tests` |
+| AC-03 | OK | harness of the planted checks at HEAD (verifier): the six reaping checks and the window's three ok, `every check passed`, `exit 0`; each KO case asserts its cause (`… at or after the first test's start 100`, `no reaper call (…) logged`, `no test start logged`); at 8869741 the four misplaced or unordered cases KO |
+| AC-04 | OK | the `docker_reap` mutant: `KO - AC-07: the shim saw the preflight's reaping, before the tests`, the call and the start printed, `exit 1`; ok on the unmodified test (AC-01) |
+| AC-05 | OK | `bash -n` exit 0; both `--changed` runs `verification passed`, `run.sh exit 0`; `git diff 8912d88 -- tests/0049-docker-preflight.sh`: six check labels added, none removed, the first reaping check kept under its label, `# covers:` unchanged; the window check's three planted checks ok |
