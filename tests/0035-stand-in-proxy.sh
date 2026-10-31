@@ -6,7 +6,9 @@
 # beside it):
 #
 #   - both adapt;
-#   - their JSON is the same once apps.tls and apps.pki are left out;
+#   - their JSON is the same once apps.tls and apps.pki are left out, and the file servers' hide lists:
+#     Caddy adds to them the configuration files where each mounts them (the landing page's, intent
+#     0048), which name only those files;
 #   - the stand-in's one automation policy issues from the internal authority, which installs its root
 #     nowhere; the demo host's configuration has no internal issuer.
 #
@@ -35,9 +37,11 @@ adapt() { # <output> [docker run option…]: caddy adapt of the demo configurati
     "$CADDY_IMAGE" caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > "$output" 2> "$output.err" \
     || { tail -n 5 "$output.err"; return 1; }
 }
+BUT_CERTIFICATES='del(.apps.tls, .apps.pki) | walk(if type == "object" and .handler? == "file_server" then del(.hide) else . end)'
 same_but_certificates() {
-  diff <(jq -S 'del(.apps.tls, .apps.pki)' < "$work/host.json") <(jq -S 'del(.apps.tls, .apps.pki)' < "$work/stand-in.json")
+  diff <(jq -S "$BUT_CERTIFICATES" < "$work/host.json") <(jq -S "$BUT_CERTIFICATES" < "$work/stand-in.json")
 }
+CONFIGURATION_FILES='^(/etc/caddy/Caddyfile|/etc/caddy/env/[^/]+[.]caddy|/etc/caddy-stack-env/[^/]+[.]caddy)$'
 is() { # <file> <jq filter> <expected, compact JSON>
   local actual
   actual=$(jq -c "$2" < "$1" | tr -d '\r')
@@ -52,7 +56,11 @@ check "the demo host's configuration adapts" adapt "$work/host.json"
 check "the stand-in's adapts" adapt "$work/stand-in.json" \
   -v "$(host_path "$PWD/tests/stand-in-host/caddy-env"):/etc/caddy/env:ro" \
   -v "$(host_path "$PWD/caddy/env"):/etc/caddy-stack-env:ro"
-check "both are the same, apps.tls and apps.pki aside" same_but_certificates
+check "both are the same, apps.tls, apps.pki and the file servers' hide lists aside" same_but_certificates
+for config in host stand-in; do
+  check "the $config's one file server hides its configuration files only" is "$work/$config.json" \
+    "[.. | objects | select(.handler? == \"file_server\") | .hide | length > 0 and all(test(\"$CONFIGURATION_FILES\"))]" '[true]'
+done
 check "the stand-in's one automation policy issues from the internal authority" \
   is "$work/stand-in.json" .apps.tls.automation.policies '[{"issuers":[{"module":"internal"}]}]'
 check "whose root is installed nowhere" \
