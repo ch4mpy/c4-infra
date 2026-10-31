@@ -177,3 +177,4 @@ Bootstrap mode (intent home's `Mode` line): no PR, no stage label, gates decided
 | PA-01 | stand-in OK; literal command not run | run.sh's lock take and preflight with the default floors under fr_FR.UTF-8 → `preflight: exit 0`, every measure with a point |
 | IV-01, IV-02 | OK | functions and `docker preflight:` lines unchanged but `_docker_awk`; the one `LC_ALL=C` is the prefix in `_docker_awk` |
 | RQ-01 to RQ-05 | OK | as AC-01 to AC-04; no bare `awk` left, 14 `_docker_awk` calls |
+- 2026-10-31 — merged into `main` as `98c6737` and pushed; deploy-demo run 41245803288 on `98c6737`: `success` (its two jobs); nothing the demo host runs changes.
