@@ -1,7 +1,7 @@
 # Spec: tests/0049-docker-preflight.sh's docker shim never runs on Linux, so its AC-07 checks prove nothing there
 
 - Intent: [0051](intent.md)
-- Status: draft
+- Status: approved (2026-10-31)
 - Version: 1
 - Risk: standard (no risk rule applies: tests only; the preflight, the stack and what a host exposes don't change)
 - Policies applied: none yet; standing constraints: CLAUDE.md "Repository layout" (bash and Git Bash) and "Verification" (`# covers:`, a change of `tests/lib/` runs every test, the suite's lock, the tests' Docker labels), 0049's RQ-10 and AC-07
@@ -91,7 +91,7 @@ None.
 - Options: **A** fix 0049's shim alone (make it executable where it is written) with RQ-03's guard in that test / **B** A, and write 0049's shim with a shared helper of `tests/lib/` that always sets the bit (`argv_log_path` already logs and `exec`s the real command, but not the pull lines this shim prints: it would need an option), a change of `tests/lib/` that runs every test / **C** A, and a suite-wide read check (as `tests/0049-docker-labels.sh` reads every test for its labels) that every file a test writes into a folder it puts on `PATH` is made executable, a heuristic with its own false positives and misses.
 - Recommendation: A: the inventory shows a single omission, the shared helpers already set the bit, and the guard makes this test's failure explicit on both systems; C stays available as its own intent if the class comes back.
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ### PA-02: What makes AC-07's second check non-vacuous
 
@@ -99,7 +99,7 @@ None.
 - Options: **A** the fake holder test of run E makes one harmless, logged docker call during the window (a read, e.g. `docker ps -q --filter label=$NS.run`), the check requires at least one logged call in the window, and its matcher is proven against a planted `… image prune …` line in a scratch log (no Docker) / **B** the check fails only on an empty log, and its matcher is proven on a planted line / **C** nothing more: RQ-03's guard and the first check already fail on an empty log.
 - Recommendation: A: it proves that a call made during the tests reaches the log, which is what the check relies on; B and C leave a log the shim fills before the tests only (a lane's `PATH` losing the shim) undetected.
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ### PA-03: A defect the honest test reveals
 
@@ -107,7 +107,7 @@ None.
 - Options: **A** fixed in this change when it is small and inside the preflight's parsing or `run.sh`'s lanes (a version 2 of this spec says so), a new bug intent otherwise / **B** always a new bug intent, this change delivering the honest test with its KO visible.
 - Recommendation: A: the suite on Linux is the product owner's daily proof; leaving it KO for a small, now visible defect would hide the next one, which is this intent's cost.
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ## Acceptance criteria
 
@@ -127,3 +127,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-31 — first version
+- v1 approved — 2026-10-31 — every point of attention decided A by the PO, also tech lead (bootstrap mode)

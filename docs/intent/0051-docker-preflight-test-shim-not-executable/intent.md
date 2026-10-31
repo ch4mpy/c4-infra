@@ -6,7 +6,7 @@
   `plan.md`, Verification — dca25ea, "KO, pre-existing, not 0050's"; drafted at the product owner's request
   in the skills' batch session)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-31
 - Decided: 2026-10-31
 - Supersedes: —
