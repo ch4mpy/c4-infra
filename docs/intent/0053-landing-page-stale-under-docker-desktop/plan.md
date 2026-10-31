@@ -64,4 +64,15 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
 
 ## Deviations
 
+- 2026-10-31, Linux workstation (Ubuntu, Docker Desktop), step 1: `bash tests/0048-landing-page.sh` from the main checkout detached at 09480d3 (the branch's head), locale as is, `TMPDIR=~/.cache/c4-infra-tests`, twice, the same result each time:
+
+  ```
+  KO - AC-10: shows it
+  KO - AC-04: lists no account
+  2 check(s) failed
+  ```
+
+  The test is frozen from here (`.claude/frozen-tests.local`).
+- 2026-10-31: steps 5 (`/sdlc-verify 0053`, its `bash tests/run.sh --changed --all`) and 6 (delivery) wait for a quiet window on the Linux workstation's Docker, another project's agent using the shared dev stack (the PO, 2026-10-31). Steps 1 to 4 ran without restarting any shared service.
+
 ## Verification
