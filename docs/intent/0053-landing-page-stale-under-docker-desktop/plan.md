@@ -73,6 +73,20 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
   ```
 
   The test is frozen from here (`.claude/frozen-tests.local`).
+- 2026-10-31, Linux workstation, step 2: `bash tests/0053-mount-facts.sh` (15 s); the directory is mounted as the stack mounts `./caddy/` (its `html/index.html` under it), and (a) runs on the file (r)'s renames left, as the fix's first write will:
+
+  ```
+  fact: (r) page 1, at once: served no, mounted no; after 1 s: served no, mounted no
+  … (pages 2 to 5 the same)
+  fact: (r) rename fresh at once: no, 5 of 5 stale
+  fact: (a) page 1, at once: served yes, mounted yes; after 1 s: served yes, mounted yes
+  … (pages 2 to 5 the same)
+  fact: (a) in place fresh at once: yes
+  ok - (a) the content written into the existing file: served and mounted fresh at once, every time
+  every check passed
+  ```
+
+  Verdict: the rename is the cause (the mount keeps showing the replaced file, 1 s later too, whatever the stack's age: this container was new); the page written in place is fresh at once, so the plan's default (a) holds and PA-01's stop doesn't apply.
 - 2026-10-31: steps 5 (`/sdlc-verify 0053`, its `bash tests/run.sh --changed --all`) and 6 (delivery) wait for a quiet window on the Linux workstation's Docker, another project's agent using the shared dev stack (the PO, 2026-10-31). Steps 1 to 4 ran without restarting any shared service.
 
 ## Verification
