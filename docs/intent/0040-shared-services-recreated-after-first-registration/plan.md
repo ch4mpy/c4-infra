@@ -123,3 +123,9 @@ Runs: `TMPDIR=~/.cache/c4-infra-tests` always. The tests that read `.env` or wri
 | 0045 AC-03 | OK | the same rerun: `registry.txt: check passes` with immo's line `5 immo immo - immo immo.dev.localhost -` |
 | 0045 AC-04 | OK | read: `registry.txt:12-13`, `docs/migration.md:41-43` |
 | No regression | OK | the full run at 940dbd2, 83 of 84 tests passed, 0018 fixed in 0de2c95, the rerun `verification passed`; `--changed 0de2c95 --all` at 39783c5, 36 tests, `verification passed`; `--changed 39783c5 --all` at f3a0900, 38 tests, `verification passed` |
+
+### After deployment — deploy-demo run 41156382451 on `main` 65d86f7 (2026-10-31 01:39:21 to 01:41:08 UTC), success
+
+- Both jobs `success`. The step "Pull and restart the stack" recreated, as announced, the five services `networks.sh` attaches (`grafana-lgtm`, `keycloak`, `mailpit`, `rabbitmq`, `reverse-proxy`: `Recreate`, `Recreated`, `Started`), 0043's change of their primary network; `keycloak-db` stayed `Running`; each ended `Healthy`, `keycloak-import` `Exited` as on every start.
+- From the workstation, after it: `https://tickee.c4-soft.com/` answers `302`, `https://infra.c4-soft.com/auth/realms/tickee/.well-known/openid-configuration` `200` (Tickee's realm kept).
+- 0041 and 0045 act at an application's next registration on the demo host: Tickee's exports pass `lockout_check` (Deviations), and no registry line changed but immo's (`-`, not deployed by this stack).
