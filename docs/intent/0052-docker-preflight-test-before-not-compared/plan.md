@@ -43,6 +43,7 @@ All in `tests/0049-docker-preflight.sh`; its `# covers:` line, label namespace, 
 
 ## Deviations
 
-<!-- filled during implementation: date — what — why — impact on files or proof -->
+- 2026-10-31 — the verification's runs set `LC_ALL=C` (0050's decimal-comma bug, on `main`, fixed on 0050's branch, not delivered yet; not 0052's; the test also run once under the machine's `fr_FR.UTF-8`, its known 0050 KOs recorded in *Verification*) and, for `tests/run.sh`, `C4_DOCKER_REAP=labelled` (Docker shared with another agent: the preflight removes only what this run's namespace labelled); CLAUDE.md's proof `bash tests/run.sh --changed --all` reduced to `--changed`: the change selects no stand-in or facts test.
+- 2026-10-31 — the review round's fix (32a86dc) changes the six planted checks of step 1, which the plan said the fix wouldn't touch: each KO case now asserts the cause `reaped_before_tests` prints (`reap_refused`), and `reap_planted` takes the order log, so the no-start case reuses it; labels unchanged. A strengthening, not a weakening: against the pre-fix `grep -q` body, five of the six are KO (the "log without it" case too, which printed no cause); against the fix, all ok.
 
 ## Verification
