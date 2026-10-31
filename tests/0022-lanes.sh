@@ -26,6 +26,8 @@ export SUITE_LOCK_NAME=c4-infra.suite-lock-0022-$$
 export STAND_IN_NAME=c4-infra-stand-in-0022-$$
 export STAND_IN_VOLUME=c4-infra-stand-in-0022-$$-docker
 export SUITE_DOCKER_MEMORY=20000000000
+# the copied runs' preflight would clean the machine's Docker under this test's lock (tests/0049-*)
+export C4_DOCKER_PREFLIGHT=off
 HOSTS=("$STAND_IN_NAME" "$STAND_IN_NAME-2")
 
 cleanup() { # the fake tests and their sleeps, the stand-in containers

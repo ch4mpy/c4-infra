@@ -112,8 +112,10 @@ no_test_started() { # <run>
     || { cat "$work/$1.log"; return 1; }
 }
 before_first_test() { # <run> <pattern>: a line of the run, before its first test's start
-  awk -v p="$2" -v t="$TEST_START" '$0 ~ t { exit } $0 ~ p { found = 1; exit } END { exit !found }' "$work/$1.log" \
-    || { cat "$work/$1.log"; return 1; }
+  local at first
+  at=$(grep -nE "$2" "$work/$1.log" | head -n 1 | cut -d: -f1)
+  first=$(grep -nE "$TEST_START" "$work/$1.log" | head -n 1 | cut -d: -f1)
+  [ -n "$at" ] && { [ -z "$first" ] || [ "$at" -lt "$first" ]; } || { cat "$work/$1.log"; return 1; }
 }
 gone() { # <ps -a|volume ls|network ls> <name>
   [ -z "$(docker $1 -q --filter "name=$2" 2> /dev/null | tr -d '\r')" ]

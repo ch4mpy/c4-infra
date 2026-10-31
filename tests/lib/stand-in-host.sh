@@ -61,8 +61,15 @@
 # the one another checkout's tests run: stand_in_up removes the container of its name, and two dockerds
 # can't share a volume (e.g. STAND_IN_NAME=c4-infra-stand-in-0009
 # STAND_IN_VOLUME=c4-infra-stand-in-0009-docker).
+#
+# Labels (intent 0049, tests/lib/docker-preflight.sh): the stand-in carries its run's, so that a run
+# killed leaves it to the next run's preflight; the volume and the two images built here are kept for
+# the clone they serve (c4-infra.keep=<the clone>, its worktrees included), and removed by a preflight
+# once that clone is gone. A volume made before those labels is made again, once: Docker can't label
+# one that exists (its pulled images are pulled again).
 
 STAND_IN_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$STAND_IN_ROOT/tests/lib/docker-preflight.sh"
 STAND_IN_NAME=${STAND_IN_NAME:-c4-infra-stand-in}
 STAND_IN_IMAGE=c4-infra/stand-in-host
 STAND_IN_VOLUME=${STAND_IN_VOLUME:-c4-infra-stand-in-docker}
@@ -89,15 +96,40 @@ stand_in_exec() {
   MSYS_NO_PATHCONV=1 docker exec "${options[@]}" "$STAND_IN_NAME" "$@"
 }
 
+# The clone this checkout belongs to, as the reaper checks a path here (a drive's form under Git Bash)
+_stand_in_clone() {
+  local common
+  common=$(git -C "$STAND_IN_ROOT" rev-parse --path-format=absolute --git-common-dir 2> /dev/null | tr -d '\r')
+  if [ -n "$common" ]; then
+    dirname "$common"
+  elif command -v cygpath > /dev/null; then
+    cygpath -m "$STAND_IN_ROOT"
+  else
+    printf '%s\n' "$STAND_IN_ROOT"
+  fi
+}
+
 stand_in_up() {
-  local waited=0
-  docker build -q -t "$STAND_IN_IMAGE" "$(_stand_in_host_path "$STAND_IN_ROOT/tests/stand-in-host")" > /dev/null \
+  local waited=0 keep
+  local -a C4_LABELS C4_KEEP_LABELS
+  mapfile -t C4_LABELS < <(docker_labels c4-infra)
+  mapfile -t C4_KEEP_LABELS < <(docker_keep_labels c4-infra "$(_stand_in_clone)")
+  docker build -q "${C4_KEEP_LABELS[@]}" -t "$STAND_IN_IMAGE" "$(_stand_in_host_path "$STAND_IN_ROOT/tests/stand-in-host")" > /dev/null \
     || { echo "stand_in_up: the image doesn't build" >&2; return 1; }
-  docker rm -f "$STAND_IN_NAME" > /dev/null 2>&1 || true
+  docker rm -f -v "$STAND_IN_NAME" > /dev/null 2>&1 || true
   if [ "${STAND_IN_FRESH:-0}" = 1 ]; then
     docker volume rm "$STAND_IN_VOLUME" > /dev/null 2>&1 || true
   fi
-  MSYS_NO_PATHCONV=1 docker run -d --privileged --name "$STAND_IN_NAME" --hostname vps \
+  if docker volume inspect "$STAND_IN_VOLUME" > /dev/null 2>&1; then
+    keep=$(docker volume inspect -f "{{index .Labels \"${C4_DOCKER_LABEL_NS:-c4-infra}.keep\"}}" "$STAND_IN_VOLUME" | tr -d '\r')
+    if [ -z "$keep" ] || [ "$keep" = '<no value>' ]; then
+      docker volume rm "$STAND_IN_VOLUME" > /dev/null || { echo "stand_in_up: $STAND_IN_VOLUME, unlabelled, can't be made again" >&2; return 1; }
+    fi
+  fi
+  docker volume inspect "$STAND_IN_VOLUME" > /dev/null 2>&1 \
+    || docker volume create "${C4_KEEP_LABELS[@]}" "$STAND_IN_VOLUME" > /dev/null \
+    || { echo "stand_in_up: $STAND_IN_VOLUME can't be created" >&2; return 1; }
+  MSYS_NO_PATHCONV=1 docker run -d --privileged "${C4_LABELS[@]}" --name "$STAND_IN_NAME" --hostname vps \
     -v "$STAND_IN_VOLUME:/var/lib/docker" "$STAND_IN_IMAGE" > /dev/null \
     || { echo "stand_in_up: the stand-in doesn't start" >&2; return 1; }
   until stand_in_exec docker info > /dev/null 2>&1; do
@@ -130,12 +162,14 @@ stand_in_load_image() {
 # (intent 0020)
 stand_in_probe() {
   local fixture=$STAND_IN_ROOT/tests/fixtures/0007/probe hash
+  local -a C4_KEEP_LABELS
+  mapfile -t C4_KEEP_LABELS < <(docker_keep_labels c4-infra "$(_stand_in_clone)")
   hash=$(cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
     echo "$file"
     cat "$file"
   done | cksum | cut -d' ' -f1)
   if [ "$(docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null)" != "$hash" ]; then
-    docker build -q --label "c4-infra.fixture=$hash" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
+    docker build -q --label "c4-infra.fixture=$hash" "${C4_KEEP_LABELS[@]}" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
       || { echo "stand_in_probe: c4-test/probe doesn't build on this machine (above)" >&2; return 1; }
   fi
   [ "$(stand_in_exec docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null \
@@ -152,11 +186,12 @@ stand_in_send() { # <dir>
 stand_in_env() ( # <dir>
   dir=$1
   options=()
+  mapfile -t C4_LABELS < <(docker_labels c4-infra)
   names=$(bash "$STAND_IN_ROOT/demo/write-env.sh" --required) || exit 1
   for name in $names; do
     if [[ $name == *_HASH ]]; then
       # a bcrypt hash of a random password; caddy reads the password on its stdin
-      value=$(openssl rand -hex 16 | docker run --rm -i "$STAND_IN_CADDY_IMAGE" caddy hash-password) || exit 1
+      value=$(openssl rand -hex 16 | docker run --rm -i "${C4_LABELS[@]}" "$STAND_IN_CADDY_IMAGE" caddy hash-password) || exit 1
     else
       value=$(openssl rand -hex 16)
     fi
@@ -295,7 +330,7 @@ stand_in_https() { # <host> <path> [curl option…]
 stand_in_down() {
   # docker stop: the entrypoint stops dockerd, which stops its containers
   docker stop -t 60 "$STAND_IN_NAME" > /dev/null 2>&1 || true
-  docker rm -f "$STAND_IN_NAME" > /dev/null 2>&1 || true
+  docker rm -f -v "$STAND_IN_NAME" > /dev/null 2>&1 || true
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

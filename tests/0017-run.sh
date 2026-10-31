@@ -22,6 +22,8 @@ repo=$work/repo
 other=$work/other
 export SUITE_LOCK_NAME=c4-infra.suite-lock-0017-$$
 export STAND_IN_NAME=c4-infra-stand-in-0017-$$ STAND_IN_VOLUME=c4-infra-stand-in-0017-$$-docker
+# the copied runs' preflight would clean the machine's Docker under this test's lock (tests/0049-*)
+export C4_DOCKER_PREFLIGHT=off
 cleanup() { # the tests of the runs killed or interrupted below, and their sleep
   local pid
   for pid in $(cat "$work"/pid-kill-9-* "$work"/pid-interrupted-* 2> /dev/null); do
