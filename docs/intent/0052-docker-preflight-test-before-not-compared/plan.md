@@ -77,3 +77,5 @@ Machine: the product owner's Linux workstation (Ubuntu 26.04.1 LTS, Docker 29.x)
 | AC-03 | OK | harness of the planted checks at HEAD (verifier): the six reaping checks and the window's three ok, `every check passed`, `exit 0`; each KO case asserts its cause (`… at or after the first test's start 100`, `no reaper call (…) logged`, `no test start logged`); at 8869741 the four misplaced or unordered cases KO |
 | AC-04 | OK | the `docker_reap` mutant: `KO - AC-07: the shim saw the preflight's reaping, before the tests`, the call and the start printed, `exit 1`; ok on the unmodified test (AC-01) |
 | AC-05 | OK | `bash -n` exit 0; both `--changed` runs `verification passed`, `run.sh exit 0`; `git diff 8912d88 -- tests/0049-docker-preflight.sh`: six check labels added, none removed, the first reaping check kept under its label, `# covers:` unchanged; the window check's three planted checks ok |
+
+- Deployment: deploy-demo run 41232734143 on 3579d8b (the merge), `success` (both jobs: images, VPS); nothing the demo host runs changed, no check after deployment in this plan.
