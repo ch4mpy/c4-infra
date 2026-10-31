@@ -40,7 +40,7 @@ check "the library is copied in" eval 'stand_in_exec -i sh -c "cat > /root/docke
 # c4-test.build, removed first: the stand-in's volume keeps them); the ids and digests it is checked by in /root
 SETUP='set -e
 cd /root
-docker images -q --no-trunc --filter label=c4-test.build | sort -u | xargs -r docker rmi -f > /dev/null 2>&1 || true
+docker images -q --no-trunc --filter label=c4-test.build | LC_ALL=C sort -u | xargs -r docker rmi -f > /dev/null 2>&1 || true
 build() { # <repository:tag> <build> [docker build option…]: its id in /root/<build>
   local ref=$1 name=$2
   shift 2
@@ -124,7 +124,7 @@ check "AC-04: the pin's current image remains" there image c4-test/pinned:curren
 check "AC-04, IV-01: an unpinned repository's untagged digest reference remains" \
   there image "c4-test/shared@$(saved shared-old-digest)"
 check "AC-04: the running containers still run" \
-  eval '[ "$(stand_in_exec docker inspect -f "{{.State.Status}}" labelled-running stack-running | tr -d "\r" | sort -u)" = running ]'
+  eval '[ "$(stand_in_exec docker inspect -f "{{.State.Status}}" labelled-running stack-running | tr -d "\r" | LC_ALL=C sort -u)" = running ]'
 check "AC-04: the anonymous volume no container uses is gone" eval '! there volume "$(saved anonymous)"'
 check "AC-04: the build cache's prune ran with its bound" grep -qE '^docker preflight: build cache: .* reclaimed \(bound 5 GB\)$' "$work/reap.log"
 check "AC-06: the volume kept for a path that is gone is gone" eval '! there volume kept-gone'
