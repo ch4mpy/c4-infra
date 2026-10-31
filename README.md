@@ -396,9 +396,9 @@ account for a minute, whatever their count. In dev as on the demo host.
   when it creates a realm: an attribute wins.
 - On the demo host, an export that would lock an account for good, or for more than 15 minutes at
   a time, is refused, before anything changes: `permanentLockout` anything but `false`,
-  `maxFailureWaitSeconds` above 900, `maxSecondaryAuthFailures` (the wrong second-factor codes
-  after which Keycloak disables the account) anything but 0, at its top level or in its
-  `attributes`. On the public demo, whoever knows a user name could otherwise lock that account
+  `maxFailureWaitSeconds` anything but a number up to 900, `maxSecondaryAuthFailures` (the wrong
+  second-factor codes after which Keycloak disables the account) anything but 0, at its top level
+  or in its `attributes`. On the public demo, whoever knows a user name could otherwise lock that account
   (intent 0041). An export may go below 15 minutes. In dev, it registers as it says.
 - `register-app.sh` prints, for each realm it imports, the settings c4-infra's filled
   (`stack_brute_force` in [`register-app.sh`](register-app.sh)). A realm already in Keycloak keeps

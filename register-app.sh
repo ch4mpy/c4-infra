@@ -311,7 +311,7 @@ lockout_problems=()
 lockout_check() { # <realm file>
   local found problem
   if ! found=$(jq -r '
-      def number: if type == "string" then tonumber? // null else . end;
+      def number: if type != "string" then . elif test("^[+-]?[0-9]+$") then tonumber? // null else null end;
       def accepted($key): . == null or
         if $key == "permanentLockout" then . == false or . == "false"
         elif $key == "maxFailureWaitSeconds" then number | type == "number" and . <= 900
