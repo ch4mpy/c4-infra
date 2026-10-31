@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-30: the triage of `docs/intent/HANDOVER.md`'s "Follow-ups" and "Left open", validated by the product owner)
 - Spec needed: yes
-- Status: specified
+- Status: planned
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —
