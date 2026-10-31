@@ -66,4 +66,6 @@ The product owner has the verification and the delivery done by an agent on the 
 
 ## Deviations
 
+- 2026-10-31 — step 1: `bash tests/0050-preflight-locale.sh` (gawk `--use-lc-numeric`), `exit 1`, KO as planned under fr_FR.UTF-8 on AC-01 (the VM's disk short, floors 20 and 2 exit 1), AC-02 (`115,3`), AC-03 (`1512000000` for 1.5GB and 512.3MB), AC-04; AC-04 is KO under `C` too (`2,5` refused "not a number" whatever the locale today: the plan's "the `C` checks OK" meant AC-01 to AC-03); AC-05 OK. No impact on files or proof.
+
 ## Verification
