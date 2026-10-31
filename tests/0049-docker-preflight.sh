@@ -188,9 +188,13 @@ else
 fi
 
 # AC-07: the window's check on planted logs (no Docker)
+window_edge() { # <start|end> <order log>: run E's first test start, or its last test end
+  local edge=head
+  [ "$1" = start ] || edge=tail
+  awk -v at="$1" '$1 == "E" && $2 == at { print $3 }' "$2" | LC_ALL=C sort -n | "$edge" -n 1
+}
 cleaning_during_tests() { # <order log> <docker log>: the docker calls between the first test's start and the last test's end, none a prune nor a removal
-  awk -v from="$(awk '$1 == "E" && $2 == "start" { print $3 }' "$1" | LC_ALL=C sort -n | head -n 1)" \
-    -v to="$(awk '$1 == "E" && $2 == "end" { print $3 }' "$1" | LC_ALL=C sort -n | tail -n 1)" '
+  awk -v from="$(window_edge start "$1")" -v to="$(window_edge end "$1")" '
     BEGIN { if (from == "" || to == "") { print "no test start or end logged"; bad = 1; exit } }
     $1 >= from && $1 <= to { calls++ }
     $1 >= from && $1 <= to && / (prune|rmi|rm|volume rm|network rm|image rm)( |$)/ { print; bad = 1 }
@@ -204,6 +208,39 @@ planted() { # <docker log line>…: cleaning_during_tests on the planted order l
 check "AC-07: the window's check fails on a prune in it" eval '! planted "50 ps -a" "150 image prune -f"'
 check "AC-07: the window's check fails on a log with no call in it" eval '! planted "50 ps -a --filter label=$NS.run"'
 check "AC-07: the window's check passes on a read in it" planted "150 ps -q --filter label=$NS.run"
+
+# AC-07: the reaping's check on planted logs (no Docker)
+reaped_before_tests() { # <order log> <docker log>: the reaper's calls, at least one, every one before the first test's start
+  awk -v from="$(window_edge start "$1")" -v reaper="ps -a --filter label=$NS.run" '
+    BEGIN { if (from == "") { print "no test start logged"; bad = 1; exit } }
+    index($0, " " reaper " ") { reaps++ }
+    index($0, " " reaper " ") && $1 >= from { print $0 "  at or after the first test\047s start " from; bad = 1 }
+    END { if (!bad && !reaps) { print "no reaper call (" reaper ") logged"; bad = 1 }; exit bad }' "$2"
+}
+REAP="ps -a --filter label=$NS.run --format {{.ID}}"
+reap_planted() { # <order log> <docker log line>…: reaped_before_tests on that order log and these lines
+  local order=$1
+  shift
+  printf '%s\n' "$@" > "$work/planted-docker.log"
+  reaped_before_tests "$order" "$work/planted-docker.log"
+}
+reap_refused() { # <cause> <order log> <docker log line>…: reap_planted fails, and prints that cause
+  local out
+  out=$(reap_planted "${@:2}") && { echo "passed: $out"; return 1; }
+  grep -qF -- "$1" <<< "$out" || { printf '%s\n' "$out"; return 1; }
+}
+printf '%s\n' "E end 200" > "$work/planted-no-start.log"
+check "AC-07: the reaping's check passes on a reap before the first test" reap_planted "$work/planted-order.log" "50 $REAP"
+check "AC-07: the reaping's check fails on a reap after the first test's start" \
+  reap_refused "150 $REAP  at or after the first test's start 100" "$work/planted-order.log" "150 $REAP"
+check "AC-07: the reaping's check fails on a reap after the last test's end" \
+  reap_refused "250 $REAP  at or after the first test's start 100" "$work/planted-order.log" "250 $REAP"
+check "AC-07: the reaping's check fails on a reap during the tests beside one before" \
+  reap_refused "150 $REAP  at or after the first test's start 100" "$work/planted-order.log" "50 $REAP" "150 $REAP"
+check "AC-07: the reaping's check fails on a log without it" \
+  reap_refused "no reaper call (ps -a --filter label=$NS.run) logged" "$work/planted-order.log" "50 ps -q --filter label=$NS.run"
+check "AC-07: the reaping's check fails on an order log without a start" \
+  reap_refused "no test start logged" "$work/planted-no-start.log" "50 $REAP"
 
 # AC-03: a run killed with kill -9 while its test holds its resources, then the next run
 : > "$work/hold-A"
@@ -265,7 +302,7 @@ PATH="$work/shim:$PATH" suite E --all
 check "AC-07: the run with lanes passes" test "$status" -eq 0
 check "AC-09: the VM's disk read from df's line, what a pull prints first aside" \
   says E "^docker preflight: VM disk: [1-9][0-9.]* GB free \(floor 0\)$"
-check "AC-07: the shim saw the preflight's reaping, before the tests" grep -q " ps -a --filter label=$NS.run " "$work/docker.log"
+check "AC-07: the shim saw the preflight's reaping, before the tests" reaped_before_tests "$work/order.log" "$work/docker.log"
 check "AC-07: no prune nor removal between the first test's start and the last test's end" \
   cleaning_during_tests "$work/order.log" "$work/docker.log"
 finish
