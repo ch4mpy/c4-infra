@@ -87,6 +87,7 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
   ```
 
   Verdict: the rename is the cause (the mount keeps showing the replaced file, 1 s later too, whatever the stack's age: this container was new); the page written in place is fresh at once, so the plan's default (a) holds and PA-01's stop doesn't apply.
+- 2026-10-31, step 3: `bash tests/0053-index-writers.sh` on today's writer (the rename), 6 s: `every check passed` (31 checks). The two pages differ by the registry each writer reads (`REGISTRY_FILE`, the fixture's six applications or its first three), since both read the same `caddy/apps/`.
 - 2026-10-31: steps 5 (`/sdlc-verify 0053`, its `bash tests/run.sh --changed --all`) and 6 (delivery) wait for a quiet window on the Linux workstation's Docker, another project's agent using the shared dev stack (the PO, 2026-10-31). Steps 1 to 4 ran without restarting any shared service.
 
 ## Verification
