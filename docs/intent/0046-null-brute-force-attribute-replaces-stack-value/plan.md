@@ -61,3 +61,7 @@
 | AC-02 | OK | the same: `{"realm": "faito", "bruteForceProtected": null}` and `{"realm": "faito", "attributes": {"frontendUrl": null}}`, in dev, `past the export's checks` `ok` |
 | AC-03 | OK | read: `README.md:395-399`, `docs/migration.md:226-229` |
 | No regression | OK | the run above, 36 tests, `verification passed` |
+
+### After deployment — deploy-demo run 41160076818 on `main` e160c13 (2026-10-31 02:27:16 to 02:28:37 UTC), success
+
+- No container recreated (each `Running`, then `Healthy`). From the workstation, after it: `https://tickee.c4-soft.com/` `302`, Tickee's realm's `openid-configuration` `200`. The refusal acts at an application's next registration; Tickee's exports hold no null attribute.
