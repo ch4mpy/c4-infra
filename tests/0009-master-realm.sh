@@ -15,6 +15,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/stubs.sh
 source tests/lib/keycloak.sh
 
@@ -34,7 +36,7 @@ umask 077
 work=$(mktemp -d)
 # .env as it was, whatever happens to the check of up.sh below
 cp .env "$work/env.saved"
-trap 'docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1; docker volume rm -f "$VOLUME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
+trap 'docker rm -f -v "$NAME" "$NAME-import" > /dev/null 2>&1; docker volume rm -f "$VOLUME" > /dev/null 2>&1; cp "$work/env.saved" .env; rm -rf "$work"' EXIT
 
 # The dev model: the variables the import reads (never KC_DB_*), keycloak-import's since 0012, and
 # the CA Keycloak trusts
@@ -72,7 +74,7 @@ master_is() { # <jq filter> <expected>
   [ "$value" = "$2" ] || { echo "$1 is $value, not $2"; return 1; }
 }
 
-docker rm -f "$NAME" "$NAME-import" > /dev/null 2>&1
+docker rm -f -v "$NAME" "$NAME-import" > /dev/null 2>&1
 docker volume rm -f "$VOLUME" > /dev/null 2>&1
 # The one-shot import, as compose.yml gives keycloak-import (on a file database: kc_import_args),
 # with its variables: <log>, its output there, shown when it fails
@@ -80,17 +82,17 @@ import_args=$(kc_import_args)
 check "keycloak-import's command is read from the dev model (${import_args//$'\n'/ })" test -n "$import_args"
 mapfile -t IMPORT_ARGS <<< "$import_args"
 import_master() {
-  docker run --rm --name "$NAME-import" --env-file "$(host_path "$work/kc.env")" \
+  docker run "${C4_LABELS[@]}" --rm --name "$NAME-import" --env-file "$(host_path "$work/kc.env")" \
     -v "$VOLUME:/opt/keycloak/data" -v "$(host_path "$PWD/keycloak-import"):/opt/keycloak/data/import:ro" \
     "$IMAGE" "${IMPORT_ARGS[@]}" > "$work/$1" 2>&1 < /dev/null || { tail -n 5 "$work/$1"; return 1; }
 }
 # Keycloak on that database, with none of the import's variables
 serve() {
-  docker run -d --name "$NAME" -e "KC_TRUSTSTORE_PATHS=$TRUSTSTORE" \
+  docker run "${C4_LABELS[@]}" -d --name "$NAME" -e "KC_TRUSTSTORE_PATHS=$TRUSTSTORE" \
     --add-host host.docker.internal:host-gateway -v "$VOLUME:/opt/keycloak/data" \
     -v "$(host_path "$PWD/certs/ca.crt"):/opt/keycloak/certs/ca.crt:ro" "$IMAGE" start-dev --db=dev-file > /dev/null
 }
-docker volume create "$VOLUME" > /dev/null
+docker volume create "${C4_LABELS[@]}" "$VOLUME" > /dev/null
 check "the one-shot import runs on an empty database, from keycloak-import/" import_master import-1.log
 check "it imported the master realm" grep -qF "Realm 'master' imported" "$work/import-1.log"
 check "a throwaway Keycloak starts on that database, given none of the import's variables" serve
@@ -137,7 +139,7 @@ login_page() {
   url+="&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fauth%2Fadmin%2Fmaster%2Fconsole%2F"
   # the console's PKCE parameters, without which its login page isn't shown
   url+="&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
-  docker run --rm --network "container:$NAME" alpine:3 wget -q -O - "$url"
+  docker run "${C4_LABELS[@]}" --rm --network "container:$NAME" alpine:3 wget -q -O - "$url"
 }
 check "AC-09: the master realm's login page links reset-credentials" grep -qF login-actions/reset-credentials <(login_page)
 
@@ -164,7 +166,7 @@ check "AC-03: the master realm's SMTP host changed by an administrator" admin up
 # since 0012 the import runs at each start of the stack: run it again, Keycloak stopped first, its
 # file database closed (a killed Keycloak loses its last writes there)
 docker stop -t 60 "$NAME" > /dev/null 2>&1
-docker rm "$NAME" > /dev/null 2>&1
+docker rm -v "$NAME" > /dev/null 2>&1
 check "AC-03: the one-shot import runs again" import_master import-2.log
 check "AC-03: it skipped the import" grep -qF "Realm 'master' already exists. Import skipped" "$work/import-2.log"
 check "AC-03: Keycloak started again" serve

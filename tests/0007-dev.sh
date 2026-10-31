@@ -36,6 +36,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 
 RABBITMQ=c4-infra.rabbitmq
@@ -51,7 +53,7 @@ STANDIN=tickee.network-standin
 work=$(mktemp -d)
 remove_tickee=false
 cleanup() {
-  docker rm -f "$STANDIN" > /dev/null 2>&1
+  docker rm -f -v "$STANDIN" > /dev/null 2>&1
   ! $remove_tickee || bash networks.sh remove tickee > /dev/null
   rm -rf "$work"
 }
@@ -101,7 +103,7 @@ in_list() { # <word> <list>
 }
 # nc on <network> to <target>:7080, its words and status (or docker's, when the probe didn't run) in $work/probe.out
 probe() { # <network> <target>
-  MSYS_NO_PATHCONV=1 docker run --rm --network "$1" "$PROBE_IMAGE" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm --network "$1" "$PROBE_IMAGE" \
     sh -c 'nc -vv -z -w 3 "$1" 7080 2>&1; echo "nc exit $?"' sh "$2" > "$work/probe.out" 2>&1
   echo "docker run exit $?" >> "$work/probe.out"
   sed -i 's/\r$//' "$work/probe.out"
@@ -190,9 +192,9 @@ part_tickee() {
   register_tickee() { bash register-app.sh --app tickee > "$work/tickee.log" 2>&1 || { cat "$work/tickee.log"; return 1; }; }
   check "Tickee registers (bash register-app.sh --app tickee: its network only)" register_tickee
   check "c4-infra.tickee holds the five shared services, not keycloak-db" holds_shared c4-infra.tickee
-  docker rm -f "$STANDIN" > /dev/null 2>&1
+  docker rm -f -v "$STANDIN" > /dev/null 2>&1
   start_standin() {
-    docker run -d --name "$STANDIN" --network c4-infra.tickee "$STANDIN_IMAGE" \
+    docker run "${C4_LABELS[@]}" -d --name "$STANDIN" --network c4-infra.tickee "$STANDIN_IMAGE" \
       caddy respond --listen :7080 "$STANDIN" > /dev/null
   }
   check "Tickee's HTTP stand-in starts on c4-infra.tickee ($STANDIN, $STANDIN_IMAGE)" start_standin
@@ -217,7 +219,7 @@ part_tickee() {
     check "AC-07: from c4-infra.faito, $address:7080 can't be reached" \
       unreachable c4-infra.faito "$address" "$BY_ADDRESS_REFUSED"
   done
-  docker rm -f "$STANDIN" > /dev/null 2>&1
+  docker rm -f -v "$STANDIN" > /dev/null 2>&1
   standin_removed() {
     local left
     left=$(docker ps -aq -f "name=^$STANDIN\$" 2> "$work/ps.err") || { echo "docker ps failed:"; cat "$work/ps.err"; return 1; }
@@ -296,7 +298,7 @@ EOF
 
   # flock on the stack's directory, held 5 s by another process: a rewrite waits for it
   rm -f "$scratch/compose.apps.yml"
-  MSYS_NO_PATHCONV=1 docker run --rm --user 1000 -e STUB_C4_INFRA=1 -v "$(host_path "$scratch"):/w" bash:5.2 bash -c '
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm --user 1000 -e STUB_C4_INFRA=1 -v "$(host_path "$scratch"):/w" bash:5.2 bash -c '
     export PATH=/w/stubs:$PATH
     flock /w sleep 5 &
     sleep 1

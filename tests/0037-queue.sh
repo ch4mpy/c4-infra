@@ -36,9 +36,9 @@ cleanup() { # every run left, then the locks' containers and their tickets
   for pid in "${pids[@]}"; do
     kill -9 -- "-$pid" 2> /dev/null || kill -9 "$pid" 2> /dev/null
   done
-  docker rm -f "$LOCK" "$OTHER" > /dev/null 2>&1
+  docker rm -f -v "$LOCK" "$OTHER" > /dev/null 2>&1
   for lock in "$LOCK" "$OTHER"; do
-    docker ps -aq --filter "label=c4-infra.suite.queue=$lock" | xargs -r docker rm -f > /dev/null 2>&1
+    docker ps -aq --filter "label=c4-infra.suite.queue=$lock" | xargs -r docker rm -f -v > /dev/null 2>&1
   done
   rm -rf "$work"
 }

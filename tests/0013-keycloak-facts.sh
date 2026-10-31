@@ -28,6 +28,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 source ./registry.sh
 
@@ -43,8 +45,8 @@ host_path() {
 
 umask 077
 work=$(mktemp -d)
-trap 'docker rm -f "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
-docker rm -f "$NAME" > /dev/null 2>&1
+trap 'docker rm -f -v "$NAME" > /dev/null 2>&1; rm -rf "$work"' EXIT
+docker rm -f -v "$NAME" > /dev/null 2>&1
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD
@@ -57,16 +59,16 @@ admin() { # <kcadm args…>: as the throwaway's administrator, the request's JSO
 
 # (a)
 mkdir -p "$work/lib"
-container=$(docker create "$IMAGE")
+container=$(docker create "${C4_LABELS[@]}" "$IMAGE")
 docker cp "$container:/opt/keycloak/lib/lib/main" "$(host_path "$work/lib")" > /dev/null
-docker rm "$container" > /dev/null
+docker rm -v "$container" > /dev/null
 builtin=$(for jar in "$work"/lib/main/*.jar; do
   unzip -p "$jar" META-INF/keycloak-themes.json 2> /dev/null | jq -r '.themes[]?.name' 2> /dev/null
 done | tr -d '\r' | LC_ALL=C sort -u | paste -sd' ' -)
 reserved=$(printf '%s\n' "${REGISTRY_KEYCLOAK_THEMES[@]}" | LC_ALL=C sort | paste -sd' ' -)
 check "(a) the built-in themes ($builtin) are registry.sh's reserved ones ($reserved)" test "$builtin" = "$reserved"
 
-docker run -d --name "$NAME" --env-file "$(host_path "$work/admin.env")" "$IMAGE" start-dev --db=dev-file > /dev/null
+docker run "${C4_LABELS[@]}" -d --name "$NAME" --env-file "$(host_path "$work/admin.env")" "$IMAGE" start-dev --db=dev-file > /dev/null
 check "(a) the throwaway answers the image's healthcheck" kc_throwaway_ready "$NAME"
 
 # (b)
@@ -144,5 +146,5 @@ check "(e) a named domain: not from another" not_fetched facts-named https://oth
 
 # (f)
 check "(f) the proxy's image has http.handlers.rate_limit" \
-  bash -c 'docker run --rm "$1" caddy list-modules 2> /dev/null | tr -d "\r" | grep -qx http.handlers.rate_limit' sh "$PROXY_IMAGE"
+  bash -c 'docker run --rm "${@:2}" "$1" caddy list-modules 2> /dev/null | tr -d "\r" | grep -qx http.handlers.rate_limit' sh "$PROXY_IMAGE" "${C4_LABELS[@]}"
 finish

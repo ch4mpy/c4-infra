@@ -27,6 +27,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 PROXY_IMAGE=c4-infra/reverse-proxy
 UPSTREAM_IMAGE=caddy:2.11.4-alpine
@@ -37,7 +39,7 @@ host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else prin
 
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
   docker network rm "$NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
@@ -149,12 +151,12 @@ cat > "$work/conf/proxy.caddy" <<'EOF'
 }
 EOF
 
-docker network create "$NAME" > /dev/null
+docker network create "${C4_LABELS[@]}" "$NAME" > /dev/null
 for kind in own none report-only; do
-  MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-$kind" --network "$NAME" --network-alias "$kind" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-$kind" --network "$NAME" --network-alias "$kind" \
     -v "$(host_path "$work/conf"):/conf:ro" "$UPSTREAM_IMAGE" caddy run --config "/conf/$kind.caddy" --adapter caddyfile > /dev/null
 done
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-proxy" --network "$NAME" -p "127.0.0.1:$PORT:8080" -p "127.0.0.1:$((PORT + 1)):8081" \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-proxy" --network "$NAME" -p "127.0.0.1:$PORT:8080" -p "127.0.0.1:$((PORT + 1)):8081" \
   -v "$(host_path "$work/conf"):/conf:ro" "$PROXY_IMAGE" caddy run --config /conf/proxy.caddy --adapter caddyfile > /dev/null
 
 # <path> [<port>] [curl options…]: the response's headers into $work/h (lower-case names), its body into $work/b

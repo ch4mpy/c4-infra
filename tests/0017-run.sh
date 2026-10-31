@@ -29,7 +29,7 @@ cleanup() { # the tests of the runs killed or interrupted below, and their sleep
   for pid in $(cat "$work"/pid-kill-9-* "$work"/pid-interrupted-* 2> /dev/null); do
     kill "$pid" 2> /dev/null
   done
-  docker rm -f "$SUITE_LOCK_NAME" > /dev/null 2>&1
+  docker rm -f -v "$SUITE_LOCK_NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT

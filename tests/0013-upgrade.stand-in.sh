@@ -21,6 +21,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/stand-in-host.sh
 
 # The stack before 0013: 0012's head (Keycloak 26.7, the master realm's one-shot import)
@@ -31,7 +33,7 @@ CLIENT=verif-public
 
 umask 077
 work=$(mktemp -d)
-trap 'stand_in_down; rm -rf "$work"' EXIT
+trap 'stand_in_down; docker rmi c4-infra/keycloak:before > /dev/null 2>&1; rm -rf "$work"' EXIT
 
 # <log> <command…>: in the stack's directory on the stand-in, stdin closed, the output into
 # $work/<log>, the exit status into $status
@@ -97,7 +99,7 @@ dumps() { # the pre-upgrade dumps on the host
 
 check "the stand-in host starts" stand_in_up
 check "Keycloak 26.7 is built from $BEFORE's keycloak/ (c4-infra/keycloak:before)" \
-  bash -c 'git archive "$1:keycloak" | docker build -q -t c4-infra/keycloak:before - > /dev/null' sh "$BEFORE"
+  bash -c 'git archive "$1:keycloak" | docker build -q "${@:2}" -t c4-infra/keycloak:before - > /dev/null' sh "$BEFORE" "${C4_LABELS[@]}"
 check "the images are loaded into it (before, this branch's Keycloak and proxy)" \
   stand_in_load_image c4-infra/keycloak:before c4-infra/keycloak c4-infra/reverse-proxy
 stand_in_exec rm -rf "$DIR" /root/backups

@@ -35,7 +35,7 @@ cleanup() { # the fake tests and their sleeps, the stand-in containers
   for pid in $(cat "$work"/pid-* "$work"/sleeps-* 2> /dev/null); do
     kill "$pid" 2> /dev/null
   done
-  docker rm -f "${HOSTS[@]}" "$SUITE_LOCK_NAME" > /dev/null 2>&1
+  docker rm -f -v "${HOSTS[@]}" "$SUITE_LOCK_NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -59,8 +59,10 @@ fake_test() {
 echo \$\$ >> "$work/pid-\${RUN_ID:-run}"
 echo "\${RUN_ID:-run} $name start \$EPOCHREALTIME" >> "$work/order.log"
 if [[ $name == *.stand-in ]]; then
-  trap 'docker rm -f "\$STAND_IN_NAME" > /dev/null 2>&1' EXIT
-  docker run -d --name "\$STAND_IN_NAME" alpine:3 sleep 600 > /dev/null
+  source tests/lib/docker-preflight.sh
+  mapfile -t C4_LABELS < <(docker_labels c4-infra)
+  trap 'docker rm -f -v "\$STAND_IN_NAME" > /dev/null 2>&1' EXIT
+  docker run -d "\${C4_LABELS[@]}" --name "\$STAND_IN_NAME" alpine:3 sleep 600 > /dev/null
   echo "$name stand-in \$STAND_IN_NAME \$STAND_IN_VOLUME"
 fi
 [ ! -e "$work/kill-lane-$name" ] || kill -9 \$PPID

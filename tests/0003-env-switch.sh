@@ -17,6 +17,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 CADDY_IMAGE=caddy:2.11.4-alpine
 STAND_IN=c4-infra-test-switch
@@ -34,7 +36,7 @@ cleanup() {
   if [ -f "$work/faito.caddy" ]; then cp "$work/faito.caddy" "$SITE"; else rm -f "$SITE"; fi
   MSYS_NO_PATHCONV=1 docker exec c4-infra.reverse-proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null 2>&1
   bash register-app.sh --index-only
-  docker rm -f $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -45,9 +47,9 @@ set_env() { # <dev|demo>: INFRA_ENV in .env
 }
 
 # The demo containers' names, as aliases on the c4-infra network
-docker rm -f $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
+docker rm -f -v $(docker ps -aq -f "name=^$STAND_IN-") > /dev/null 2>&1
 for stand_in in faito.gateway:7080 faito.frontend:80; do
-  MSYS_NO_PATHCONV=1 docker run -d --name "$STAND_IN-${stand_in%%.*}-${stand_in#*:}" --network c4-infra \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$STAND_IN-${stand_in%%.*}-${stand_in#*:}" --network c4-infra \
     --network-alias "${stand_in%:*}" -e PORT="${stand_in#*:}" -e STAND_IN_NAME="${stand_in%:*}" \
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
     "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null

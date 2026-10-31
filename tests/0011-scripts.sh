@@ -17,6 +17,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -31,7 +33,7 @@ part_networks() {
   # no daemon answering
   printf '#!/usr/bin/env bash\nexit 1\n' > "$scratch/stubs/docker"
   chmod +x "$scratch/stubs/docker"
-  MSYS_NO_PATHCONV=1 docker run --rm --user 1000 -v "$(host_path "$scratch"):/w" bash:5.2 bash -c '
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm --user 1000 -v "$(host_path "$scratch"):/w" bash:5.2 bash -c '
     export PATH=/w/stubs:$PATH
     flock /w sleep 5 &
     sleep 1

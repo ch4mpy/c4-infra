@@ -27,6 +27,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 
 IMAGE=c4-infra/keycloak
@@ -42,12 +44,12 @@ host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else prin
 umask 022
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f "$NAME" > /dev/null 2>&1
+  docker rm -f -v "$NAME" > /dev/null 2>&1
   docker network rm "$NETWORK" > /dev/null 2>&1
   rm -rf "$work"
 }
 trap cleanup EXIT
-docker rm -f "$NAME" > /dev/null 2>&1
+docker rm -f -v "$NAME" > /dev/null 2>&1
 docker network rm "$NETWORK" > /dev/null 2>&1
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
@@ -67,12 +69,12 @@ printf 'parent=keycloak.v2\n' > "$work/jar/theme/facts-jar/login/theme.propertie
 printf 'loginAccountTitle=Facts JAR theme\n' > "$work/jar/theme/facts-jar/login/messages/messages_en.properties"
 printf 'parent=keycloak.v2\n' > "$work/themes/facts-folder/login/theme.properties"
 printf 'loginAccountTitle=Facts folder theme\n' > "$work/themes/facts-folder/login/messages/messages_en.properties"
-docker run --rm --user 0 --entrypoint java -v "$(host_path "$work"):/w" "$IMAGE" \
+docker run "${C4_LABELS[@]}" --rm --user 0 --entrypoint java -v "$(host_path "$work"):/w" "$IMAGE" \
   -m jdk.jartool/sun.tools.jar.Main --create --file /w/providers/facts-themes.jar -C /w/jar . > "$work/jar.log" 2>&1
 check "(a) the theme JAR is built with the image's java" test -s "$work/providers/facts-themes.jar"
 
-docker network create "$NETWORK" > /dev/null
-docker run -d --name "$NAME" --network "$NETWORK" --network-alias keycloak -p "127.0.0.1:$PORT:8080" \
+docker network create "${C4_LABELS[@]}" "$NETWORK" > /dev/null
+docker run "${C4_LABELS[@]}" -d --name "$NAME" --network "$NETWORK" --network-alias keycloak -p "127.0.0.1:$PORT:8080" \
   --env-file "$(host_path "$work/admin.env")" \
   -v "$(host_path "$work/providers"):/opt/keycloak/providers:ro" -v "$(host_path "$work/themes"):/opt/keycloak/themes:ro" \
   "$IMAGE" start-dev --db=dev-file "--hostname=$FRONT" > /dev/null
