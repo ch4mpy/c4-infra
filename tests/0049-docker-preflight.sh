@@ -81,7 +81,7 @@ cp tests/lib/*.sh "$repo/tests/lib/"
 cat > "$repo/tests/0001-holder.sh" << 'EOF'
 #!/usr/bin/env bash
 # a fake test of tests/0049-docker-preflight.sh: a container, a volume and a network, labelled, held
-# while $WORK/hold-$RUN_ID exists (60 s at most), then removed; nothing with Docker in run E
+# while $WORK/hold-$RUN_ID exists (60 s at most), then removed; in run E, one docker read only
 echo $$ > "$WORK/pid-$RUN_ID-holder"
 echo "$RUN_ID start $(date +%s%N)" >> "$WORK/order.log"
 if [ "$RUN_ID" = E ]; then
@@ -191,7 +191,7 @@ fi
 cleaning_during_tests() { # <order log> <docker log>: the docker calls between the first test's start and the last test's end, none a prune nor a removal
   awk -v from="$(awk '$1 == "E" && $2 == "start" { print $3 }' "$1" | LC_ALL=C sort -n | head -n 1)" \
     -v to="$(awk '$1 == "E" && $2 == "end" { print $3 }' "$1" | LC_ALL=C sort -n | tail -n 1)" '
-    from == "" || to == "" { print "no test start or end logged"; bad = 1; exit }
+    BEGIN { if (from == "" || to == "") { print "no test start or end logged"; bad = 1; exit } }
     $1 >= from && $1 <= to { calls++ }
     $1 >= from && $1 <= to && / (prune|rmi|rm|volume rm|network rm|image rm)( |$)/ { print; bad = 1 }
     END { if (!bad && !calls) { print "no docker call logged between the first test\047s start and the last test\047s end"; bad = 1 }; exit bad }' "$2"
