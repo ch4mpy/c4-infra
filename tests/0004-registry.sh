@@ -278,6 +278,7 @@ part_scripts() {
   refused=(
     '{"realm": "faito", "maxFailureWaitSeconds": 901}|maxFailureWaitSeconds 901, which would let whoever knows a user name lock that account for more than 15 minutes at a time'
     '{"realm": "faito", "attributes": {"maxFailureWaitSeconds": "86400"}}|attributes.maxFailureWaitSeconds "86400", which would let whoever knows a user name lock that account for more than 15 minutes at a time'
+    '{"realm": "faito", "attributes": {"maxFailureWaitSeconds": "nan"}}|attributes.maxFailureWaitSeconds "nan", which would let whoever knows a user name lock that account for more than 15 minutes at a time'
     '{"realm": "faito", "maxSecondaryAuthFailures": 3}|maxSecondaryAuthFailures 3, which would let whoever knows its password lock that account for good with wrong second-factor codes'
     '{"realm": "faito", "attributes": {"maxSecondaryAuthFailures": "3"}}|attributes.maxSecondaryAuthFailures "3", which would let whoever knows its password lock that account for good with wrong second-factor codes'
   )
