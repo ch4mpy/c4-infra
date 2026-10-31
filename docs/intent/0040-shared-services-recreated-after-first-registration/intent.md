@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-30: the handover's open question on run 41094847195, read again with Tickee's first deployment)
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

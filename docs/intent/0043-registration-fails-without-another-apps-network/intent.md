@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (0034's plan, *Deviations*, 2026-10-28: "Observed meanwhile, outside this intent")
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

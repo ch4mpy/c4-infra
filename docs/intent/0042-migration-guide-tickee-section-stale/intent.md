@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-30: Tickee's intent 0001, delivered 2026-10-29, and its deviations)
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

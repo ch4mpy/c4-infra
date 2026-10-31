@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-30: `registry.txt` names `immo.c4-soft.com`, while the README says immo isn't deployed by this stack)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

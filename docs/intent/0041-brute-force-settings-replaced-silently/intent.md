@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-30: immo's question "brute force 5 vs 10", handover of 2026-10-28)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

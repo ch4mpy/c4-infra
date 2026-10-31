@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (handover, "Left open": `tests/0004-registry.sh` still pins other live data of `registry.txt`)
 - Spec needed: no
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —

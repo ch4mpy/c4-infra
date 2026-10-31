@@ -89,9 +89,9 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0037 | [A run waiting for the suite's lock can be overtaken by later runs, without bound](0037-suite-lock-has-no-queue/intent.md) | bug | delivered | 2026-10-29 | 2026-10-29 |
 | 0038 | [tests/0029-description.sh's carriage-return check fails under Git Bash on a description without one](0038-description-test-cr-check-fails-under-git-bash/intent.md) | bug | delivered | 2026-10-29 | 2026-10-30 |
 | 0039 | [Four Keycloak tests fail under Git Bash on the Windows workstation: the native jq and curl can't reach their files](0039-keycloak-tests-fail-under-git-bash/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
-| 0040 | [The first deployment of the stack after an application's first registration recreates the shared services](0040-shared-services-recreated-after-first-registration/intent.md) | change | planned | 2026-10-30 | 2026-10-30 |
-| 0041 | [register-app.sh replaces an application's brute-force settings with the stack's, without a word](0041-brute-force-settings-replaced-silently/intent.md) | change | planned | 2026-10-30 | 2026-10-30 |
-| 0042 | [The migration guide describes Tickee as it was before its migration](0042-migration-guide-tickee-section-stale/intent.md) | change | planned | 2026-10-30 | 2026-10-30 |
-| 0043 | [An application's registration fails while another registered application's network is gone](0043-registration-fails-without-another-apps-network/intent.md) | bug | planned | 2026-10-30 | 2026-10-30 |
-| 0044 | [The registry's test pins the applications' real entries](0044-registry-test-pins-live-entries/intent.md) | change | planned | 2026-10-30 | 2026-10-30 |
-| 0045 | [The registry demands a demo host of an application the demo host never deploys](0045-registry-demands-a-demo-host/intent.md) | change | planned | 2026-10-30 | 2026-10-30 |
+| 0040 | [The first deployment of the stack after an application's first registration recreates the shared services](0040-shared-services-recreated-after-first-registration/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
+| 0041 | [register-app.sh replaces an application's brute-force settings with the stack's, without a word](0041-brute-force-settings-replaced-silently/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
+| 0042 | [The migration guide describes Tickee as it was before its migration](0042-migration-guide-tickee-section-stale/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
+| 0043 | [An application's registration fails while another registered application's network is gone](0043-registration-fails-without-another-apps-network/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
+| 0044 | [The registry's test pins the applications' real entries](0044-registry-test-pins-live-entries/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
+| 0045 | [The registry demands a demo host of an application the demo host never deploys](0045-registry-demands-a-demo-host/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
