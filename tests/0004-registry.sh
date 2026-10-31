@@ -17,7 +17,8 @@
 #              too, a realm export whose permanentLockout, or its attributes' one, isn't false is
 #              refused, before any docker call, and goes past that check in dev (0041 AC-06), and so
 #              is one whose maxFailureWaitSeconds is above 900 or whose maxSecondaryAuthFailures
-#              isn't 0 (0041 AC-08)
+#              isn't 0 (0041 AC-08); in dev as there, one whose attributes hold a brute-force setting
+#              as null is refused, before any docker call (0046)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -307,6 +308,38 @@ part_scripts() {
   printf '%s\n' "$json" > "$export"
   run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
   check "$json, in dev: past the export's checks" called_docker
+  # 0046 AC-01: a brute-force setting the export's attributes hold as null, which Keycloak would write
+  # over the stack's value, in dev as on the demo host
+  local entry env settings setting
+  refused=(
+    'dev|{"realm": "faito", "attributes": {"bruteForceProtected": null}}|bruteForceProtected'
+    'dev|{"realm": "faito", "attributes": {"failureFactor": null, "maxFailureWaitSeconds": null}}|failureFactor maxFailureWaitSeconds'
+    'demo|{"realm": "faito", "attributes": {"failureFactor": null}}|failureFactor'
+  )
+  for entry in "${refused[@]}"; do
+    IFS='|' read -r env json settings <<< "$entry"
+    if [ "$env" = demo ]; then
+      printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
+    else
+      printf '%s\n' INFRA_ENV=dev > "$stack/.env"
+    fi
+    printf '%s\n' "$json" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "$json, in $env: refused (exit non-zero)" exited_non_zero
+    for setting in $settings; do
+      check "$json, in $env: it names attributes.$setting" \
+        says "--realm $export: attributes.$setting null, which Keycloak would write over the stack's value: refused"
+    done
+    check "$json, in $env: no docker call" called_no_docker
+  done
+  # 0046 AC-02: a null at the export's top level is the stack's to fill, a null attribute outside the ten
+  # isn't this check's
+  printf '%s\n' INFRA_ENV=dev > "$stack/.env"
+  for json in '{"realm": "faito", "bruteForceProtected": null}' '{"realm": "faito", "attributes": {"frontendUrl": null}}'; do
+    printf '%s\n' "$json" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "$json, in dev: past the export's checks" called_docker
+  done
 }
 
 # The README's "Port registry" section, up to the next heading
