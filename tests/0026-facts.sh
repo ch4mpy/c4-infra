@@ -33,7 +33,6 @@ cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
 source tests/lib/docker-preflight.sh
 mapfile -t C4_LABELS < <(docker_labels c4-infra)
-# the same labels, for what compose creates
 COMPOSE_LABELS="{c4-infra.owner: c4-infra, c4-infra.run: \"$C4_INFRA_RUN\", c4-infra.created: \"$(date +%s)\", c4-infra.ttl: \"14400\", c4-infra.lock: \"${C4_DOCKER_LOCK:-}\"}"
 
 CADDY_IMAGE=caddy:2.11.4-alpine
