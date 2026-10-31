@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-10-30, the product owner's request after the triage of the handover)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-31)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —
