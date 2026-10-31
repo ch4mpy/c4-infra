@@ -70,7 +70,38 @@ The product owner has the verification and the delivery done by an agent on the 
 - 2026-10-31 — step 2: the first `bash tests/run.sh --changed` ran from this worktree, which has no `.env` (the stack's tests KO on `KC_IMAGE` and the others unset: 104 KO lines, none in the library's tests), and was stopped by my own `timeout 1500` (exit 124, in `0022-lanes`): not a result. The check runs again from the main checkout detached at the `fix(0050)` commit, as the suite expects, so the fix is committed before its run. No impact on files or proof.
 - 2026-10-31 — verification on the product owner's Linux workstation (Ubuntu 26.04.1 LTS, `LC_NUMERIC="fr_FR.UTF-8"`, mawk 1.3.4 20260129): that machine's Docker and dev stack were shared with another agent's work (poc-immo-pf), so every run set `C4_DOCKER_REAP=labelled` (the preflight measures and compares with the default floors, but reaps only what the suite labelled, never the build cache nor the anonymous volumes), and nothing shared was started, restarted, recreated or pruned. The handover's `bash tests/run.sh --changed --all` (every test: the change touches `tests/lib/`) was not run: it restarts shared containers (`tests/0026-stack-bounds.sh:165`, `c4-infra.grafana-lgtm`; `tests/0005-themes.sh`, the dev Keycloak in its demo part) and registers fixture realms on the shared Keycloak. In its place, under the shared suite lock: `tests/run.sh`'s lock take and preflight (its lines 378-386, the same libraries, `--pins <(bash tests/docker-pins.sh)`, cleaning on) with the default floors, then the tests that cover the library. The shell's environment carried `LOCPATH=/snap/code/273/usr/lib/locale` (VS Code's snap), which makes `locale` fail on `LC_CTYPE`: unset for every run, the locale left as is. Impact: PA-01's literal command and AC-06's stand-in and facts part wait for a run on a Docker no one else uses (the product owner decides).
 
+- 2026-10-31 — the full run on the free workstation: `bash tests/run.sh --changed --all` cannot pass from a worktree. The shared stack bind-mounts its checkout's `caddy/`, `certs/` and `keycloak/themes` (`c4-infra.reverse-proxy`, `c4-infra.keycloak`), so a test that registers from the worktree writes routes the proxy never reads (`0003-dev-routes`, 22 KO; `0003-env-switch`, 4 KO). Faito's `deploy-dev.sh`, which several tests run, brings the stack back up from `../c4-infra`, the path set in Faito's `.env`, in the middle of the suite (`0007-dev` AC-11, 1 KO). A worktree with no `.env` makes the stack's tests fail on unset variables, and a test then writes a `.env` with fresh secrets. Three runs were stopped (Ctrl-C, exit 130) once that was seen. Detaching the main checkout at the branch head to run there was refused by the agent's permission check (the main checkout is the shared stack's source), so the PO decides how the full run is made. The preflight with the default floors and full cleaning ran in all three runs (`C4_DOCKER_REAP` not set): this supersedes the `C4_DOCKER_REAP=labelled` deviation above for PA-01. The stack is back on `main` (`bash up.sh` from the main checkout, Faito's realm and `faito-api` present). No impact on files.
+
 ## Verification
+
+### Verification — 2ca4649 (the merge of `main`, the full run)
+
+- Machine: the PO's Linux workstation, Docker free of other runs (the PO's go, 2026-10-31); `LC_NUMERIC=fr_FR.UTF-8`, `LC_ALL` empty, `LOCPATH` unset; `mawk 1.3.4 20260129`; `TMPDIR=/home/jerome/.cache/c4-infra-tests`; no `C4_DOCKER_REAP`.
+- **KO, not 0050's: `bash tests/run.sh --changed --all` from the worktree did not complete.** Three runs were stopped after 31m37s, about 1 min and about 9 min, exit 130. Their KOs come from the checkout the stack runs from (*Deviations*, this date): `0001-loopback-ports` (10), `0003-dev-routes` (22), `0003-env-switch` (4), `0007-dev` AC-11 (1). None is in the library or concerns the locale. The PO decides how the full run is made: from the main checkout at the branch head, or after the merge into `main`.
+- Merge: `git merge origin/main` (0051 and 0052) conflicted on `docs/intent/HANDOVER.md` and `README.md` only; both sides kept; `bash tests/0050-preflight-locale.sh` → `every check passed`.
+- PA-01, the preflight as `tests/run.sh` runs it, default floors, full cleaning, under fr_FR. First run:
+  ```
+  docker preflight: run 1793475458-1951334-392427863
+  docker preflight: runs over: 0 container(s), 0 network(s), 0 volume(s), 0 image(s) removed
+  docker preflight: kept, their path gone: 0 volume(s), 0 image(s) removed
+  docker preflight: build cache: 0B reclaimed (bound 5 GB)
+  docker preflight: anonymous volumes no container uses: 21 removed (1.019GB)
+  docker preflight: images a pin replaced: 0 removed (0.0 MB)
+  docker preflight: VM disk: 429.6 GB free (floor 20)
+  docker preflight: VM memory: 8.3 GiB available (floor 3)
+  docker preflight: host disk under Docker's disk image (/): 115.7 GB free (floor 20)
+  docker preflight: host memory: 10.3 GiB MemAvailable + 1.6 GiB SwapFree (floor 6)
+  ```
+  Second and third runs: the same, `build cache: 4.772MB reclaimed` and then `2.437GB reclaimed (bound 5 GB)`, `0 removed (0B)` anonymous volumes. Every number is written with a point and every run went past its preflight. `bml-db`, still stopped, and its anonymous volume survived the prune, as did `immo.*` and their volumes.
+- AC-06, under fr_FR: `bash tests/0049-docker-preflight.sh` → exit 0, 21 s, 35 ok, `every check passed`, the shim's guard and 0052's window checks included. `bash tests/0049-docker-labels.sh` → `every check passed`. `tests/0049-docker-reap.stand-in.sh` (first run) → `every check passed`, 30.7 s. `tests/0037-queue.sh` (first run) → `every check passed`.
+- Verifier (since 898a040): 10/11 OK, 0 KO; the merge kept both sides, no markers, the library and frozen test unchanged; AC-01..AC-06 OK under fr_FR. Not verifiable for the verifier: the reap stand-in test, which its brief excluded and the first run passed above.
+- Durations: runs 31m37s + about 1 min + about 9 min, all stopped; library tests 22 s; verifier 1m33s.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 to AC-05 | OK | `tests/0050-preflight-locale.sh` under fr_FR, mawk: `every check passed` |
+| AC-06 | OK | `0049-docker-preflight` (35 ok), `0049-docker-labels`, `0049-docker-reap.stand-in` all `every check passed` under fr_FR |
+| PA-01 | preflight OK; the full run's end not reached (environment) | three `tests/run.sh --changed --all` runs went past `docker preflight:` with the default floors; the suite stopped on the checkout issue above |
 
 ### Verification — dca25ea
 
