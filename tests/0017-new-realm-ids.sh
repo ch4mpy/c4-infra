@@ -65,14 +65,17 @@ check "a file without ids: exits 0" test $? -eq 0
 check "a file without ids: reported" grep -qxF "$work/no-id.json: no id" "$work/out"
 check "a file without ids: left as it was" cmp -s "$work/no-id.json" "$work/no-id.before"
 
-jq . < "$FIXTURE" > "$work/jq-before.json"
+jq '.users += [{"username": "carol"}]' < "$FIXTURE" > "$work/jq-before.json"
 cp "$work/jq-before.json" "$work/jq-realm.json"
-bash new-realm-ids.sh "$work/jq-realm.json" > "$work/jq-out" 2>&1
-check "an export in jq's layout: exits 0" test $? -eq 0
+cp "$FIXTURE" "$work/later.json"
+bash new-realm-ids.sh "$work/jq-realm.json" "$work/later.json" > "$work/jq-out" 2>&1
+check "an export in jq's layout, with a user without id: exits 0" test $? -eq 0
 check "an export in jq's layout: alice's old and new ids are printed" \
   user_printed alice "$work/jq-before.json" "$work/jq-realm.json" "$work/jq-out"
 check "an export in jq's layout: bob's too" \
   user_printed bob "$work/jq-before.json" "$work/jq-realm.json" "$work/jq-out"
+check "a user without id: nothing printed for it" eval '! grep -qF "user carol" "$work/jq-out"'
+check "a user without id: the next file is renewed too" grep -qxF "$work/later.json: 5 ids replaced" "$work/jq-out"
 
 printf '{ "realm" : "verif-not-json", "id" : "0b3b4d6e-1f2a-4c3d-8e9f-0a1b2c3d4e5f",\n' > "$work/not-json.json"
 cp "$work/not-json.json" "$work/not-json.before"

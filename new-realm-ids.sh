@@ -22,7 +22,8 @@ storage="f:($uuid|$short):.+"
 
 refused=0
 for file in "$@"; do
-  if ! users=$(jq -r '.users[]? | [.id, .username] | @tsv' < "$file"); then
+  # a user without an id gets one from Keycloak at the import: nothing to renew nor to print
+  if ! users=$(jq -r '.users[]? | select((.id | type) == "string" and .id != "") | [.id, .username] | @tsv' < "$file"); then
     echo "$file: left as it was: not JSON that jq can read" >&2
     refused=1
     continue

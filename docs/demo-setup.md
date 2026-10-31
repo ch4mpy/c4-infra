@@ -261,7 +261,10 @@ other: [README](../README.md), "Demo host"), once:
    ```
 
    then delete the local copy of the private key (or keep it in the password manager). The
-   restriction reads back as the stack's does (step 6), `["$B"]` for its branch.
+   restriction, read back: `gh api repos/$A/environments/demo --jq .deployment_branch_policy` gives
+   `{"custom_branch_policies":true,"protected_branches":false}`, and
+   `gh api repos/$A/environments/demo/deployment-branch-policies --jq '[.branch_policies[].name]'`
+   gives its branch alone.
 6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on its
    own network `c4-infra.<app>` with unique container names, its routes file, the commands it runs
    as `<app>@<vps-ip>`).

@@ -149,7 +149,7 @@ stand_in_exec docker rm -f -v c4-infra.reverse-proxy > /dev/null
 
 # a root to read (any certificate), and on the stand-in's 443 a listener that accepts and never answers
 stall_bounded() {
-  local listener pid start status
+  local listener pid start status elapsed
   stand_in_exec docker run -d --name c4-infra.reverse-proxy c4-infra/reverse-proxy sh -c \
     'mkdir -p /data/caddy/pki/authorities/local && cp /etc/ssl/certs/ca-certificates.crt /data/caddy/pki/authorities/local/root.crt && exec sleep 600' \
     > /dev/null || return 1
@@ -171,15 +171,13 @@ EOF
     wait "$pid"
     status=$?
   fi
+  elapsed=$((SECONDS - start))
   stand_in_exec kill "${listener%$'\r'}" 2> /dev/null
   stand_in_exec docker rm -f -v c4-infra.reverse-proxy > /dev/null
-  case $status in
-    0) echo "it answered 0 after $((SECONDS - start)) s"; return 1 ;;
-    [0-9]*) [ $((SECONDS - start)) -le 45 ] || { echo "it returned $status after $((SECONDS - start)) s"; return 1; } ;;
-    *) echo "$status"; return 1 ;;
-  esac
+  # 28, the stall's own status: another (7, 1) would mean the listener or the root never was there
+  [ "$status" = 28 ] && [ "$elapsed" -le 45 ] || { echo "$status after $elapsed s"; return 1; }
 }
-check "0047 RQ-04: a site that accepts and never answers ends stand_in_https's wait within 45 s, non-zero" stall_bounded
+check "0047 RQ-04: a site that accepts and never answers ends stand_in_https's wait within 45 s, status 28" stall_bounded
 
 # AC-01
 check "the applications' image is loaded" stand_in_load_image "$STAND_IN_CADDY_IMAGE"
