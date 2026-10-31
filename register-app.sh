@@ -14,7 +14,8 @@
 #                   file: the file's own "realm" field can't name another. On the demo host, an
 #                   export that would lock an account for good (permanentLockout,
 #                   maxSecondaryAuthFailures) or for more than 15 minutes (maxFailureWaitSeconds),
-#                   at its top level or in its attributes, is refused (intent 0041).
+#                   at its top level or in its attributes, is refused (intent 0041); in dev as
+#                   there, one whose attributes hold a brute-force setting as null (intent 0046).
 #   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
 #                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
 #                   restarts Keycloak (once). A theme holding a link or a special file, or a
@@ -300,6 +301,31 @@ cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its 
     (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
       | "realm attribute \(.): \($unread)")' < "$1"
 }
+# The brute-force settings an imported realm's export holds are kept as it says, the detection's
+# switch included; c4-infra's fill the ones it doesn't hold (intents 0010, 0041): a temporary
+# lockout after 10 failures, 1 more minute per further failure, at most 15, never for good
+# (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already in Keycloak
+# keeps its own until it is imported again.
+stack_brute_force=(bruteForceProtected=true permanentLockout=false maxTemporaryLockouts=0
+  failureFactor=10 bruteForceStrategy=LINEAR waitIncrementSeconds=60 maxFailureWaitSeconds=900
+  maxDeltaTimeSeconds=43200 quickLoginCheckMilliSeconds=1000 minimumQuickLoginWaitSeconds=60)
+stack_keys=$(printf '%s ' "${stack_brute_force[@]%%=*}")
+# A brute-force setting a realm export's attributes hold as null (intent 0046): Keycloak, creating
+# the realm, writes it over the stack's value (26.8.1, DefaultExportImportManager.importRealm), its
+# own default then applying (the detection off, for bruteForceProtected).
+null_problems=()
+null_check() { # <realm file>
+  local found setting
+  if ! found=$(jq -r --arg keys "${stack_keys% }" '.attributes | objects | to_entries[]
+      | select(.value == null and (.key | IN($keys | split(" ")[]))) | .key' < "$1"); then
+    null_problems+=("--realm $1: not JSON that jq can read: refused")
+    return
+  fi
+  while IFS= read -r setting; do
+    setting=${setting%$'\r'}
+    [ -z "$setting" ] || null_problems+=("--realm $1: attributes.$setting null, which Keycloak would write over the stack's value: refused")
+  done <<< "$found"
+}
 # On the demo host, a realm export that would lock an account for good, or for more than 15 minutes
 # at a time (intent 0041, PA-02, PA-03). Keycloak 26.8.1 reads permanentLockout as Jackson does
 # ("TRUE" and 1 are true), caps every temporary lockout at maxFailureWaitSeconds, disables an
@@ -360,6 +386,7 @@ for file in "${realms[@]}"; do
       [ -z "$problem" ] || realm_problems+=("--realm $file: $problem: refused")
     done <<< "$found"
     [ "$INFRA_ENV" != demo ] || lockout_check "$file"
+    null_check "$file"
   fi
 done
 if [ -n "$themes" ]; then
@@ -408,6 +435,11 @@ if [ ${#lockout_problems[@]} -gt 0 ]; then
   echo "On the demo host, a realm's export never locks an account for good, nor for more than 15 minutes at a time (README.md, \"Brute-force protection\"); nothing was registered." >&2
   exit 1
 fi
+if [ ${#null_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${null_problems[@]}" >&2
+  echo "A realm's export gives each brute-force setting it holds a value, or leaves it out (README.md, \"Brute-force protection\"); nothing was registered." >&2
+  exit 1
+fi
 
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
@@ -440,14 +472,6 @@ bash "$INFRA_DIR/networks.sh" ensure "$app"
 # (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session lives in the container's /dev/shm (memory
 # only, mode 600), removed on exit.
 if [ ${#realms[@]} -gt 0 ]; then
-  # The brute-force settings an imported realm's export holds are kept as it says, the detection's
-  # switch included; c4-infra's fill the ones it doesn't hold (intents 0010, 0041): a temporary
-  # lockout after 10 failures, 1 more minute per further failure, at most 15, never for good
-  # (README.md, "Brute-force protection"; tests/0010-brute-force.sh). A realm already in Keycloak
-  # keeps its own until it is imported again.
-  stack_brute_force=(bruteForceProtected=true permanentLockout=false maxTemporaryLockouts=0
-    failureFactor=10 bruteForceStrategy=LINEAR waitIncrementSeconds=60 maxFailureWaitSeconds=900
-    maxDeltaTimeSeconds=43200 quickLoginCheckMilliSeconds=1000 minimumQuickLoginWaitSeconds=60)
   kc_session=$ACCOUNT_CONFIG
   if [ -z "$client_id" ] || ! account_login; then
     [ -z "${login_output:-}" ] || printf '%s\n' "$login_output" | tail -n 3 >&2
@@ -457,7 +481,6 @@ if [ ${#realms[@]} -gt 0 ]; then
   # What the account may do with each realm, before anything changes (probe: `get
   # realms/<realm>/roles`). A realm there but out of the account's reach stops the registration.
   declare -A realm_found=() realm_filled=() realm_off=()
-  stack_keys=$(printf '%s ' "${stack_brute_force[@]%%=*}")
   for file in "${realms[@]}"; do
     realm=$(basename "$file" -realm.json)
     # before anything changes: the stack's settings the export doesn't hold, in the stack's order,
