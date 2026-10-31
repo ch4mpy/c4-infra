@@ -74,6 +74,34 @@ The product owner has the verification and the delivery done by an agent on the 
 
 ## Verification
 
+### Verification — 87acaf4 (the local merge into `main`, the full run from the main checkout)
+
+- The product owner's "vas-y, fusionne 0050 dans main" (2026-10-31), option A: `git merge --no-ff origin/0050-docker-preflight-wrong-under-decimal-comma` in the main checkout (87acaf4, over `ae74575`), not pushed; the run from there. Machine: the PO's Linux workstation, Docker free of other runs; `LC_NUMERIC="fr_FR.UTF-8"`, `LC_ALL` empty, `LOCPATH` unset; `mawk 1.3.4 20260129`; `TMPDIR=/home/jerome/.cache/c4-infra-tests`; no `C4_DOCKER_REAP`.
+- **KO, not 0050's: `bash tests/run.sh --changed origin/main --all` → `run.sh exit 1`, 42m12s (`total: 2523.3 s for 90 test(s)`), `FAILED: tests/0002-accounts.stand-in.sh tests/0048-landing-page.sh`.**
+  - `tests/0048-landing-page.sh`: `KO - AC-10: shows it`, `KO - AC-04: lists no account`; the same two KOs alone under fr_FR (30 s, `2 check(s) failed`) and alone under `LC_ALL=C` (diagnosis only): not the locale. Cause: Docker Desktop's file sharing of the checkout's `caddy/` (mounted at `/etc/caddy`) serves a file's old content after `register-app.sh` renames the new page over it (`mv`, `register-app.sh:214`): a probe file renamed over in `caddy/html/` still read `v1` in `c4-infra.reverse-proxy` 6 s after `v2` was written; the container's `index.html` caught up later. The proxy was recreated during the run (started 21:00:09Z). 0050 changes nothing that test runs: `git diff origin/main 87acaf4` outside `docs/` is `tests/0050-preflight-locale.sh` and `tests/lib/docker-preflight.sh` only, which the test doesn't source. Not passing alone, so the merge was not pushed and was undone (`git reset --hard origin/main` in the main checkout, nothing else lost); the delivered mark reverted on this branch.
+  - `tests/0002-accounts.stand-in.sh`: `KO - it leaves no temporary configuration in /tmp` in the run; alone → `every check passed` (3m04s): intermittent.
+- PA-01, the run's preflight, default floors, full cleaning, under fr_FR:
+  ```
+  docker preflight: run 1793479909-2428694-2181114770
+  docker preflight: runs over: 5 container(s), 1 network(s), 0 volume(s), 0 image(s) removed
+  docker preflight: kept, their path gone: 0 volume(s), 0 image(s) removed
+  docker preflight: build cache: 3.008GB reclaimed (bound 5 GB)
+  docker preflight: anonymous volumes no container uses: 0 removed (0B)
+  docker preflight: images a pin replaced: 0 removed (0.0 MB)
+  docker preflight: VM disk: 424.8 GB free (floor 20)
+  docker preflight: VM memory: 8.7 GiB available (floor 3)
+  docker preflight: host disk under Docker's disk image (/): 114.8 GB free (floor 20)
+  docker preflight: host memory: 9.7 GiB MemAvailable + 2.1 GiB SwapFree (floor 6)
+  ```
+  The run went past its preflight and ran all 90 tests, 88 passing; every 0049/0050 test among them passed. The worktree runs below are superseded by this one for PA-01.
+- The product owner decides: deliver on this run (0048-landing-page's KO an environment defect, a bug intent), or a run after the file-sharing staleness is dealt with.
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| PA-01 | OK | the full run under fr_FR past its `docker preflight:` lines, default floors, 90 tests run |
+| AC-06 | OK | the 0049 and 0050 tests passed in the full run |
+| the full run's end | KO (environment, not 0050) | `0048-landing-page` KO, alone too (Docker Desktop file sharing stale after a rename); `0002-accounts` intermittent, passing alone |
+
 ### Verification — 2ca4649 (the merge of `main`, the full run)
 
 - Machine: the PO's Linux workstation, Docker free of other runs (the PO's go, 2026-10-31); `LC_NUMERIC=fr_FR.UTF-8`, `LC_ALL` empty, `LOCPATH` unset; `mawk 1.3.4 20260129`; `TMPDIR=/home/jerome/.cache/c4-infra-tests`; no `C4_DOCKER_REAP`.
