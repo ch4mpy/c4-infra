@@ -188,9 +188,13 @@ else
 fi
 
 # AC-07: the window's check on planted logs (no Docker)
+window_edge() { # <start|end> <order log>: run E's first test start, or its last test end
+  local edge=head
+  [ "$1" = start ] || edge=tail
+  awk -v at="$1" '$1 == "E" && $2 == at { print $3 }' "$2" | LC_ALL=C sort -n | "$edge" -n 1
+}
 cleaning_during_tests() { # <order log> <docker log>: the docker calls between the first test's start and the last test's end, none a prune nor a removal
-  awk -v from="$(awk '$1 == "E" && $2 == "start" { print $3 }' "$1" | LC_ALL=C sort -n | head -n 1)" \
-    -v to="$(awk '$1 == "E" && $2 == "end" { print $3 }' "$1" | LC_ALL=C sort -n | tail -n 1)" '
+  awk -v from="$(window_edge start "$1")" -v to="$(window_edge end "$1")" '
     BEGIN { if (from == "" || to == "") { print "no test start or end logged"; bad = 1; exit } }
     $1 >= from && $1 <= to { calls++ }
     $1 >= from && $1 <= to && / (prune|rmi|rm|volume rm|network rm|image rm)( |$)/ { print; bad = 1 }
@@ -207,7 +211,11 @@ check "AC-07: the window's check passes on a read in it" planted "150 ps -q --fi
 
 # AC-07: the reaping's check on planted logs (no Docker)
 reaped_before_tests() { # <order log> <docker log>: the reaper's calls, at least one, every one before the first test's start
-  grep -q " ps -a --filter label=$NS.run " "$2"
+  awk -v from="$(window_edge start "$1")" -v reaper=" ps -a --filter label=$NS.run " '
+    BEGIN { if (from == "") { print "no test start logged"; bad = 1; exit } }
+    index($0, reaper) { reaps++ }
+    index($0, reaper) && $1 >= from { print $0 "  at or after the first test\047s start " from; bad = 1 }
+    END { if (!bad && !reaps) { print "no reaper call (" substr(reaper, 2, length(reaper) - 2) ") logged"; bad = 1 }; exit bad }' "$2"
 }
 REAP="ps -a --filter label=$NS.run --format {{.ID}}"
 reap_planted() { # <docker log line>…: reaped_before_tests on the planted order log and these lines
