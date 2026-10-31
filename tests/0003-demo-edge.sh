@@ -39,6 +39,9 @@ trap cleanup EXIT
 cleanup
 mkdir -p "$work/apps" "$work/test" "$work/html"
 printf '<p>the landing page</p>\n' > "$work/html/index.html"
+# the mount point of the test's page, which Docker can't create inside the read-only configuration
+# (git ignores it: up.sh and the registrations write the page there)
+mkdir -p caddy/html
 
 # the demo's Mailpit credentials: a random password, its bcrypt hash in Mailpit's MP_UI_AUTH, as
 # compose.demo.yml writes it (taken by `docker run -e NAME` from this environment, never on a

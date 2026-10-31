@@ -62,15 +62,27 @@ well_formed() { # <file>: two accounts, each password of RQ-07's form
       && [[ ! $password =~ [^A-Za-z0-9_-] ]] || { echo "not of RQ-07's form: ${#password} characters"; return 1; }
   done
 }
-grant() { # <username> <password>: the token endpoint's status for a password grant of the realm's admin-cli
+# one request a check: two failures within a second would lock the account for 60 s (the stack's
+# quick-login check, README "Brute-force protection")
+grant() { # <username> <password>: "<status> <error>" of a password grant of the realm's admin-cli
+  local answer
   printf '%s' "$2" | stand_in_exec -i sh -c 'cat > /root/grant-password'
-  stand_in_https infra.c4-soft.com /auth/realms/faito/protocol/openid-connect/token -o /dev/null -w '%{http_code}' \
+  answer=$(stand_in_https infra.c4-soft.com /auth/realms/faito/protocol/openid-connect/token -w '\n%{http_code}' \
     -d grant_type=password -d client_id=admin-cli --data-urlencode "username=$1" --data-urlencode password@/root/grant-password \
-    2> /dev/null | tr -d '\r'
+    2> /dev/null | tr -d '\r')
   stand_in_exec rm -f /root/grant-password
+  printf '%s %s' "${answer##*$'\n'}" "$(grep -o '"error":"[^"]*"' <<< "$answer" | head -n 1)"
 }
-signs_in() { [ "$(grant "$1" "$2")" = 200 ] || { echo "token endpoint: $(grant "$1" "$2")"; return 1; }; }
-refused_sign_in() { [ "$(grant "$1" "$2")" = 401 ] || { echo "token endpoint: $(grant "$1" "$2")"; return 1; }; }
+signs_in() { # <username> <password>
+  local result
+  result=$(grant "$1" "$2")
+  [ "${result%% *}" = 200 ] || { echo "token endpoint: $result"; return 1; }
+}
+refused_sign_in() { # <username> <password>: Keycloak 26.8.1 answers a wrong password 400 invalid_grant
+  local result
+  result=$(grant "$1" "$2")
+  [ "$result" = '400 "error":"invalid_grant"' ] || { echo "token endpoint: $result"; return 1; }
+}
 holds_none() { # <log> <file of accounts>: the log holds none of their passwords
   local password
   for password in $(awk '{ print $3 }' "$work/$2"); do
