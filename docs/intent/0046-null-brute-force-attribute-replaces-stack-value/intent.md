@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-30: the review of spec 0041 v3's diff, 0040's `plan.md`, Deviations; the handover's "Left open")
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-30)
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —
