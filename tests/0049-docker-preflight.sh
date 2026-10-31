@@ -81,10 +81,11 @@ cp tests/lib/*.sh "$repo/tests/lib/"
 cat > "$repo/tests/0001-holder.sh" << 'EOF'
 #!/usr/bin/env bash
 # a fake test of tests/0049-docker-preflight.sh: a container, a volume and a network, labelled, held
-# while $WORK/hold-$RUN_ID exists (60 s at most), then removed; nothing with Docker in run E
+# while $WORK/hold-$RUN_ID exists (60 s at most), then removed; in run E, one docker read only
 echo $$ > "$WORK/pid-$RUN_ID-holder"
 echo "$RUN_ID start $(date +%s%N)" >> "$WORK/order.log"
 if [ "$RUN_ID" = E ]; then
+  docker ps -q --filter "label=$NS.run" > /dev/null
   sleep 1
   echo "$RUN_ID end $(date +%s%N)" >> "$WORK/order.log"
   exit 0
@@ -119,6 +120,7 @@ case " \$* " in
 esac
 exec "$REAL_DOCKER" "\$@"
 EOF
+chmod +x "$work/shim/docker"
 git -C "$repo" init -q -b main
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test add -A
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test commit -q -m base
@@ -185,6 +187,61 @@ else
   check "AC-06 (Linux): a drive's path is another system's, never gone here" eval '! gone_here D:/nonexistent-0049'
 fi
 
+# AC-07: the window's check on planted logs (no Docker)
+window_edge() { # <start|end> <order log>: run E's first test start, or its last test end
+  local edge=head
+  [ "$1" = start ] || edge=tail
+  awk -v at="$1" '$1 == "E" && $2 == at { print $3 }' "$2" | LC_ALL=C sort -n | "$edge" -n 1
+}
+cleaning_during_tests() { # <order log> <docker log>: the docker calls between the first test's start and the last test's end, none a prune nor a removal
+  awk -v from="$(window_edge start "$1")" -v to="$(window_edge end "$1")" '
+    BEGIN { if (from == "" || to == "") { print "no test start or end logged"; bad = 1; exit } }
+    $1 >= from && $1 <= to { calls++ }
+    $1 >= from && $1 <= to && / (prune|rmi|rm|volume rm|network rm|image rm)( |$)/ { print; bad = 1 }
+    END { if (!bad && !calls) { print "no docker call logged between the first test\047s start and the last test\047s end"; bad = 1 }; exit bad }' "$2"
+}
+printf '%s\n' "E start 100" "E end 200" > "$work/planted-order.log"
+planted() { # <docker log line>…: cleaning_during_tests on the planted order log and these lines
+  printf '%s\n' "$@" > "$work/planted-docker.log"
+  cleaning_during_tests "$work/planted-order.log" "$work/planted-docker.log"
+}
+check "AC-07: the window's check fails on a prune in it" eval '! planted "50 ps -a" "150 image prune -f"'
+check "AC-07: the window's check fails on a log with no call in it" eval '! planted "50 ps -a --filter label=$NS.run"'
+check "AC-07: the window's check passes on a read in it" planted "150 ps -q --filter label=$NS.run"
+
+# AC-07: the reaping's check on planted logs (no Docker)
+reaped_before_tests() { # <order log> <docker log>: the reaper's calls, at least one, every one before the first test's start
+  awk -v from="$(window_edge start "$1")" -v reaper="ps -a --filter label=$NS.run" '
+    BEGIN { if (from == "") { print "no test start logged"; bad = 1; exit } }
+    index($0, " " reaper " ") { reaps++ }
+    index($0, " " reaper " ") && $1 >= from { print $0 "  at or after the first test\047s start " from; bad = 1 }
+    END { if (!bad && !reaps) { print "no reaper call (" reaper ") logged"; bad = 1 }; exit bad }' "$2"
+}
+REAP="ps -a --filter label=$NS.run --format {{.ID}}"
+reap_planted() { # <order log> <docker log line>…: reaped_before_tests on that order log and these lines
+  local order=$1
+  shift
+  printf '%s\n' "$@" > "$work/planted-docker.log"
+  reaped_before_tests "$order" "$work/planted-docker.log"
+}
+reap_refused() { # <cause> <order log> <docker log line>…: reap_planted fails, and prints that cause
+  local out
+  out=$(reap_planted "${@:2}") && { echo "passed: $out"; return 1; }
+  grep -qF -- "$1" <<< "$out" || { printf '%s\n' "$out"; return 1; }
+}
+printf '%s\n' "E end 200" > "$work/planted-no-start.log"
+check "AC-07: the reaping's check passes on a reap before the first test" reap_planted "$work/planted-order.log" "50 $REAP"
+check "AC-07: the reaping's check fails on a reap after the first test's start" \
+  reap_refused "150 $REAP  at or after the first test's start 100" "$work/planted-order.log" "150 $REAP"
+check "AC-07: the reaping's check fails on a reap after the last test's end" \
+  reap_refused "250 $REAP  at or after the first test's start 100" "$work/planted-order.log" "250 $REAP"
+check "AC-07: the reaping's check fails on a reap during the tests beside one before" \
+  reap_refused "150 $REAP  at or after the first test's start 100" "$work/planted-order.log" "50 $REAP" "150 $REAP"
+check "AC-07: the reaping's check fails on a log without it" \
+  reap_refused "no reaper call (ps -a --filter label=$NS.run) logged" "$work/planted-order.log" "50 ps -q --filter label=$NS.run"
+check "AC-07: the reaping's check fails on an order log without a start" \
+  reap_refused "no test start logged" "$work/planted-no-start.log" "50 $REAP"
+
 # AC-03: a run killed with kill -9 while its test holds its resources, then the next run
 : > "$work/hold-A"
 env "${NO_FLOORS[@]}" RUN_ID=A bash "$repo/tests/run.sh" > "$work/A.log" 2>&1 &
@@ -231,18 +288,21 @@ check "AC-05: with C4_DOCKER_PREFLIGHT=off, it starts and passes" \
   eval '[ "$status" -eq 0 ] && grep -q "^D start" "$work/order.log" && grep -qx "verification passed" "$work/D.log" || { cat "$work/D.log"; false; }'
 
 # AC-07: a run with lanes, its docker calls logged
+shim_runs() { # bash skips a PATH entry without the execute bit, Git Bash doesn't: never read a shim that didn't run as an empty log
+  local found
+  found=$(PATH="$work/shim:$PATH" && command -v docker)
+  [ "$found" = "$work/shim/docker" ] || { echo "docker is ${found:-not found}: the shim $work/shim/docker is not found or not executable"; return 1; }
+  (PATH="$work/shim:$PATH" && docker --version > /dev/null)
+  grep -q " --version$" "$work/docker.log" || { echo "the shim $work/shim/docker logged no call"; return 1; }
+}
+: > "$work/docker.log"
+check "AC-07: docker is the shim, and its calls are logged" shim_runs
 : > "$work/docker.log"
 PATH="$work/shim:$PATH" suite E --all
 check "AC-07: the run with lanes passes" test "$status" -eq 0
 check "AC-09: the VM's disk read from df's line, what a pull prints first aside" \
   says E "^docker preflight: VM disk: [1-9][0-9.]* GB free \(floor 0\)$"
-check "AC-07: the shim saw the preflight's reaping, before the tests" grep -q " ps -a --filter label=$NS.run " "$work/docker.log"
-cleaning_during_tests() {
-  awk -v from="$(awk '$1 == "E" && $2 == "start" { print $3 }' "$work/order.log" | LC_ALL=C sort -n | head -n 1)" \
-    -v to="$(awk '$1 == "E" && $2 == "end" { print $3 }' "$work/order.log" | LC_ALL=C sort -n | tail -n 1)" '
-    from == "" || to == "" { print "no test start or end logged"; bad = 1; exit }
-    $1 >= from && $1 <= to && / (prune|rmi|rm|volume rm|network rm|image rm)( |$)/ { print; bad = 1 }
-    END { exit bad }' "$work/docker.log"
-}
-check "AC-07: no prune nor removal between the first test's start and the last test's end" cleaning_during_tests
+check "AC-07: the shim saw the preflight's reaping, before the tests" reaped_before_tests "$work/order.log" "$work/docker.log"
+check "AC-07: no prune nor removal between the first test's start and the last test's end" \
+  cleaning_during_tests "$work/order.log" "$work/docker.log"
 finish
