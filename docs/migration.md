@@ -238,7 +238,9 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    (the tag as a comment: the ssh agent receives the private key), then `rsync` to `~/<project>/`,
    `sudo c4-app pull` (step 3; its registry's token from a secret, on stdin, never on a command
    line: GHCR's here, `GITHUB_TOKEN`), `sudo c4-app register` (paths relative to `~/<project>/`;
-   `--rabbitmq-password-env` names a variable of `~/<project>/.env`) and `sudo c4-app up`:
+   `--rabbitmq-password-env` names a variable of `~/<project>/.env`; `--accounts`, its demo accounts,
+   below), `sudo c4-app up`, then its demo accounts' passwords published where only its members read
+   them:
 
    ```yaml
      deploy:
@@ -247,6 +249,7 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
        permissions:
          contents: read
          packages: read
+         pull-requests: write
        env:
          VPS: <project>@${{ secrets.VPS_HOST }}
        steps:
@@ -277,12 +280,42 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
            run: |
              rsync -az --delete deploy/ "$VPS:~/<project>/"
              ssh "$VPS" sudo c4-app pull --registry ghcr.io --registry-user "$GHCR_USER" <<< "$GHCR_TOKEN"
-             ssh "$VPS" sudo c4-app register --realm <realm>-realm.json --proxy <project>.routes --rabbitmq-user <project>-api --rabbitmq-password-env RABBITMQ_PASSWORD
+             ssh "$VPS" sudo c4-app register --realm <realm>-realm.json --proxy <project>.routes --accounts <project>.accounts --rabbitmq-user <project>-api --rabbitmq-password-env RABBITMQ_PASSWORD
              ssh "$VPS" sudo c4-app up
            env:
              GHCR_USER: ${{ github.actor }}
              GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+         - name: Publish the demo accounts
+           # on the pull request this run deploys, or in this run's summary (a manual run, a direct
+           # push): only the repository's members read them; masked in the log, never on a command line
+           run: |
+             accounts=$(ssh "$VPS" sudo c4-app accounts)
+             while read -r realm user password; do
+               [ -z "$password" ] || echo "::add-mask::$password"
+             done <<< "$accounts"
+             body=$(printf 'Demo accounts, as %s set them (https://infra.c4-soft.com/):\n\n```text\n%s\n```\n' "$GITHUB_SHA" "$accounts")
+             pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')
+             if [ -n "$pr" ]; then
+               printf '%s\n' "$body" | gh pr comment "$pr" -R "$GITHUB_REPOSITORY" --body-file -
+             else
+               printf '%s\n' "$body" >> "$GITHUB_STEP_SUMMARY"
+             fi
+           env:
+             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
    ```
+
+   Its demo accounts, `<project>.accounts` in `deploy/`: one a line, `<realm> <username> <dev
+   password>` (`-` for none), `#` for a comment, accounts made for the demo only, whose password is
+   used nowhere else. The landing page, `https://infra.c4-soft.com/`, lists them, each user with its
+   groups and each group with its roles as Keycloak holds them at that registration, never a
+   password: the registration draws one for each account, keeps it on the host where root alone reads
+   it, and sets it in Keycloak at each registration (the dev password isn't used there);
+   `sudo c4-app accounts` gives them to the project's own account only; `--new-passwords` on the
+   register line draws them all again. A user Keycloak can't set the password of (one its realm
+   doesn't have, one an LDAP directory holds read-only) stops the registration, naming it: leave it
+   out, or set its password in the project's own way. Without `--accounts`, the list stays as the
+   last registration with it left it.
 
    A project without messaging leaves out `--rabbitmq-*`; one with themes adds `--themes <dir>` (a
    directory of `~/<project>/`, holding its registry entry's themes only). No Caddy site to write:

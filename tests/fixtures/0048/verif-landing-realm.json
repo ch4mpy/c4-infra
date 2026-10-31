@@ -1,0 +1,51 @@
+{
+  "realm": "verif-landing",
+  "displayName": "verif-landing (0048 fixture)",
+  "enabled": true,
+  "roles": {
+    "realm": [ { "name": "manager" }, { "name": "worker" } ],
+    "client": { "verif-landing-api": [ { "name": "read" }, { "name": "write" } ] }
+  },
+  "clients": [
+    {
+      "clientId": "verif-landing-api",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "managers",
+      "path": "/managers",
+      "realmRoles": [ "manager" ],
+      "clientRoles": { "verif-landing-api": [ "write", "read" ] }
+    },
+    { "name": "a&b<c", "path": "/a&b<c", "realmRoles": [ "worker" ] },
+    { "name": "spare", "path": "/spare" }
+  ],
+  "users": [
+    {
+      "username": "ann",
+      "enabled": true,
+      "email": "ann@verif-landing.test",
+      "emailVerified": true,
+      "firstName": "Ann",
+      "lastName": "Landing",
+      "groups": [ "/managers" ],
+      "credentials": [ { "type": "password", "value": "ann-password", "temporary": false } ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@verif-landing.test",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Landing",
+      "groups": [ "/a&b<c" ],
+      "credentials": [ { "type": "password", "value": "bob-password", "temporary": false } ]
+    }
+  ]
+}

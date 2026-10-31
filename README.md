@@ -150,7 +150,7 @@ their ports: `up.sh` names its containers, to stop first.
 
 | Service | URL | Ports on the host (`127.0.0.1` only) |
 |---|---|---|
-| Landing page (links to everything registered) | https://host.docker.internal/ | 80, 443 |
+| Landing page (the shared services; each registered application, its accounts with their dev passwords, groups and roles; the simulated providers' users) | https://host.docker.internal/ | 80, 443 |
 | Keycloak (admin `admin` / `secret`) | https://host.docker.internal/auth/admin/ | none: through the proxy only |
 | Mailpit | https://host.docker.internal/mailpit/ | 1025 (SMTP, auth `mailpit` / `secret`), 8025 (its UI, over plain HTTP) |
 | Grafana LGTM (logs, traces, metrics and profiles kept 14 days) | https://host.docker.internal/grafana/ | 3000, 4317 (OTLP gRPC), 4318 (OTLP HTTP) |
@@ -252,6 +252,13 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
 - its RabbitMQ user and password (the virtual host is named after the application: Spring's
   `spring.rabbitmq.virtual-host`);
 - its own compose project for its database(s), on its block's ports;
+- its accounts, the ones the landing page lists (intent 0048): a file, one a line, `<realm>
+  <username> <dev password>` (`-` for none), `#` for a comment, a realm of its entry, nothing a page
+  would have to escape (`<`, `>`, `&`, `"`, `'`, `` ` ``, a control character), 200 bytes a line, 50
+  accounts. Only accounts made for the demo, whose password is used nowhere else. The registration
+  reads each user's groups and each group's roles from Keycloak then, and the page shows them as
+  they were: it doesn't follow later changes in Keycloak. In dev the page shows the dev password and
+  sets none; on the demo host it shows no password ("What an application's deployment does");
 - in its `deploy-dev.sh`:
 
   ```bash
@@ -260,6 +267,7 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
   bash "$C4_INFRA_DIR/register-app.sh" --app faito \
     --realm keycloak/import/faito-realm.json \
     --proxy reverse-proxy/faito.routes \
+    --accounts deploy/faito.accounts \
     --rabbitmq-user faito-api --rabbitmq-password-env RABBITMQ_PASSWORD   # exported, from .env
   docker compose -f compose-rest-api-db.yml up -d --wait
   ```
@@ -655,8 +663,10 @@ It runs the same stack as the workstation on one Ubuntu VPS, deployed by
 the compose base with its demo override, [`compose.demo.yml`](compose.demo.yml), and the same Caddy
 configuration with the demo's rules (`INFRA_ENV=demo`: a Let's Encrypt certificate per site, HSTS,
 no RabbitMQ UI), Mailpit asking for its own credentials; plain HTTP inside the Docker networks,
-`https://infra.c4-soft.com/` for the shared services, and one site per application,
-`https://<app>.c4-soft.com/`, which each application installs from its own deployment.
+`https://infra.c4-soft.com/` for the shared services and the landing page (each deployed
+application, its demo accounts' users and groups and the groups' roles, never a password: intent
+0048), and one site per application, `https://<app>.c4-soft.com/`, which each application installs
+from its own deployment.
 
 ### One-time setup
 
@@ -704,8 +714,13 @@ application whose account runs it (never an argument), on its own project only:
   `~/<app>/.env`. The registration then runs with the registration account's secret, which the
   application's account can't read, and touches only what its registry entry assigns to it (its
   realms, its themes, its RabbitMQ user and virtual host, its site: see "What an application
-  provides"). It reads the realm, routes and theme files from the snapshot too, so a container can't
-  swap them under it;
+  provides"). It reads the realm, routes, theme and accounts files from the snapshot too, so a
+  container can't swap them under it. With `--accounts <file>`, each account gets the password root
+  keeps for it in `/var/lib/c4-apps/.<app>.passwords` (0600), or a new one drawn (24 characters, each
+  one with `--new-passwords`), set in Keycloak by the registration: kept once Keycloak has them;
+- `sudo c4-app accounts` (intent 0048): its accounts and their passwords, `<realm> <username>
+  <password>` a line, for its workflow to publish where only the project's members read them
+  ([docs/migration.md](docs/migration.md), "On the demo host", step 5); no other output holds them;
 - `sudo c4-app backup` and `sudo c4-app restore [<stamp> --yes]` (intent 0027): the data its compose
   project declares, read from the containers that run, never from `~/<app>/` (a deployment not done
   yet or refused changes nothing): they stage nothing and pull nothing, and wait for its other
@@ -765,7 +780,10 @@ files rsynced to `~/<app>/`, then `sudo c4-app pull`, `sudo c4-app register …`
   "Accounts");
 - its realm, rendered for the demo (public host, real client secrets, Mailpit's SMTP password,
   back-channel logout on `http://<app>.gateway:7080/...`), then
-  `sudo c4-app register --realm <realm>-realm.json --proxy <app>.routes --rabbitmq-user … --rabbitmq-password-env …`;
+  `sudo c4-app register --realm <realm>-realm.json --proxy <app>.routes --accounts <app>.accounts --rabbitmq-user … --rabbitmq-password-env …`;
+- its demo accounts' passwords, which the registration draws, keeps and sets in Keycloak, published by
+  its workflow from `sudo c4-app accounts` on the pull request it deploys, or in its run's summary:
+  the landing page lists the accounts without them;
 - no Caddy site to write: its routes file, the one it registers in dev (see "Routes file"), gives
   its site on the demo host name of its registry entry, to its containers on the ports fixed here:
   the gateway on `<app>.gateway:7080`, every locale's front end on `<app>.frontend:80` (`/fr/`

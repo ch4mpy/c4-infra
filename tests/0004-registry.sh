@@ -18,7 +18,11 @@
 #              refused, before any docker call, and goes past that check in dev (0041 AC-06), and so
 #              is one whose maxFailureWaitSeconds is above 900 or whose maxSecondaryAuthFailures
 #              isn't 0 (0041 AC-08); in dev as there, one whose attributes hold a brute-force setting
-#              as null is refused, before any docker call (0046)
+#              as null is refused, before any docker call (0046); an accounts file the landing page
+#              couldn't show safely, naming another application's realm, of 51 accounts, or, on the
+#              demo host, without the passwords demo/c4-app draws, is refused before any docker call,
+#              and --index-only writes a page that escapes what Keycloak names and shows no password on
+#              the demo host (0048)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -340,6 +344,66 @@ part_scripts() {
     run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
     check "$json, in dev: past the export's checks" called_docker
   done
+
+  # 0048 AC-03: an accounts file the landing page couldn't show safely, or naming another application's
+  # realm, refused before any docker call; its line 2, after a comment
+  local accounts=$work/accounts/faito.accounts line reason i
+  mkdir -p "$work/accounts"
+  refused=(
+    'faito <script> -|:2: one of < > & " '"'"' `, which the page would have to escape'
+    'faito ann pass"word|:2: one of < > & " '"'"' `, which the page would have to escape'
+    'faito ann|:2: 2 fields where <realm> <username> <dev password> (- for none) are 3'
+    'public-facing ann -|:2: realm public-facing is not faito'"'"'s (its registry entry'"'"'s realms: faito)'
+    "faito ann pass$(printf '\001')word|:2: a control character"
+    "faito ann $(printf '%0191d' 0)|:2: 201 bytes, 200 at most a line"
+  )
+  for entry in "${refused[@]}"; do
+    line=${entry%%|*}
+    reason=${entry#*|}
+    printf '%s\n' '# the accounts' "$line" > "$accounts"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts"
+    check "0048, accounts line \"${line:0:40}\": refused (exit non-zero)" exited_non_zero
+    check "0048, accounts line \"${line:0:40}\": it says why" says "--accounts $accounts$reason"
+    check "0048, accounts line \"${line:0:40}\": nothing was registered" says "nothing was registered."
+    check "0048, accounts line \"${line:0:40}\": no docker call" called_no_docker
+  done
+  : > "$accounts"
+  for i in $(seq 1 51); do printf 'faito user%s -\n' "$i" >> "$accounts"; done
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts"
+  check "0048, 51 accounts: refused, saying so" says "--accounts $accounts: 51 accounts, 50 at most"
+  check "0048, 51 accounts: no docker call" called_no_docker
+  printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
+  printf '%s\n' '# the accounts' 'faito ann -' '' 'faito bob bob-password' > "$accounts"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts"
+  check "0048, on the demo host without the drawn passwords: refused" \
+    says "--accounts $accounts: faito ann: no password for it (on the demo host, sudo c4-app register draws them)"
+  check "0048, on the demo host without the drawn passwords: no docker call" called_no_docker
+  ACCOUNT_PASSWORDS=$'faito ann A-1b\nfaito bob C_2d' \
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts" --account-passwords-env ACCOUNT_PASSWORDS
+  check "0048, on the demo host with the drawn passwords: past the accounts' checks" called_docker
+  printf '%s\n' INFRA_ENV=dev > "$stack/.env"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts" --account-passwords-env ACCOUNT_PASSWORDS
+  check "0048, in dev with drawn passwords: refused, saying they are the demo host's" \
+    says "--account-passwords-env: the demo host's only (in dev, no password is drawn nor set)"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts"
+  check "0048, in dev, a valid accounts file: past the accounts' checks" called_docker
+
+  # 0048 AC-06: the page escapes what Keycloak names (a group holding & and <), and shows no password on
+  # the demo host
+  mkdir -p "$stack/caddy/apps" "$stack/keycloak-import"
+  cp keycloak-import/simulated-*-realm.json "$stack/keycloak-import/"
+  echo '# site' > "$stack/caddy/apps/faito.caddy"
+  printf 'U\037ann\037ann-password\037a&b<c\nG\037a&b<c\037worker\n' > "$stack/caddy/apps/faito.accounts"
+  run_with "$ENTRIES" bash "$stack/register-app.sh" --index-only
+  check "0048 AC-06, in dev: the page holds the group's name escaped" grep -qF '<code>a&amp;b&lt;c</code>' "$stack/caddy/html/index.html"
+  check "0048 AC-06, in dev: never unescaped" eval '! grep -qF "a&b<c" "$stack/caddy/html/index.html"'
+  check "0048, in dev: the dev passwords shown" grep -qF '<code>ann-password</code>' "$stack/caddy/html/index.html"
+  printf '%s\n' INFRA_ENV=demo INFRA_HOST=infra.c4-soft.com > "$stack/.env"
+  run_with "$ENTRIES" bash "$stack/register-app.sh" --index-only
+  check "0048, on the demo host: the application linked to its demo host" \
+    grep -qF '<a href="https://faito.c4-soft.com/">faito</a>' "$stack/caddy/html/index.html"
+  check "0048, on the demo host: no password, the application's nor the simulated providers'" \
+    eval '! grep -qE "ann-password|alice-password" "$stack/caddy/html/index.html"'
 }
 
 # The README's "Port registry" section, up to the next heading

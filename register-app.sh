@@ -4,6 +4,8 @@
 #
 #   register-app.sh --app <name> [--realm <file>]... [--themes <dir>] [--proxy <routes file>]
 #                   [--rabbitmq-user <user> --rabbitmq-password-env <variable>] [--reset-realms]
+#                   [--accounts <file> [--account-passwords-env <variable>]]
+#   register-app.sh --index-only
 #
 #   --app           the application's name in the registry, registry.txt: an application missing
 #                   from it, or a registry that registry.sh's check refuses, registers nothing
@@ -28,10 +30,24 @@
 #   --rabbitmq-*    a virtual host named after the application, and its user (the registry entry's),
 #                   with every permission on that virtual host and none elsewhere; the password is
 #                   read from the named environment variable (the one the application itself reads)
-#   --index-only    only rewrite the dev landing page (https://host.docker.internal/)
+#   --accounts      the accounts the landing page lists for the application (intent 0048), one a
+#                   line, <realm> <username> <dev password>, "-" for none, # for a comment; a realm of
+#                   the entry, nothing a page would have to escape (< > & " ' `, a control character),
+#                   200 bytes a line, 50 accounts. Each user's groups and each group's roles are read
+#                   from Keycloak then, and the page shows them as they were (caddy/apps/<app>.accounts):
+#                   it doesn't follow later changes. Without it, the application's list stays as it is
+#   --account-passwords-env
+#                   on the demo host, the variable holding a line <realm> <username> <password> for each
+#                   account, which demo/c4-app draws and keeps: each password is set in Keycloak, and the
+#                   dev password is never used there nor shown
+#   --index-only    only rewrite the landing page
 #
 # Every registration also makes sure of the application's own network, c4-infra.<app>, with the
-# shared services attached to it (networks.sh ensure, intent 0007).
+# shared services attached to it (networks.sh ensure, intent 0007), and writes the landing page again
+# (https://host.docker.internal/ in dev, https://<INFRA_HOST>/ on the demo host): each registered
+# application, linked to its host name, its accounts' users and groups and the groups' roles, the
+# simulated providers' users; in dev the shared services and the dev passwords, never a password on
+# the demo host. Every value is escaped: the page is served on Keycloak's origin.
 #
 # A registration touches only what the application's registry entry assigns to it (intent 0002): a
 # realm, a theme or a RabbitMQ user of another entry, or of none, registers nothing. On the demo
@@ -44,6 +60,8 @@
 set -euo pipefail
 # Git Bash would rewrite the container paths below (/opt/keycloak/...) into Windows paths
 export MSYS_NO_PATHCONV=1
+# bash 5.2 replaces each & of a substitution's replacement by the match, which html (below) can't have
+shopt -u patsub_replacement 2> /dev/null || true
 
 INFRA_DIR=$(cd "$(dirname "$0")" && pwd)
 source "$INFRA_DIR/registry.sh"
@@ -82,6 +100,8 @@ proxy=""
 rabbitmq_user=""
 rabbitmq_password_env=""
 reset_realms=false
+accounts=""
+account_passwords_env=""
 index_only=false
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -92,6 +112,8 @@ while [ $# -gt 0 ]; do
     --rabbitmq-user) rabbitmq_user=$2; shift 2 ;;
     --rabbitmq-password-env) rabbitmq_password_env=$2; shift 2 ;;
     --reset-realms) reset_realms=true; shift ;;
+    --accounts) accounts=$2; shift 2 ;;
+    --account-passwords-env) account_passwords_env=$2; shift 2 ;;
     --index-only) index_only=true; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -109,27 +131,84 @@ case "$INFRA_ENV" in
     ;;
 esac
 
-# The dev landing page links the shared services and every registered application, on its dev
-# host name (registry.txt)
+# The value escaped for HTML: the landing page is served on Keycloak's origin
+html() { # <value>
+  local s=$1
+  s=${s//&/&amp;}
+  s=${s//</&lt;}
+  s=${s//>/&gt;}
+  s=${s//\"/&quot;}
+  s=${s//\'/&#39;}
+  printf '%s' "$s"
+}
+
+# An application's users and groups on the landing page, from the snapshot its last registration with
+# --accounts wrote: U<US><username><US><dev password><US><groups>, G<US><group><US><roles> (US: 0x1f, which
+# keeps empty fields); the dev password in dev only
+accounts_section() { # <snapshot>
+  local kind a b c
+  [ -s "$1" ] || return 0
+  echo '<h3>users</h3><ul>'
+  while IFS=$'\x1f' read -r kind a b c; do
+    [ "$kind" = U ] || continue
+    printf '<li><code>%s</code>' "$(html "$a")"
+    [ "$INFRA_ENV" != dev ] || [ -z "$b" ] || printf ' <code>%s</code>' "$(html "$b")"
+    [ -z "$c" ] || printf ' [%s]' "$(html "$c")"
+    echo '</li>'
+  done < "$1"
+  echo '</ul>'
+  grep -q '^G' "$1" || return 0
+  echo '<h3>groups</h3><ul>'
+  while IFS=$'\x1f' read -r kind a b; do
+    [ "$kind" = G ] || continue
+    printf '<li><code>%s</code>' "$(html "$a")"
+    [ -z "$b" ] || printf ' [%s]' "$(html "$b")"
+    echo '</li>'
+  done < "$1"
+  echo '</ul>'
+}
+
+# The landing page (intent 0048): in dev the shared services; each registered application, linked to
+# its host name in this environment (registry.txt), with its accounts; the simulated providers' users.
+# No script, nothing to fetch: Caddy serves it with a policy that allows neither (caddy/Caddyfile).
 write_index() {
-  local site name host
-  [ "$INFRA_ENV" = dev ] || return 0
+  local site name host realm user password
   mkdir -p "$INFRA_DIR/caddy/html"
   {
-    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>c4-infra</title></head><body>'
-    echo '<h1>Shared services</h1><ul>'
-    echo '<li><a href="/auth/admin/">Keycloak</a></li><li><a href="/mailpit/">Mailpit</a></li>'
-    echo '<li><a href="/grafana/">Grafana</a></li><li><a href="/rabbitmq/">RabbitMQ</a></li></ul>'
-    echo '<h1>Applications</h1><ul>'
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">'
+    echo '<title>c4-infra</title><style>body{font-family:system-ui,sans-serif;max-width:48rem;margin:1rem auto;padding:0 1rem}h3{font-size:1rem;margin:.6rem 0 .2rem}li{margin:.15rem 0}</style>'
+    echo '</head><body><h1>c4-infra</h1>'
+    if [ "$INFRA_ENV" = dev ]; then
+      echo '<h2>Shared services</h2><ul>'
+      echo '<li><a href="/auth/admin/">Keycloak</a></li><li><a href="/mailpit/">Mailpit</a></li>'
+      echo '<li><a href="/grafana/">Grafana</a></li><li><a href="/rabbitmq/">RabbitMQ</a></li></ul>'
+    fi
     for site in "$INFRA_DIR"/caddy/apps/*.caddy; do
       [ -f "$site" ] || continue
       name=$(basename "$site" .caddy)
       # in a subshell: registry_entry sets the REG_* of the application being registered
-      host=$(registry_entry "$name" 2> /dev/null && printf '%s' "$REG_DEV_HOST") || continue
-      echo "<li><a href=\"https://${host}/\">${name}</a></li>"
+      host=$(registry_entry "$name" 2> /dev/null \
+        && if [ "$INFRA_ENV" = dev ]; then printf '%s' "$REG_DEV_HOST"; else printf '%s' "$REG_DEMO_HOST"; fi) || continue
+      [ -n "$host" ] || continue
+      printf '<section><h2><a href="https://%s/">%s</a></h2>\n' "$(html "$host")" "$(html "$name")"
+      accounts_section "$INFRA_DIR/caddy/apps/$name.accounts"
+      echo '</section>'
     done
-    echo '</ul></body></html>'
-  } > "$INFRA_DIR/caddy/html/index.html"
+    for realm in "$INFRA_DIR"/keycloak-import/simulated-*-realm.json; do
+      [ -f "$realm" ] || continue
+      printf '<section><h2>%s</h2><h3>users</h3><ul>\n' "$(html "$(basename "$realm" -realm.json)")"
+      while IFS=$'\x1f' read -r user password; do
+        printf '<li><code>%s</code>' "$(html "$user")"
+        [ "$INFRA_ENV" != dev ] || [ -z "$password" ] || printf ' <code>%s</code>' "$(html "$password")"
+        echo '</li>'
+      done < <(jq -r '.users[]? | [.username, ([.credentials[]? | select(.type == "password") | .value][0] // "")]
+          | join("\u001f")' < "$realm" | tr -d '\r')
+      echo '</ul></section>'
+    done
+    echo '</body></html>'
+  } > "$INFRA_DIR/caddy/html/index.html.new"
+  mv "$INFRA_DIR/caddy/html/index.html.new" "$INFRA_DIR/caddy/html/index.html"
   own "$INFRA_DIR/caddy/html"
 }
 
@@ -441,6 +520,71 @@ if [ ${#null_problems[@]} -gt 0 ]; then
   exit 1
 fi
 
+# The accounts the landing page lists (intent 0048), before anything changes: <realm> <username>
+# <dev password> a line, a realm of the entry, nothing the page would have to escape; on the demo host,
+# a password from demo/c4-app for each, the dev password never used there
+acc_realm=()
+acc_user=()
+acc_dev=()
+declare -A acc_password=()
+accounts_problems=()
+accounts_check() { # <file>
+  local LC_ALL=C line n=0 fields
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then
+    accounts_problems+=("--accounts $1: not a file this registration can read")
+    return
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    line=${line%$'\r'}
+    [[ ! $line =~ ^[[:space:]]*(#|$) ]] || continue
+    if [ ${#line} -gt 200 ]; then
+      accounts_problems+=("--accounts $1:$n: ${#line} bytes, 200 at most a line")
+    elif [[ ${line//$'\t'/ } =~ [[:cntrl:]] ]]; then
+      accounts_problems+=("--accounts $1:$n: a control character")
+    elif [[ $line == *[\<\>\&\"\'\`]* ]]; then
+      accounts_problems+=("--accounts $1:$n: one of < > & \" ' \`, which the page would have to escape")
+    else
+      read -r -a fields <<< "$line"
+      if [ ${#fields[@]} -ne 3 ]; then
+        accounts_problems+=("--accounts $1:$n: ${#fields[@]} fields where <realm> <username> <dev password> (- for none) are 3")
+      elif ! in_entry "${fields[0]}" "$REG_REALMS"; then
+        accounts_problems+=("--accounts $1:$n: realm ${fields[0]} is not $app's (its registry entry's realms: ${REG_REALMS:-none})")
+      else
+        acc_realm+=("${fields[0]}")
+        acc_user+=("${fields[1]}")
+        acc_dev+=("${fields[2]}")
+      fi
+    fi
+  done < "$1"
+  [ ${#acc_user[@]} -le 50 ] || accounts_problems+=("--accounts $1: ${#acc_user[@]} accounts, 50 at most")
+}
+if [ -n "$accounts" ]; then
+  accounts_check "$accounts"
+fi
+if [ -n "$account_passwords_env" ]; then
+  if [ "$INFRA_ENV" != demo ]; then
+    accounts_problems+=("--account-passwords-env: the demo host's only (in dev, no password is drawn nor set)")
+  elif ! [[ $account_passwords_env =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    accounts_problems+=("--account-passwords-env $account_passwords_env: not a variable's name")
+  else
+    while read -r realm user password; do
+      [ -z "$realm" ] || acc_password["$realm $user"]=$password
+    done <<< "${!account_passwords_env:-}"
+  fi
+fi
+if [ "$INFRA_ENV" = demo ]; then
+  for i in "${!acc_user[@]}"; do
+    [ -n "${acc_password["${acc_realm[$i]} ${acc_user[$i]}"]:-}" ] \
+      || accounts_problems+=("--accounts $accounts: ${acc_realm[$i]} ${acc_user[$i]}: no password for it (on the demo host, sudo c4-app register draws them)")
+  done
+fi
+if [ ${#accounts_problems[@]} -gt 0 ]; then
+  printf '%s\n' "${accounts_problems[@]}" >&2
+  echo "An accounts file lists the application's accounts made for the demo, <realm> <username> <dev password> a line (README.md, \"What an application provides\"); nothing was registered." >&2
+  exit 1
+fi
+
 # The site, generated before anything changes too: a routes file that names a host or a port, or
 # that the notation refuses, registers nothing
 if [ -n "$proxy" ]; then
@@ -453,7 +597,7 @@ fi
 # The registration account's credentials, read before anything changes too (account_login, below)
 client_id=""
 secret=""
-if [ ${#realms[@]} -gt 0 ]; then
+if [ ${#realms[@]} -gt 0 ] || [ ${#acc_user[@]} -gt 0 ]; then
   stack_env_read client_id KC_REGISTRATION_CLIENT_ID
   stack_env_read secret KC_REGISTRATION_CLIENT_SECRET
 fi
@@ -471,7 +615,7 @@ bash "$INFRA_DIR/networks.sh" ensure "$app"
 # don't use them. The account's secret, read from .env, reaches the CLI in its environment
 # (KC_CLI_CLIENT_SECRET, passed by name); the CLI's session lives in the container's /dev/shm (memory
 # only, mode 600), removed on exit.
-if [ ${#realms[@]} -gt 0 ]; then
+if [ ${#realms[@]} -gt 0 ] || [ ${#acc_user[@]} -gt 0 ]; then
   kc_session=$ACCOUNT_CONFIG
   if [ -z "$client_id" ] || ! account_login; then
     [ -z "${login_output:-}" ] || printf '%s\n' "$login_output" | tail -n 3 >&2
@@ -540,6 +684,66 @@ if [ ${#realms[@]} -gt 0 ]; then
       echo "Realm $realm: no brute-force detection, as its export says (README.md, \"Brute-force protection\")"
     fi
   done
+fi
+
+# The accounts (intent 0048): on the demo host each password set (on the CLI's stdin), then each
+# user's groups and each group's roles read into the snapshot the landing page shows until the next
+# registration with --accounts (caddy/apps/<app>.accounts); a group's path prefixed by its realm
+# when the accounts span several realms; the dev password in dev only
+kc_fail() { # <Keycloak's output> <message>
+  printf '%s\n' "$1" | tail -n 3 >&2
+  echo "--accounts $accounts: $2; the landing page isn't written." >&2
+  exit 1
+}
+if [ -n "$accounts" ]; then
+  snapshot=()
+  group_lines=()
+  declare -A group_seen=()
+  multi=false
+  for realm in "${acc_realm[@]}"; do
+    [ "$realm" = "${acc_realm[0]}" ] || multi=true
+  done
+  for i in "${!acc_user[@]}"; do
+    realm=${acc_realm[$i]}
+    user=${acc_user[$i]}
+    output=$(account get users -r "$realm" -q "username=$user" -q exact=true --fields id --format csv --noquotes 2>&1) \
+      || kc_fail "$output" "$realm $user: Keycloak doesn't answer the search of the user (above)"
+    id=${output//$'\r'/}
+    [ -n "$id" ] || kc_fail "" "$realm $user: realm $realm has no such user"
+    if [ "$INFRA_ENV" = demo ]; then
+      output=$(printf '{"type":"password","value":"%s","temporary":false}' "${acc_password["$realm $user"]}" \
+        | account -i update "users/$id/reset-password" -r "$realm" -f - 2>&1) \
+        || kc_fail "$output" "$realm $user: Keycloak doesn't set its password (above: a user an LDAP directory holds read-only?)"
+    fi
+    output=$(account get "users/$id/groups" -r "$realm" 2>&1) \
+      || kc_fail "$output" "$realm $user: Keycloak doesn't give the user's groups (above)"
+    user_groups=()
+    while IFS=$'\t' read -r gid path; do
+      [ -n "$gid" ] || continue
+      path=${path#/}
+      if $multi; then path=$realm/$path; fi
+      user_groups+=("$path")
+      [ -z "${group_seen["$realm $gid"]:-}" ] || continue
+      group_seen["$realm $gid"]=true
+      mappings=$(account get "groups/$gid/role-mappings" -r "$realm" 2>&1) \
+        || kc_fail "$mappings" "$realm $user: Keycloak doesn't give the roles of group $path (above)"
+      roles=$(jq -r '(([(.realmMappings // [])[].name] | sort)
+          + ([(.clientMappings // {}) | to_entries[] | .key as $c | .value.mappings[] | "\($c):\(.name)"] | sort))
+          | join(", ")' <<< "$mappings" | tr -d '\r')
+      group_lines+=("G"$'\x1f'"$path"$'\x1f'"$roles")
+    done < <(jq -r '.[] | [.id, .path] | @tsv' <<< "$output" | tr -d '\r')
+    dev=""
+    [ "$INFRA_ENV" != dev ] || [ "${acc_dev[$i]}" = - ] || dev=${acc_dev[$i]}
+    printf -v joined '%s, ' "${user_groups[@]}"
+    snapshot+=("U"$'\x1f'"$user"$'\x1f'"$dev"$'\x1f'"${joined%, }")
+  done
+  if [ ${#snapshot[@]} -eq 0 ]; then
+    : > "$INFRA_DIR/caddy/apps/$app.accounts"
+  else
+    printf '%s\n' "${snapshot[@]}" "${group_lines[@]}" > "$INFRA_DIR/caddy/apps/$app.accounts"
+  fi
+  own "$INFRA_DIR/caddy/apps/$app.accounts"
+  echo "Landing page: $app's accounts, ${#acc_user[@]}, with their groups as Keycloak holds them now"
 fi
 
 # Themes: copied into the directory Keycloak reads (mounted as a whole: a new theme shows in the
@@ -631,7 +835,9 @@ if [ -n "$proxy" ]; then
     output=$(docker exec "$REVERSE_PROXY" "${reload[@]}" 2>&1) \
       || restore_site "The reverse proxy could not reload: the site of $proxy is not installed"
     rm -f "$backup"
-    write_index
     echo "Reverse proxy: $app site installed (INFRA_ENV=$INFRA_ENV)"
   fi
 fi
+
+# The landing page, at every registration: what it lists may have changed whatever the options
+write_index
