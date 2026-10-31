@@ -67,5 +67,6 @@ The product owner has the verification and the delivery done by an agent on the 
 ## Deviations
 
 - 2026-10-31 — step 1: `bash tests/0050-preflight-locale.sh` (gawk `--use-lc-numeric`), `exit 1`, KO as planned under fr_FR.UTF-8 on AC-01 (the VM's disk short, floors 20 and 2 exit 1), AC-02 (`115,3`), AC-03 (`1512000000` for 1.5GB and 512.3MB), AC-04; AC-04 is KO under `C` too (`2,5` refused "not a number" whatever the locale today: the plan's "the `C` checks OK" meant AC-01 to AC-03); AC-05 OK. No impact on files or proof.
+- 2026-10-31 — step 2: the first `bash tests/run.sh --changed` ran from this worktree, which has no `.env` (the stack's tests KO on `KC_IMAGE` and the others unset: 104 KO lines, none in the library's tests), and was stopped by my own `timeout 1500` (exit 124, in `0022-lanes`): not a result. The check runs again from the main checkout detached at the `fix(0050)` commit, as the suite expects, so the fix is committed before its run. No impact on files or proof.
 
 ## Verification
