@@ -156,18 +156,21 @@ stand_in_load_image() {
   done
 }
 
-# Built on this machine, when it lacks the image or the fixture changed (the label c4-infra.fixture holds
-# its content's hash: a build would ask the registry for the base image even then), then copied in unless
+# Built on this machine, when it lacks the image or the fixture or its keep labels changed (the label
+# c4-infra.fixture holds their hash: a build would ask the registry for the base image even then), then copied in unless
 # the stand-in's volume already holds it: the stand-in's own Docker fails to resolve a name now and then
 # (intent 0020)
 stand_in_probe() {
   local fixture=$STAND_IN_ROOT/tests/fixtures/0007/probe hash
   local -a C4_KEEP_LABELS
   mapfile -t C4_KEEP_LABELS < <(docker_keep_labels c4-infra "$(_stand_in_clone)")
-  hash=$(cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
-    echo "$file"
-    cat "$file"
-  done | cksum | cut -d' ' -f1)
+  hash=$({
+    (cd "$fixture" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
+      echo "$file"
+      cat "$file"
+    done)
+    printf '%s\n' "${C4_KEEP_LABELS[@]}"
+  } | cksum | cut -d' ' -f1)
   if [ "$(docker image inspect -f '{{index .Config.Labels "c4-infra.fixture"}}' c4-test/probe 2> /dev/null)" != "$hash" ]; then
     docker build -q --label "c4-infra.fixture=$hash" "${C4_KEEP_LABELS[@]}" -t c4-test/probe "$(_stand_in_host_path "$fixture")" > /dev/null \
       || { echo "stand_in_probe: c4-test/probe doesn't build on this machine (above)" >&2; return 1; }

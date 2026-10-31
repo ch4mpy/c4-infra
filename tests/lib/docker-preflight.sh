@@ -12,15 +12,18 @@
 #                                 docker run "${C4_LABELS[@]}" …
 #   docker_keep_labels <owner> <path>
 #                                 those of a resource kept between runs (<ns>.owner, <ns>.keep): an
-#                                 orphan once <path> no longer exists
+#                                 orphan once <path> no longer exists; under Git Bash a path is written
+#                                 in its drive's form (cygpath -m: D:/…), whoever gives it
 #   docker_reap [--pins <file>]   removes the labelled resources of the runs over and the kept ones
 #                                 whose path is gone; then, unless C4_DOCKER_REAP=labelled, the build
 #                                 cache beyond its bound, the anonymous volumes no container uses, and
-#                                 the images a pull or a rebuild replaced that no container uses: the
-#                                 untagged ones of the repositories <file> names (one image reference
-#                                 per line) that no pin's digest names, and the dangling ones the
-#                                 stack's builds (com.docker.compose.project=c4-infra) or a labelled
-#                                 build (<ns>.owner) left; one `docker preflight:` line per class
+#                                 the images a pull or a rebuild replaced: the untagged references of
+#                                 the repositories <file> names (one image reference per line) that no
+#                                 pin's digest names, and the dangling images the stack's builds
+#                                 (com.docker.compose.project=c4-infra) or a labelled build
+#                                 (<ns>.owner) left; one `docker preflight:` line per class. A pins file
+#                                 names only repositories its caller builds: a shared repository's
+#                                 digest references (postgres@sha256:…) may be another project's
 #   docker_preflight [--no-clean] [--pins <file>]
 #                                 docker_reap (not with --no-clean), then Docker's free disk and
 #                                 available memory, in its VM and on the host, each against its floor:
@@ -28,9 +31,11 @@
 #
 # A run is over when its time to live has passed, or when the lock it held ($C4_DOCKER_LOCK) is now
 # another run's: only the lock's holder reaps, before its first test, so that no cleaning overlaps a
-# test. The suite's lock and its queue's tickets carry no run label (tests/lib/suite-lock.sh). A kept
-# path written by another system (a Windows drive's seen from Linux, or the reverse) is never taken for
-# gone. Nothing here stops, restarts or resets Docker, nor compacts its disk image: a human does.
+# test. The suite's lock and its queue's tickets carry no run label (tests/lib/suite-lock.sh). No image
+# a container uses, running or stopped, by its id, a digest or a tag, is ever removed, whatever the
+# daemon would allow. A kept path written by another system (a Windows drive's seen from Linux, or the
+# reverse) is never taken for gone. Nothing here stops, restarts or resets Docker, nor compacts its
+# disk image: a human does.
 #
 # Environment: C4_INFRA_RUN (set and exported when this file is sourced and it is unset, so that a
 # command substitution sees the same run), C4_DOCKER_LABEL_NS (c4-infra; a test's own namespace),
@@ -52,8 +57,11 @@ docker_labels() { # <owner> [ttl]
 }
 
 docker_keep_labels() { # <owner> <path>
-  local ns=${C4_DOCKER_LABEL_NS:-c4-infra}
-  printf -- '--label\n%s\n' "$ns.owner=$1" "$ns.keep=$2"
+  local ns=${C4_DOCKER_LABEL_NS:-c4-infra} path=$2
+  if [[ $path == /* ]] && command -v cygpath > /dev/null 2>&1; then
+    path=$(cygpath -m "$path")
+  fi
+  printf -- '--label\n%s\n' "$ns.owner=$1" "$ns.keep=$path"
 }
 
 _docker_over() { # <run> <created> <ttl> <lock> <now>: the run is over
@@ -75,6 +83,40 @@ _docker_gone() { # <path>: in this system's form, and no longer there
 
 _docker_unused() { # <volume|ancestor> <name or id>: no container, running or stopped, uses it
   [ -z "$(docker ps -aq --filter "$1=$2" 2> /dev/null | tr -d '\r')" ]
+}
+
+_docker_ref() { # <image reference>: as Docker names it, docker.io's prefixes off, :latest when untagged
+  local ref=${1#docker.io/}
+  ref=${ref#library/}
+  [[ $ref == *@* || ${ref##*/} == *:* || $ref =~ ^(sha256:)?[0-9a-f]{12,64}$ ]] || ref=$ref:latest
+  printf '%s\n' "$ref"
+}
+
+_docker_used=
+_docker_used_refresh() { # what the containers, running or stopped, were created from: image ids and references
+  local ids
+  ids=$(docker ps -aq --no-trunc 2> /dev/null | tr -d '\r')
+  # shellcheck disable=SC2086 # one id per word: container ids hold no blank
+  _docker_used=$([ -z "$ids" ] || docker inspect -f '{{.Image}} {{.Config.Image}}' $ids 2> /dev/null | tr -d '\r' \
+    | while read -r id ref; do
+      printf '%s\n' "$id"
+      _docker_ref "$ref"
+    done)
+}
+
+_docker_in_use() { # <image>: a container uses it by its id, a digest or a tag; an image that can't be read counts as used
+  local id names used
+  id=$(docker image inspect -f '{{.Id}}' "$1" 2> /dev/null | tr -d '\r')
+  [ -n "$id" ] || return 0
+  names=$(docker image inspect -f '{{range .RepoTags}}{{println .}}{{end}}{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2> /dev/null \
+    | tr -d '\r' | while read -r ref; do [ -z "$ref" ] || _docker_ref "$ref"; done)
+  while IFS= read -r used; do
+    [ -n "$used" ] || continue
+    [ "$used" = "$id" ] && return 0
+    [[ $used =~ ^(sha256:)?[0-9a-f]{12,64}$ && $id == sha256:${used#sha256:}* ]] && return 0
+    grep -qxF -- "$used" <<< "$names" && return 0
+  done <<< "$_docker_used"
+  return 1
 }
 
 _docker_bytes() { # <size as docker prints it>…: their sum in bytes
@@ -123,12 +165,13 @@ docker_reap() { # [--pins <file>]
     [ -n "$id" ] && _docker_over "$run" "$created" "$ttl" "$lock" "$now" || continue
     docker volume rm "$id" > /dev/null 2>&1 && volumes=$((volumes + 1))
   done < <(docker volume ls --filter "label=$ns.run" --format "{{.Name}}|$fields" | tr -d '\r')
+  _docker_used_refresh
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
     IFS='|' read -r run created ttl lock < <(docker image inspect -f \
       "{{index .Config.Labels \"$ns.run\"}}|{{index .Config.Labels \"$ns.created\"}}|{{index .Config.Labels \"$ns.ttl\"}}|{{index .Config.Labels \"$ns.lock\"}}" \
       "$ref" 2> /dev/null | tr -d '\r')
-    _docker_over "$run" "$created" "$ttl" "$lock" "$now" || continue
+    _docker_over "$run" "$created" "$ttl" "$lock" "$now" && ! _docker_in_use "$ref" || continue
     docker rmi "$ref" > /dev/null 2>&1 && images=$((images + 1))
   done < <(docker images --filter "label=$ns.run" --format '{{.Repository}}:{{.Tag}}' | tr -d '\r' | grep -v '<none>')
   echo "docker preflight: runs over: $containers container(s), $networks network(s), $volumes volume(s), $images image(s) removed"
@@ -140,7 +183,7 @@ docker_reap() { # [--pins <file>]
   while IFS='|' read -r ref id; do
     [ -n "$ref" ] || continue
     keep=$(docker image inspect -f "{{index .Config.Labels \"$ns.keep\"}}" "$ref" 2> /dev/null | tr -d '\r')
-    _docker_gone "$keep" && _docker_unused ancestor "$id" || continue
+    _docker_gone "$keep" && ! _docker_in_use "$ref" || continue
     docker rmi "$ref" > /dev/null 2>&1 && kept_images=$((kept_images + 1))
   done < <(docker images --filter "label=$ns.keep" --format '{{.Repository}}:{{.Tag}}|{{.ID}}' | tr -d '\r' | grep -v '<none>')
   echo "docker preflight: kept, their path gone: $kept_volumes volume(s), $kept_images image(s) removed"
@@ -183,8 +226,8 @@ _docker_reap_unlabelled() { # <pinned image reference>…
     while IFS='|' read -r tag digest id size; do
       [ "$tag" = '<none>' ] || continue
       [[ " ${digests[*]} " == *" $digest "* ]] && continue
-      _docker_unused ancestor "$id" || continue
       if [ "$digest" != '<none>' ]; then ref=$repo@$digest; else ref=$id; fi
+      ! _docker_in_use "$ref" && ! _docker_in_use "$id" || continue
       docker rmi "$ref" > /dev/null 2>&1 || continue
       removed=$((removed + 1))
       sizes+=("$size")
@@ -193,7 +236,7 @@ _docker_reap_unlabelled() { # <pinned image reference>…
   # A rebuild leaves its predecessor dangling, no repository left to name it: the stack's builds and
   # the labelled ones are known by their labels
   while IFS='|' read -r id size; do
-    [ -n "$id" ] && _docker_unused ancestor "$id" || continue
+    [ -n "$id" ] && ! _docker_in_use "$id" || continue
     docker rmi "$id" > /dev/null 2>&1 || continue
     removed=$((removed + 1))
     sizes+=("$size")
@@ -229,7 +272,7 @@ _docker_short() { # <measure> <floor>: the measure is below the floor
 }
 
 docker_preflight() { # [--no-clean] [--pins <file>]
-  local clean=true out vm_disk vm_memory dir host_disk where host_memory field swap short=0
+  local clean=true out err vm_disk vm_memory dir host_disk where host_memory field swap short=0 compact
   local vm_disk_floor host_disk_floor vm_memory_floor host_memory_floor
   local -a reap=() C4_LABELS=()
   while [ $# -gt 0 ]; do
@@ -261,14 +304,17 @@ docker_preflight() { # [--no-clean] [--pins <file>]
   fi
 
   mapfile -t C4_LABELS < <(docker_labels c4-infra 300)
-  out=$(MSYS_NO_PATHCONV=1 docker run --rm "${C4_LABELS[@]}" alpine:3 sh -c 'df -Pk /; cat /proc/meminfo' 2>&1 | tr -d '\r')
-  vm_disk=$(awk 'NR == 2 { printf "%.1f", $4 * 1024 / 1e9 }' <<< "$out")
+  err=$(mktemp)
+  out=$(MSYS_NO_PATHCONV=1 docker run --rm "${C4_LABELS[@]}" alpine:3 sh -c 'df -Pk /; cat /proc/meminfo' 2> "$err" | tr -d '\r')
+  vm_disk=$(awk '$NF == "/" && $4 ~ /^[0-9]+$/ { printf "%.1f", $4 * 1024 / 1e9; exit }' <<< "$out")
   vm_memory=$(awk '/^MemAvailable:/ { printf "%.1f", $2 / 1048576 }' <<< "$out")
   if [ -z "$vm_disk" ] || [ -z "$vm_memory" ]; then
     echo "docker preflight: Docker's VM can't be measured (docker run alpine:3):"
-    printf '%s\n' "$out" | tail -n 3 | sed 's/^/  /'
+    { printf '%s\n' "$out"; tr -d '\r' < "$err"; } | tail -n 3 | sed 's/^/  /'
+    rm -f "$err"
     return 1
   fi
+  rm -f "$err"
   echo "docker preflight: VM disk: $vm_disk GB free (floor $vm_disk_floor)"
   if _docker_short "$vm_disk" "$vm_disk_floor"; then
     echo "docker preflight: short: Docker's disk has $vm_disk GB free, $vm_disk_floor needed after cleaning: \`docker system df -v\` shows what holds it; images, volumes and build cache no run labels are a human's to remove"
@@ -290,7 +336,12 @@ docker_preflight() { # [--no-clean] [--pins <file>]
     fi
     echo "docker preflight: host disk under Docker's disk image ($where): $host_disk GB free (floor $host_disk_floor)"
     if _docker_short "$host_disk" "$host_disk_floor"; then
-      echo "docker preflight: short: the host's disk holding Docker's disk image ($where) has $host_disk GB free, $host_disk_floor needed after cleaning; the image, in $dir, allocates $(du -sk "$dir" | awk '{ printf "%.1f GB", $1 * 1024 / 1e9 }'): giving its free blocks back to the host is a human's action, Docker Desktop quit first, as Docker's documentation says for this system"
+      if command -v cygpath > /dev/null 2>&1; then
+        compact="on Windows: quit Docker Desktop, run wsl --shutdown, then compact the image from an elevated PowerShell: Optimize-VHD -Path <its .vhdx> -Mode Full (Hyper-V's module), or diskpart: select vdisk file=<its .vhdx>, compact vdisk"
+      else
+        compact="on Linux: Docker Desktop's own procedure (its documentation, disk usage), Docker Desktop quit first"
+      fi
+      echo "docker preflight: short: the host's disk holding Docker's disk image ($where) has $host_disk GB free, $host_disk_floor needed after cleaning; the image, in $dir, allocates $(du -sk "$dir" | awk '{ printf "%.1f GB", $1 * 1024 / 1e9 }'). Giving its free blocks back to the host is a human's action, $compact"
       short=1
     fi
   else
