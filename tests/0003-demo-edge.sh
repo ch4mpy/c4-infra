@@ -5,7 +5,9 @@
 # Mailpit asks for its credentials, not Caddy). /mailpit/ asks for them and RabbitMQ has no route
 # (AC-03), HSTS is sent, and the realm discovery reaches Keycloak rewritten (AC-06). Since intent 0013,
 # Turu's MCP origin (turu-mcp.c4-soft.com) reaches an echo stand-in of its MCP server (turu.mcp:9080)
-# with X-Forwarded-Host and -Proto, without the single-page-app headers.
+# with X-Forwarded-Host and -Proto, without the single-page-app headers. Since intent 0048, / serves the
+# landing page (a page of the test's), with a policy that allows no script and X-Robots-Tag noindex;
+# another path still answers 404.
 #
 #   bash tests/0003-demo-edge.sh
 #
@@ -35,7 +37,8 @@ cleanup() {
 }
 trap cleanup EXIT
 cleanup
-mkdir -p "$work/apps" "$work/test"
+mkdir -p "$work/apps" "$work/test" "$work/html"
+printf '<p>the landing page</p>\n' > "$work/html/index.html"
 
 # the demo's Mailpit credentials: a random password, its bcrypt hash in Mailpit's MP_UI_AUTH, as
 # compose.demo.yml writes it (taken by `docker run -e NAME` from this environment, never on a
@@ -68,6 +71,7 @@ MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.
   -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \
+  -v "$(host_path "$work/html"):/etc/caddy/html:ro" \
   "$PROXY_IMAGE" caddy run --config /test/Caddyfile --adapter caddyfile > /dev/null
 
 # Requests https://<host>:$PORT<path>: sets $work/code, $work/headers (no \r) and $work/body
@@ -126,7 +130,14 @@ fetch /rabbitmq/
 check "/rabbitmq/: 404" answered 404
 check "/rabbitmq/: not RabbitMQ's" body_holds 'c4-infra: the applications are on their own host names'
 fetch /
-check "/: 404 (no landing page on the demo host)" answered 404
+check "/: the landing page (intent 0048)" answered 200
+check "/: the page served" body_holds '<p>the landing page</p>'
+check "/: its policy allows no script, form, frame nor fetch" header_is Content-Security-Policy \
+  "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+check "/: not to be indexed" header_is X-Robots-Tag noindex
+fetch /nowhere
+check "/nowhere: 404" answered 404
+check "/nowhere: the shared host's answer" body_holds 'c4-infra: the applications are on their own host names'
 
 # the headers every site sends, HSTS on the demo host
 fetch /auth/realms/faito

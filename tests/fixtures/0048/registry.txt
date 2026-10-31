@@ -1,0 +1,8 @@
+# registry.txt's five entries, and the fixture application of tests/0048-landing-page.sh (block 43xxx): its realm, users and groups
+
+1 turu turu turu-api - turu.dev.localhost turu.c4-soft.com
+2 hururaa public-facing hururaa-api - hururaa.dev.localhost hururaa.c4-soft.com
+3 tickee tickee,brasserie,tenant2,tenant3 tickee-api tickee tickee.dev.localhost tickee.c4-soft.com
+4 faito faito faito-api - faito.dev.localhost faito.c4-soft.com
+5 immo immo - immo immo.dev.localhost -
+33 verif-landing verif-landing - - verif-landing.dev.localhost verif-landing.c4-soft.com
