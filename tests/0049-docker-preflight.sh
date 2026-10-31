@@ -120,6 +120,7 @@ case " \$* " in
 esac
 exec "$REAL_DOCKER" "\$@"
 EOF
+chmod +x "$work/shim/docker"
 git -C "$repo" init -q -b main
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test add -A
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test commit -q -m base
