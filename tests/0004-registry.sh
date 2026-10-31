@@ -15,7 +15,9 @@
 #              and its dev site; in a scratch stack whose .env says INFRA_ENV=demo, such an
 #              application is refused, before any docker call, and in dev it isn't (0045 AC-02); there
 #              too, a realm export whose permanentLockout, or its attributes' one, isn't false is
-#              refused, before any docker call, and goes past that check in dev (0041 AC-06)
+#              refused, before any docker call, and goes past that check in dev (0041 AC-06), and so
+#              is one whose maxFailureWaitSeconds is above 900 or whose maxSecondaryAuthFailures
+#              isn't 0 (0041 AC-08)
 #   docs       the README's "Port registry" section points to registry.txt and holds no table of
 #              numbers (AC-07); docs/migration.md states the registry's contract, and its dev section
 #              names the demo upstreams registry.sh derives (0028)
@@ -272,10 +274,38 @@ part_scripts() {
     run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
     check "$json, on the demo host: past the export's checks" called_docker
   done
+  # 0041 AC-08: on the demo host, a lockout longer than 15 minutes, or the second factor's for good
+  refused=(
+    '{"realm": "faito", "maxFailureWaitSeconds": 901}|maxFailureWaitSeconds 901, which would let whoever knows a user name lock that account for more than 15 minutes at a time'
+    '{"realm": "faito", "attributes": {"maxFailureWaitSeconds": "86400"}}|attributes.maxFailureWaitSeconds "86400", which would let whoever knows a user name lock that account for more than 15 minutes at a time'
+    '{"realm": "faito", "maxSecondaryAuthFailures": 3}|maxSecondaryAuthFailures 3, which would let whoever knows its password lock that account for good with wrong second-factor codes'
+    '{"realm": "faito", "attributes": {"maxSecondaryAuthFailures": "3"}}|attributes.maxSecondaryAuthFailures "3", which would let whoever knows its password lock that account for good with wrong second-factor codes'
+  )
+  for pair in "${refused[@]}"; do
+    json=${pair%%|*}
+    problem=${pair#*|}
+    printf '%s\n' "$json" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "$json, on the demo host: refused (exit non-zero)" exited_non_zero
+    check "$json, on the demo host: it says why" says "--realm $export: $problem: refused"
+    check "$json, on the demo host: no docker call" called_no_docker
+  done
+  for json in '{"realm": "faito", "maxFailureWaitSeconds": 900}' \
+    '{"realm": "faito", "attributes": {"maxFailureWaitSeconds": "900"}}' \
+    '{"realm": "faito", "maxSecondaryAuthFailures": 0}' \
+    '{"realm": "faito", "attributes": {"maxSecondaryAuthFailures": "0"}}'; do
+    printf '%s\n' "$json" > "$export"
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+    check "$json, on the demo host: past the export's checks" called_docker
+  done
   printf '%s\n' INFRA_ENV=dev > "$stack/.env"
   printf '%s\n' '{"realm": "faito", "permanentLockout": true}' > "$export"
   run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
   check "permanentLockout true, in dev: past the export's checks" called_docker
+  json='{"realm": "faito", "maxFailureWaitSeconds": 901, "maxSecondaryAuthFailures": 3}'
+  printf '%s\n' "$json" > "$export"
+  run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --realm "$export"
+  check "$json, in dev: past the export's checks" called_docker
 }
 
 # The README's "Port registry" section, up to the next heading
