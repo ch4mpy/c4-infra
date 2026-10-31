@@ -288,12 +288,10 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
 
          - name: Publish the demo accounts
            # on the pull request this run deploys, or in this run's summary (a manual run, a direct
-           # push): only the repository's members read them; masked in the log, never on a command line
+           # push), never printed in the log nor on a command line; not masked either: the runner
+           # would mask them in the summary too, read by the same members as the log
            run: |
              accounts=$(ssh "$VPS" sudo c4-app accounts)
-             while read -r realm user password; do
-               [ -z "$password" ] || echo "::add-mask::$password"
-             done <<< "$accounts"
              body=$(printf 'Demo accounts, as %s set them (https://infra.c4-soft.com/):\n\n```text\n%s\n```\n' "$GITHUB_SHA" "$accounts")
              pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')
              if [ -n "$pr" ]; then
@@ -307,7 +305,8 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
 
    Its demo accounts, `<project>.accounts` in `deploy/`: one a line, `<realm> <username> <dev
    password>` (`-` for none), `#` for a comment, accounts made for the demo only, whose password is
-   used nowhere else. The landing page, `https://infra.c4-soft.com/`, lists them, each user with its
+   used nowhere else. Its repository is private: its pull requests' comments, its runs' summaries and
+   logs are then read by its members only (a public repository would publish the passwords). The landing page, `https://infra.c4-soft.com/`, lists them, each user with its
    groups and each group with its roles as Keycloak holds them at that registration, never a
    password: the registration draws one for each account, keeps it on the host where root alone reads
    it, and sets it in Keycloak at each registration (the dev password isn't used there);

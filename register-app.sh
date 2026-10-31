@@ -172,8 +172,10 @@ accounts_section() { # <snapshot>
 # its host name in this environment (registry.txt), with its accounts; the simulated providers' users.
 # No script, nothing to fetch: Caddy serves it with a policy that allows neither (caddy/Caddyfile).
 write_index() {
-  local site name host realm user password
+  local site name host realm user password page
   mkdir -p "$INFRA_DIR/caddy/html"
+  # a name of its own: two registrations, or a registration and a deployment, may write the page at once
+  page=$(mktemp "$INFRA_DIR/caddy/html/.index.XXXXXX")
   {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
     echo '<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">'
@@ -207,8 +209,9 @@ write_index() {
       echo '</ul></section>'
     done
     echo '</body></html>'
-  } > "$INFRA_DIR/caddy/html/index.html.new"
-  mv "$INFRA_DIR/caddy/html/index.html.new" "$INFRA_DIR/caddy/html/index.html"
+  } > "$page"
+  chmod 644 "$page"
+  mv "$page" "$INFRA_DIR/caddy/html/index.html"
   own "$INFRA_DIR/caddy/html"
 }
 
@@ -520,9 +523,8 @@ if [ ${#null_problems[@]} -gt 0 ]; then
   exit 1
 fi
 
-# The accounts the landing page lists (intent 0048), before anything changes: <realm> <username>
-# <dev password> a line, a realm of the entry, nothing the page would have to escape; on the demo host,
-# a password from demo/c4-app for each, the dev password never used there
+# The accounts (intent 0048), checked before anything changes as the rest: the page that lists them
+# is served on Keycloak's origin
 acc_realm=()
 acc_user=()
 acc_dev=()
@@ -569,7 +571,13 @@ if [ -n "$account_passwords_env" ]; then
     accounts_problems+=("--account-passwords-env $account_passwords_env: not a variable's name")
   else
     while read -r realm user password; do
-      [ -z "$realm" ] || acc_password["$realm $user"]=$password
+      [ -n "$realm" ] || continue
+      # demo/c4-app's form: nothing the JSON that carries it to Keycloak would have to escape
+      if [[ $password =~ ^[A-Za-z0-9_-]{24,}$ ]]; then
+        acc_password["$realm $user"]=$password
+      else
+        accounts_problems+=("--account-passwords-env: $realm $user: not a password of 24 base64url characters at least")
+      fi
     done <<< "${!account_passwords_env:-}"
   fi
 fi
@@ -686,10 +694,9 @@ if [ ${#realms[@]} -gt 0 ] || [ ${#acc_user[@]} -gt 0 ]; then
   done
 fi
 
-# The accounts (intent 0048): on the demo host each password set (on the CLI's stdin), then each
-# user's groups and each group's roles read into the snapshot the landing page shows until the next
-# registration with --accounts (caddy/apps/<app>.accounts); a group's path prefixed by its realm
-# when the accounts span several realms; the dev password in dev only
+# The accounts (intent 0048): every user found before any password is set, so that a missing one
+# changes nothing; the passwords on the CLI's stdin, never a command line; then the snapshot the page
+# shows until the next registration with --accounts, which doesn't follow later changes in Keycloak
 kc_fail() { # <Keycloak's output> <message>
   printf '%s\n' "$1" | tail -n 3 >&2
   echo "--accounts $accounts: $2; the landing page isn't written." >&2
@@ -698,6 +705,7 @@ kc_fail() { # <Keycloak's output> <message>
 if [ -n "$accounts" ]; then
   snapshot=()
   group_lines=()
+  acc_id=()
   declare -A group_seen=()
   multi=false
   for realm in "${acc_realm[@]}"; do
@@ -710,11 +718,21 @@ if [ -n "$accounts" ]; then
       || kc_fail "$output" "$realm $user: Keycloak doesn't answer the search of the user (above)"
     id=${output//$'\r'/}
     [ -n "$id" ] || kc_fail "" "$realm $user: realm $realm has no such user"
-    if [ "$INFRA_ENV" = demo ]; then
+    acc_id+=("$id")
+  done
+  if [ "$INFRA_ENV" = demo ]; then
+    for i in "${!acc_user[@]}"; do
+      realm=${acc_realm[$i]}
+      user=${acc_user[$i]}
       output=$(printf '{"type":"password","value":"%s","temporary":false}' "${acc_password["$realm $user"]}" \
-        | account -i update "users/$id/reset-password" -r "$realm" -f - 2>&1) \
-        || kc_fail "$output" "$realm $user: Keycloak doesn't set its password (above: a user an LDAP directory holds read-only?)"
-    fi
+        | account -i update "users/${acc_id[$i]}/reset-password" -r "$realm" -f - 2>&1) \
+        || kc_fail "$output" "$realm $user: Keycloak doesn't set its password (above: a user an LDAP directory holds read-only? a policy refusing the same password again?)"
+    done
+  fi
+  for i in "${!acc_user[@]}"; do
+    realm=${acc_realm[$i]}
+    user=${acc_user[$i]}
+    id=${acc_id[$i]}
     output=$(account get "users/$id/groups" -r "$realm" 2>&1) \
       || kc_fail "$output" "$realm $user: Keycloak doesn't give the user's groups (above)"
     user_groups=()

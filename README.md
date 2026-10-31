@@ -717,10 +717,14 @@ application whose account runs it (never an argument), on its own project only:
   provides"). It reads the realm, routes, theme and accounts files from the snapshot too, so a
   container can't swap them under it. With `--accounts <file>`, each account gets the password root
   keeps for it in `/var/lib/c4-apps/.<app>.passwords` (0600), or a new one drawn (24 characters, each
-  one with `--new-passwords`), set in Keycloak by the registration: kept once Keycloak has them;
+  one with `--new-passwords`), set in Keycloak by the registration: kept once it succeeded (after a
+  failed one, the next sets the kept ones again). A realm whose password policy refuses a password
+  equal to the current one (`passwordHistory`) stops every registration with `--accounts` after its
+  first: the same password is set at each;
 - `sudo c4-app accounts` (intent 0048): its accounts and their passwords, `<realm> <username>
-  <password>` a line, for its workflow to publish where only the project's members read them
-  ([docs/migration.md](docs/migration.md), "On the demo host", step 5); no other output holds them;
+  <password>` a line, for its workflow to publish where only the project's members read them, its
+  repository private ([docs/migration.md](docs/migration.md), "On the demo host", step 5); no other
+  output holds them;
 - `sudo c4-app backup` and `sudo c4-app restore [<stamp> --yes]` (intent 0027): the data its compose
   project declares, read from the containers that run, never from `~/<app>/` (a deployment not done
   yet or refused changes nothing): they stage nothing and pull nothing, and wait for its other

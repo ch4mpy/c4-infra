@@ -638,7 +638,8 @@ cmd_register() {
     fail "--new-passwords draws the passwords of the accounts --accounts lists: give it too"
   fi
   bash "$STACK/register-app.sh" --app "$app" "${args[@]}" < /dev/null
-  # kept once Keycloak has them: a refused registration leaves the store as it was
+  # kept once the registration succeeded: after a failed one, Keycloak may hold some new passwords
+  # the store doesn't, until the next registration sets the store's again
   if [ -n "$accounts" ]; then
     install -m 0600 -o root -g root /dev/null "$passwords.new"
     [ -z "$drawn" ] || printf '%s\n' "$drawn" > "$passwords.new"

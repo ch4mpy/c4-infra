@@ -378,7 +378,13 @@ part_scripts() {
   check "0048, on the demo host without the drawn passwords: refused" \
     says "--accounts $accounts: faito ann: no password for it (on the demo host, sudo c4-app register draws them)"
   check "0048, on the demo host without the drawn passwords: no docker call" called_no_docker
-  ACCOUNT_PASSWORDS=$'faito ann A-1b\nfaito bob C_2d' \
+  ACCOUNT_PASSWORDS=$'faito ann Ab1-cdefghijklmnopqrstuvwx\nfaito bob "x","temporary":true' \
+    run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts" --account-passwords-env ACCOUNT_PASSWORDS
+  check "0048, a drawn password not of demo/c4-app's form: refused" \
+    says "--account-passwords-env: faito bob: not a password of 24 base64url characters at least"
+  check "0048, a drawn password not of demo/c4-app's form: never printed" eval '! grep -qF temporary "$work/err"'
+  check "0048, a drawn password not of demo/c4-app's form: no docker call" called_no_docker
+  ACCOUNT_PASSWORDS=$'faito ann Ab1-cdefghijklmnopqrstuvwx\nfaito bob Cd2_efghijklmnopqrstuvwxyz' \
     run_stubbed "$ENTRIES" bash "$stack/register-app.sh" --app faito --accounts "$accounts" --account-passwords-env ACCOUNT_PASSWORDS
   check "0048, on the demo host with the drawn passwords: past the accounts' checks" called_docker
   printf '%s\n' INFRA_ENV=dev > "$stack/.env"

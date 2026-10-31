@@ -114,6 +114,7 @@ ann=$(user_id ann)
 spare=$(group_id spare)
 check "AC-10: ann added to group spare in Keycloak" \
   kc_registration update "users/$ann/groups/$spare" -r "$APP" -s "realm=$APP" -s "userId=$ann" -s "groupId=$spare" -n
+check "AC-10: a registration without --accounts writes the page again" register
 fetch /
 check "AC-10: the page doesn't follow it" page_holds '<li><code>ann</code> <code>ann-password</code> [managers]</li>'
 check "AC-10: the next registration with --accounts" register --accounts "$FIXTURE/$APP.accounts"

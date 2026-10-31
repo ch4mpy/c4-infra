@@ -48,8 +48,12 @@ register() { # <log> [sudo c4-app register option…]: as faito, its realm, its 
   shift
   stand_in_ssh faito "sudo c4-app register --realm faito-realm.json --proxy faito.routes $*" > "$work/$log" 2>&1
 }
-accounts_of() { # <account> <file>: sudo c4-app accounts as that account
-  stand_in_ssh "$1" "sudo c4-app accounts" 2> /dev/null | tr -d '\r' > "$work/$2"
+accounts_of() { # <account> <file>: sudo c4-app accounts as that account, its exit status
+  local status
+  stand_in_ssh "$1" "sudo c4-app accounts" > "$work/$2.raw" 2> "$work/$2.err"
+  status=$?
+  tr -d '\r' < "$work/$2.raw" > "$work/$2"
+  [ "$status" -eq 0 ] || { echo "exit $status:"; cat "$work/$2.err"; return 1; }
 }
 password_of() { # <file> <username>
   awk -v u="$2" '$2 == u { print $3 }' "$work/$1"
@@ -107,17 +111,17 @@ check "Faito's fixture uploaded" upload
 
 # AC-07
 check "AC-07: faito registers its realm, its site and its accounts" register register-1.log --accounts faito.accounts
-accounts_of faito accounts-1
+check "AC-07: faito's sudo c4-app accounts exits 0" accounts_of faito accounts-1
 check "AC-07: sudo c4-app accounts gives both accounts, each password of its form" well_formed accounts-1
 check "AC-07: ann signs in with hers" signs_in ann "$(password_of accounts-1 ann)"
 check "AC-07: bob too" signs_in bob "$(password_of accounts-1 bob)"
 check "AC-07: ann's dev password no longer signs in" refused_sign_in ann ann-password
 check "AC-07: the registration's output holds no password" holds_none register-1.log accounts-1
 check "AC-07: a second registration" register register-2.log --accounts faito.accounts
-accounts_of faito accounts-2
+check "AC-07: again, exit 0" accounts_of faito accounts-2
 check "AC-07: keeps both passwords" cmp -s "$work/accounts-1" "$work/accounts-2"
 check "AC-07: ann still signs in" signs_in ann "$(password_of accounts-1 ann)"
-accounts_of hururaa accounts-hururaa
+check "AC-07: hururaa's sudo c4-app accounts exits 0" accounts_of hururaa accounts-hururaa
 check "AC-07: hururaa's account sees no account" test ! -s "$work/accounts-hururaa"
 
 # AC-02
@@ -141,7 +145,7 @@ check "AC-02: another path still 404" answer_holds 'http=404'
 
 # AC-07, --new-passwords
 check "AC-07: a registration with --new-passwords" register register-3.log --accounts faito.accounts --new-passwords
-accounts_of faito accounts-3
+check "AC-07: after --new-passwords, exit 0" accounts_of faito accounts-3
 check "AC-07: both passwords changed" eval '[ "$(password_of accounts-3 ann)" != "$(password_of accounts-1 ann)" ] && [ "$(password_of accounts-3 bob)" != "$(password_of accounts-1 bob)" ]'
 check "AC-07: the new one signs in" signs_in ann "$(password_of accounts-3 ann)"
 check "AC-07: the old one no longer does" refused_sign_in ann "$(password_of accounts-1 ann)"
@@ -154,7 +158,7 @@ status=$?
 check "AC-08: an account the realm doesn't have stops the registration" test "$status" -ne 0
 check "AC-08: it names the account" grep -qF 'faito nobody: realm faito has no such user' "$work/register-4.log"
 check "AC-08: the page unchanged" test "$(page_sum)" = "$before"
-accounts_of faito accounts-4
+check "AC-08: after the refused registration, exit 0" accounts_of faito accounts-4
 check "AC-08: the passwords unchanged" cmp -s "$work/accounts-3" "$work/accounts-4"
 
 # AC-05
