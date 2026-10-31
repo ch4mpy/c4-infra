@@ -2,10 +2,10 @@
 
 - Intent: [0048](intent.md)
 - Status: approved
-- Version: 2
+- Version: 3
 - Risk: high (what a host exposes to the network: a new page at the infra host's root; authentication and secrets: the demo accounts' passwords, drawn and kept on the demo host, set in the applications' realms; the page on the origin of Keycloak's administration console)
 - Policies applied: none (the project has none yet)
-- Approved: v1 2026-10-30, Jérôme Wacongne (product owner, also tech lead), in the drafting session, every point of attention decided; v2 2026-10-30, the same, with the batch's plan (its section "0048 spec v2")
+- Approved: v1 2026-10-30, Jérôme Wacongne (product owner, also tech lead), in the drafting session, every point of attention decided; v2 2026-10-30, the same, with the batch's plan (its section "0048 spec v2"); v3 2026-10-30, the same, PA-04 decided in the review round
 
 ## Summary
 
@@ -23,7 +23,7 @@ The landing page the registrations already write in dev becomes the page of both
 - **RQ-08:** An account whose password Keycloak doesn't set (a user its realm doesn't have, a user an LDAP directory holds read-only) stops the registration, exit status non-zero, naming the account and Keycloak's answer; the page isn't written. (PA-01 B; the constraint "only accounts that exist for the demo")
 - **RQ-09:** `sudo c4-app accounts`, run as an application's account, prints that application's accounts with their current passwords, one per line, `<realm> <username> <password>`, for its workflow to publish; no other output of the stack holds a drawn password (not the registration's, not a log, not the page). (PA-01 B)
 - **RQ-10:** In dev, no password is drawn nor set: the realm's own users keep the passwords the application gave them. (decided at acceptance: the page in dev; PA-01 B is the demo host's)
-- **RQ-11:** The README ("What an application provides", the demo host's deployment) and `docs/migration.md` say how an application declares its accounts, that only accounts made for the demo may be declared, and how its workflow publishes their passwords: `sudo c4-app accounts` read into a variable, each password masked in the run's log, then a comment on the pull request whose merge the run deploys (`GET /repos/{owner}/{repo}/commits/{sha}/pulls`), or the run's summary when there is none (a manual run, a direct push), with the permission that needs. (PA-01 B)
+- **RQ-11:** The README ("What an application provides", the demo host's deployment) and `docs/migration.md` say how an application declares its accounts, that only accounts made for the demo may be declared, and how its workflow publishes their passwords: `sudo c4-app accounts` read into a variable and never printed in the run's log nor on a command line, then a comment on the pull request whose merge the run deploys (`GET /repos/{owner}/{repo}/commits/{sha}/pulls`), or the run's summary when there is none (a manual run, a direct push), with the permission that needs, the repository private so that only its members read them. (PA-01 B, PA-04 A)
 - **RQ-12:** The users' groups and the groups' roles are read from Keycloak by the registration that gives `--accounts`, after its realms are imported and, on the demo host, its passwords set, and kept until the next such registration: the page describes the state of that registration, and doesn't follow later changes made in Keycloak. (the product owner's v2)
 
 ## Out of scope
@@ -110,6 +110,14 @@ A plain page: one heading per application (its name, a link), its `users` and `g
 - Decides: PO
 - Decision: A (the product owner, 2026-10-30): a `users` subsection only (they have no group), their public password in dev only, as the applications' (RQ-03).
 
+### PA-04: The run's summary and the log's mask
+
+- Issue (the review round, 2026-10-30): v2's RQ-11 asked for each password masked in the run's log, then the run's summary when no pull request is deployed; the runner masks the summary with the log's masks (`::add-mask::`), so a run without a pull request would publish `***`.
+- Options: **A** no mask: the step never prints the passwords (a variable, `gh`'s standard input), the pull request's comment or else the run's summary; the repository private, so that its log, its summaries and its comments have the same readers, its members / **B** masked, and without a pull request a comment on a fixed issue of the repository (`issues: write`, an issue number set per application) / **C** masked, and nothing published without a pull request.
+- Recommendation: A: in a private repository the mask hides nothing from anyone the summary doesn't show it to; B adds a setting per application; C leaves a manual run's `--new-passwords` unpublished.
+- Decides: PO
+- Decision: A (the product owner, 2026-10-30)
+
 ## Acceptance criteria
 
 - **AC-01:** Given the dev stack and an application registered with a realm of two users in two groups, one group with a realm role and a client role, and an accounts file declaring both users, when `https://host.docker.internal/` is fetched, then it lists the shared services, then the application's name linked to its dev host, its `users` subsection (each username, its dev password, its group) and its `groups` subsection (each group, its sorted roles, the client role as `<client>:<role>`); no password of the realm changed. (RQ-01, RQ-03, RQ-06, RQ-10, RQ-12)
@@ -132,3 +140,4 @@ A plain page: one heading per application (its name, a link), its `users` and `g
 - v1 — 2026-10-30 — first version
 - v1 — 2026-10-30 — PA-01 decided B (the passwords off the public page, on the deployed pull request), the public line `<username> [<role or group>]`: RQ-01 and RQ-03 rewritten, RQ-07 to RQ-10 added, RQ-07 (the docs) renumbered RQ-11; AC-07 to AC-09 rewritten; approved, every point decided
 - v2 — 2026-10-30 — the product owner's request: each application's section has a `users` subsection (`<username> [<group>, …]`) and a `groups` subsection (`<group> [<role>, …]`), read from Keycloak at the registration, a snapshot that doesn't follow later changes; RQ-01 (no label), RQ-02 (three fields), RQ-03, RQ-04 (Keycloak's values escaped), RQ-09 (`<realm> <username> <password>`) rewritten, RQ-12 added; AC-01, AC-02, AC-03, AC-06 rewritten, AC-10 added; PA-03's decision follows (a `users` subsection only); approved with the batch's plan
+- v3 — 2026-10-30 — the review round: PA-04 decided A by the product owner (no mask, the summary would show `***`; the repository private): RQ-11 rewritten; approved
