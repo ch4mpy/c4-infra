@@ -393,7 +393,10 @@ account for a minute, whatever their count. In dev as on the demo host.
   force detection*), then exports it; an export with the detection off registers without one, and
   the registration says so. To get c4-infra's settings, an export leaves the ten out.
 - An export holds a setting at its top level or in its `attributes`, which Keycloak writes last
-  when it creates a realm: an attribute wins.
+  when it creates a realm: an attribute wins. An attribute that gives one of the ten as `null` is
+  refused, in dev as on the demo host, before anything changes: Keycloak would write it over
+  c4-infra's value, its own default then applying (intent 0046). At the top level, a `null` is
+  left to c4-infra's value.
 - On the demo host, an export that would lock an account for good, or for more than 15 minutes at
   a time, is refused, before anything changes: `permanentLockout` anything but `false`,
   `maxFailureWaitSeconds` anything but a number up to 900, `maxSecondaryAuthFailures` (the wrong

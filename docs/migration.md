@@ -225,7 +225,8 @@ The demo host deploys GitHub projects, each from its own GitHub Actions workflow
    `http://<project>.gateway:7080/gateway/logout/connect/back-channel/<registration>`, SMTP
    `mailpit:1025` with c4-infra's `MAILPIT_SMTP_PASSWORD`. Its brute-force settings are its own:
    `register-app.sh` keeps those its export holds, the detection's switch included, and gives the
-   others c4-infra's (README, "Brute-force protection"), in dev as on the demo host; the demo host
+   others c4-infra's (README, "Brute-force protection"), in dev as on the demo host, where an
+   export whose `attributes` give one of them as `null` is refused as well; the demo host
    refuses an export that would lock an account for good or for more than 15 minutes at a time:
    `permanentLockout` not `false`, `maxFailureWaitSeconds` anything but a number up to 900,
    `maxSecondaryAuthFailures` not 0, at its top level or in its `attributes`.
