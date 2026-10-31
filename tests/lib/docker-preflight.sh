@@ -43,7 +43,9 @@
 # floors C4_DOCKER_MIN_VM_DISK_GB (20), C4_DOCKER_MIN_HOST_DISK_GB (20), C4_DOCKER_MIN_VM_MEMORY_GIB (3)
 # and C4_DOCKER_MIN_HOST_MEMORY_GIB (6, memory and swap), the build cache's bound C4_DOCKER_BUILD_CACHE_GB
 # (5), and C4_DOCKER_DISK_DIR, the host's directory of Docker's disk image (by default Docker Desktop's:
-# ~/.docker/desktop/vms/0/data on Linux, %LOCALAPPDATA%\Docker\wsl\disk on Windows).
+# ~/.docker/desktop/vms/0/data on Linux, %LOCALAPPDATA%\Docker\wsl\disk on Windows). A floor or the bound
+# may be written with a decimal point or a comma (2.5, 2,5). The numbers this file reads and prints, and
+# its verdicts, don't depend on the caller's locale (intent 0050), which it leaves as it is.
 
 if [ -z "${C4_INFRA_RUN:-}" ]; then
   C4_INFRA_RUN=$(date +%s)-$$-$RANDOM$RANDOM
@@ -119,15 +121,19 @@ _docker_in_use() { # <image>: a container uses it by its id, a digest or a tag; 
   return 1
 }
 
+_docker_awk() { # <awk arguments>…: awk reading and writing numbers with a decimal point, whatever the caller's locale
+  LC_ALL=C awk "$@"
+}
+
 _docker_bytes() { # <size as docker prints it>…: their sum in bytes
-  printf '%s\n' "$@" | awk '{ n = $0; unit = $0; sub(/[A-Za-z]+$/, "", n); sub(/^[0-9.]+/, "", unit)
+  printf '%s\n' "$@" | _docker_awk '{ n = $0; unit = $0; sub(/[A-Za-z]+$/, "", n); sub(/^[0-9.]+/, "", unit)
       m = 1; if (unit == "kB" || unit == "KB") m = 1e3; else if (unit == "MB") m = 1e6
       else if (unit == "GB") m = 1e9; else if (unit == "TB") m = 1e12
       total += n * m } END { printf "%.0f\n", total }'
 }
 
 _docker_size() { # <bytes>: in GB, or in MB below 1 GB, one decimal
-  awk -v b="$1" 'BEGIN { if (b < 1e9) printf "%.1f MB\n", b / 1e6; else printf "%.1f GB\n", b / 1e9 }'
+  _docker_awk -v b="$1" 'BEGIN { if (b < 1e9) printf "%.1f MB\n", b / 1e6; else printf "%.1f GB\n", b / 1e9 }'
 }
 
 docker_reap() { # [--pins <file>]
@@ -195,19 +201,20 @@ docker_reap() { # [--pins <file>]
 _docker_reap_unlabelled() { # <pinned image reference>…
   local bound=${C4_DOCKER_BUILD_CACHE_GB:-5} option out total ref repo digest tag id size removed=0
   local -a sizes=() digests=() repos=()
-  if ! [[ $bound =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  if ! [[ $bound =~ ^[0-9]+([.,][0-9]+)?$ ]]; then
     echo "docker preflight: C4_DOCKER_BUILD_CACHE_GB is '$bound', not a number of GB"
     return 1
   fi
+  bound=${bound/,/.}
   option=--max-used-space
   docker builder prune --help 2>&1 | grep -q -- --max-used-space || option=--keep-storage
-  out=$(docker builder prune -f "$option" "$(awk -v g="$bound" 'BEGIN { printf "%.0f", g * 1e9 }')" 2>&1 | tr -d '\r')
+  out=$(docker builder prune -f "$option" "$(_docker_awk -v g="$bound" 'BEGIN { printf "%.0f", g * 1e9 }')" 2>&1 | tr -d '\r')
   total=$(sed -n 's/^Total[^:]*:[[:space:]]*//p' <<< "$out" | tail -n 1)
   echo "docker preflight: build cache: ${total:-0B} reclaimed (bound $bound GB)"
 
   out=$(docker volume prune -f --filter label=com.docker.volume.anonymous 2>&1 | tr -d '\r')
   total=$(sed -n 's/^Total reclaimed space:[[:space:]]*//p' <<< "$out")
-  removed=$(awk '/^Deleted Volumes:/ { on = 1; next } on && NF == 0 { on = 0 } on { n++ } END { print n + 0 }' <<< "$out")
+  removed=$(_docker_awk '/^Deleted Volumes:/ { on = 1; next } on && NF == 0 { on = 0 } on { n++ } END { print n + 0 }' <<< "$out")
   echo "docker preflight: anonymous volumes no container uses: $removed removed (${total:-0B})"
 
   for ref in "$@"; do
@@ -258,17 +265,17 @@ _docker_disk_dir() { # the host's directory of Docker's disk image, or nothing
   [ ! -d "$dir" ] || printf '%s' "$dir"
 }
 
-_docker_floor() { # <variable> <default>: its value, or nothing and a line when it isn't a number
+_docker_floor() { # <variable> <default>: its value, a decimal comma made a point, or nothing and a line when it isn't a number
   local value=${!1:-$2}
-  if [[ $value =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    printf '%s' "$value"
+  if [[ $value =~ ^[0-9]+([.,][0-9]+)?$ ]]; then
+    printf '%s' "${value/,/.}"
   else
     echo "docker preflight: $1 is '$value', not a number" >&2
   fi
 }
 
 _docker_short() { # <measure> <floor>: the measure is below the floor
-  awk -v m="$1" -v f="$2" 'BEGIN { exit !(m < f) }'
+  _docker_awk -v m="$1" -v f="$2" 'BEGIN { exit !(m < f) }'
 }
 
 docker_preflight() { # [--no-clean] [--pins <file>]
@@ -306,8 +313,8 @@ docker_preflight() { # [--no-clean] [--pins <file>]
   mapfile -t C4_LABELS < <(docker_labels c4-infra 300)
   err=$(mktemp)
   out=$(MSYS_NO_PATHCONV=1 docker run --rm "${C4_LABELS[@]}" alpine:3 sh -c 'df -Pk /; cat /proc/meminfo' 2> "$err" | tr -d '\r')
-  vm_disk=$(awk '$NF == "/" && $4 ~ /^[0-9]+$/ { printf "%.1f", $4 * 1024 / 1e9; exit }' <<< "$out")
-  vm_memory=$(awk '/^MemAvailable:/ { printf "%.1f", $2 / 1048576 }' <<< "$out")
+  vm_disk=$(_docker_awk '$NF == "/" && $4 ~ /^[0-9]+$/ { printf "%.1f", $4 * 1024 / 1e9; exit }' <<< "$out")
+  vm_memory=$(_docker_awk '/^MemAvailable:/ { printf "%.1f", $2 / 1048576 }' <<< "$out")
   if [ -z "$vm_disk" ] || [ -z "$vm_memory" ]; then
     echo "docker preflight: Docker's VM can't be measured (docker run alpine:3):"
     { printf '%s\n' "$out"; tr -d '\r' < "$err"; } | tail -n 3 | sed 's/^/  /'
@@ -328,11 +335,11 @@ docker_preflight() { # [--no-clean] [--pins <file>]
 
   dir=$(_docker_disk_dir)
   if [ -n "$dir" ]; then
-    host_disk=$(df -Pk "$dir" | awk 'NR == 2 { printf "%.1f", $4 * 1024 / 1e9 }')
+    host_disk=$(df -Pk "$dir" | _docker_awk 'NR == 2 { printf "%.1f", $4 * 1024 / 1e9 }')
     if command -v cygpath > /dev/null 2>&1; then
-      where=$(df -Pk "$dir" | awk 'NR == 2 { print $1 }')
+      where=$(df -Pk "$dir" | _docker_awk 'NR == 2 { print $1 }')
     else
-      where=$(df -Pk "$dir" | awk 'NR == 2 { print $6 }')
+      where=$(df -Pk "$dir" | _docker_awk 'NR == 2 { print $6 }')
     fi
     echo "docker preflight: host disk under Docker's disk image ($where): $host_disk GB free (floor $host_disk_floor)"
     if _docker_short "$host_disk" "$host_disk_floor"; then
@@ -341,7 +348,7 @@ docker_preflight() { # [--no-clean] [--pins <file>]
       else
         compact="on Linux: Docker Desktop's own procedure (its documentation, disk usage), Docker Desktop quit first"
       fi
-      echo "docker preflight: short: the host's disk holding Docker's disk image ($where) has $host_disk GB free, $host_disk_floor needed after cleaning; the image, in $dir, allocates $(du -sk "$dir" | awk '{ printf "%.1f GB", $1 * 1024 / 1e9 }'). Giving its free blocks back to the host is a human's action, $compact"
+      echo "docker preflight: short: the host's disk holding Docker's disk image ($where) has $host_disk GB free, $host_disk_floor needed after cleaning; the image, in $dir, allocates $(du -sk "$dir" | _docker_awk '{ printf "%.1f GB", $1 * 1024 / 1e9 }'). Giving its free blocks back to the host is a human's action, $compact"
       short=1
     fi
   else
@@ -349,11 +356,11 @@ docker_preflight() { # [--no-clean] [--pins <file>]
   fi
 
   if grep -q '^MemAvailable:' /proc/meminfo 2> /dev/null; then field=MemAvailable; else field=MemFree; fi
-  host_memory=$(awk -v f="$field:" '$1 == f { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2> /dev/null)
-  swap=$(awk '$1 == "SwapFree:" { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2> /dev/null)
+  host_memory=$(_docker_awk -v f="$field:" '$1 == f { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2> /dev/null)
+  swap=$(_docker_awk '$1 == "SwapFree:" { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2> /dev/null)
   if [ -n "$host_memory" ]; then
     echo "docker preflight: host memory: $host_memory GiB $field + ${swap:-0} GiB SwapFree (floor $host_memory_floor)"
-    if _docker_short "$(awk -v a="$host_memory" -v b="${swap:-0}" 'BEGIN { print a + b }')" "$host_memory_floor"; then
+    if _docker_short "$(_docker_awk -v a="$host_memory" -v b="${swap:-0}" 'BEGIN { print a + b }')" "$host_memory_floor"; then
       echo "docker preflight: short: the host has $host_memory GiB of memory ($field) and ${swap:-0} GiB of swap free, $host_memory_floor needed: close what no one needs, or give the host more swap"
       short=1
     fi
