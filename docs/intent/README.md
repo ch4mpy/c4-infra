@@ -99,4 +99,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0047 | [Five small defects that earlier intents left behind](0047-small-defects-left-by-earlier-intents/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
 | 0048 | [Nothing tells a visitor which applications are deployed, nor which account to sign in with](0048-no-list-of-applications-and-accounts/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
 | 0049 | [The Docker resources the suite's runs leave behind are never reclaimed](0049-docker-resources-never-reclaimed/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
-| 0050 | [The suite's Docker preflight refuses every run on a machine whose locale writes a decimal comma](0050-docker-preflight-wrong-under-decimal-comma/intent.md) | bug | accepted | 2026-10-31 | 2026-10-31 |
+| 0050 | [The suite's Docker preflight refuses every run on a machine whose locale writes a decimal comma](0050-docker-preflight-wrong-under-decimal-comma/intent.md) | bug | specified | 2026-10-31 | 2026-10-31 |

@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-31, found by the skills' 0122 worker on the product owner's Linux workstation)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-31
 - Decided: 2026-10-31
 - Supersedes: —
