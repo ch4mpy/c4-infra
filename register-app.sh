@@ -12,8 +12,9 @@
 #                   Keycloak doesn't have it yet, so that the users and clients created since
 #                   survive; --reset-realms deletes it first. It is imported under the name of the
 #                   file: the file's own "realm" field can't name another. On the demo host, an
-#                   export whose permanentLockout, or its attributes' one, isn't false is refused
-#                   (intent 0041).
+#                   export that would lock an account for good (permanentLockout,
+#                   maxSecondaryAuthFailures) or for more than 15 minutes (maxFailureWaitSeconds),
+#                   at its top level or in its attributes, is refused (intent 0041).
 #   --themes        a directory of Keycloak themes, one sub-directory per theme of the application's
 #                   registry entry: a new or changed one shows on reload in dev; on the demo host, it
 #                   restarts Keycloak (once). A theme holding a link or a special file, or a
@@ -299,23 +300,36 @@ cimd_problems() { # <realm file>: one line per problem, "<what>: <why>" (on its 
     (.attributes // {} | objects | keys[] | select(startswith("client-policies."))
       | "realm attribute \(.): \($unread)")' < "$1"
 }
-# On the demo host, a realm export that would lock an account for good (intent 0041, PA-02):
-# whoever knows a user name could lock it on the public demo. Keycloak reads permanentLockout as
-# Jackson does ("TRUE" and 1 are true), and, creating a realm, its attributes after its fields
-# (Keycloak 26.8.1, DefaultExportImportManager.importRealm): in either place, only false is
-# accepted, or none (the stack's).
+# On the demo host, a realm export that would lock an account for good, or for more than 15 minutes
+# at a time (intent 0041, PA-02, PA-03). Keycloak 26.8.1 reads permanentLockout as Jackson does
+# ("TRUE" and 1 are true), caps every temporary lockout at maxFailureWaitSeconds, disables an
+# account for good after maxSecondaryAuthFailures wrong second-factor codes when it isn't 0
+# (DefaultBruteForceProtector.failure), and, creating a realm, writes its attributes after its
+# fields (DefaultExportImportManager.importRealm): in either place, only these values are accepted,
+# or none (the stack's).
 lockout_problems=()
 lockout_check() { # <realm file>
   local found problem
-  if ! found=$(jq -r '(.permanentLockout | ["permanentLockout", .]),
-      (.attributes | objects | .permanentLockout | ["attributes.permanentLockout", .])
-      | select(.[1] != null and .[1] != false and .[1] != "false") | "\(.[0]) \(.[1] | tojson)"' < "$1"); then
+  if ! found=$(jq -r '
+      def number: if type == "string" then tonumber? // null else . end;
+      def accepted($key): . == null or
+        if $key == "permanentLockout" then . == false or . == "false"
+        elif $key == "maxFailureWaitSeconds" then number | type == "number" and . <= 900
+        else number == 0 end;
+      def harm: {
+        permanentLockout: "whoever knows a user name lock that account for good",
+        maxFailureWaitSeconds: "whoever knows a user name lock that account for more than 15 minutes at a time",
+        maxSecondaryAuthFailures: "whoever knows its password lock that account for good with wrong second-factor codes"
+      }[.];
+      ("permanentLockout", "maxFailureWaitSeconds", "maxSecondaryAuthFailures") as $key
+      | ([$key, .[$key]], (.attributes | objects | ["attributes.\($key)", .[$key]]))
+      | select(.[1] | accepted($key) | not) | "\(.[0]) \(.[1] | tojson), which would let \($key | harm)"' < "$1"); then
     lockout_problems+=("--realm $1: not JSON that jq can read: refused")
     return
   fi
   while IFS= read -r problem; do
     problem=${problem%$'\r'}
-    [ -z "$problem" ] || lockout_problems+=("--realm $1: $problem, which would let whoever knows a user name lock that account for good: refused")
+    [ -z "$problem" ] || lockout_problems+=("--realm $1: $problem: refused")
   done <<< "$found"
 }
 if [ ${#realms[@]} -gt 0 ] && ! command -v jq > /dev/null; then
@@ -391,7 +405,7 @@ if [ ${#realm_problems[@]} -gt 0 ]; then
 fi
 if [ ${#lockout_problems[@]} -gt 0 ]; then
   printf '%s\n' "${lockout_problems[@]}" >&2
-  echo "On the demo host, a realm's export never locks an account for good (README.md, \"Brute-force protection\"); nothing was registered." >&2
+  echo "On the demo host, a realm's export never locks an account for good, nor for more than 15 minutes at a time (README.md, \"Brute-force protection\"); nothing was registered." >&2
   exit 1
 fi
 
