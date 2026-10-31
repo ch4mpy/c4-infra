@@ -96,6 +96,6 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0044 | [The registry's test pins the applications' real entries](0044-registry-test-pins-live-entries/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
 | 0045 | [The registry demands a demo host of an application the demo host never deploys](0045-registry-demands-a-demo-host/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
 | 0046 | [A brute-force setting an export's attributes hold as null replaces the stack's value, while the registration names the stack's](0046-null-brute-force-attribute-replaces-stack-value/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
-| 0047 | [Five small defects that earlier intents left behind](0047-small-defects-left-by-earlier-intents/intent.md) | bug | accepted | 2026-10-30 | 2026-10-30 |
-| 0048 | [Nothing tells a visitor which applications are deployed, nor which account to sign in with](0048-no-list-of-applications-and-accounts/intent.md) | change | accepted | 2026-10-30 | 2026-10-30 |
-| 0049 | [The Docker resources the suite's runs leave behind are never reclaimed](0049-docker-resources-never-reclaimed/intent.md) | bug | accepted | 2026-10-30 | 2026-10-30 |
+| 0047 | [Five small defects that earlier intents left behind](0047-small-defects-left-by-earlier-intents/intent.md) | bug | specified | 2026-10-30 | 2026-10-30 |
+| 0048 | [Nothing tells a visitor which applications are deployed, nor which account to sign in with](0048-no-list-of-applications-and-accounts/intent.md) | change | specified | 2026-10-30 | 2026-10-30 |
+| 0049 | [The Docker resources the suite's runs leave behind are never reclaimed](0049-docker-resources-never-reclaimed/intent.md) | bug | specified | 2026-10-30 | 2026-10-30 |

@@ -1,11 +1,11 @@
 # Spec: Five small defects that earlier intents left behind
 
 - Intent: [0047](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: high (secrets: the `demo` environment's branch restriction decides which branches get the demo host's secrets; the rest is standard)
 - Policies applied: none (the project has none yet)
-- Approved: —
+- Approved: 2026-10-30, Jérôme Wacongne (product owner, also tech lead), in the drafting session; every point of attention decided
 
 ## Summary
 
@@ -52,7 +52,7 @@ The demo setup guide's commands give each `demo` environment the branch restrict
 - Options: **A** reading only, against GitHub's documentation and the live environments' settings / **B** A, plus running the stack's command against c4-infra's own `demo` environment, which already holds that restriction: a no-op whose settings are read before and after (the branch policy's `POST` answers 303, the pattern existing) / **C** a throwaway repository created for the proof, then deleted.
 - Recommendation: B: it runs the exact commands on GitHub without changing anything; C creates and deletes a repository for a few lines of documentation.
 - Decides: PO
-- Decision: to decide
+- Decision: B (the product owner, 2026-10-30): the stack's commands run against c4-infra's own `demo` environment, its settings read before and after
 
 ## Acceptance criteria
 
@@ -69,3 +69,4 @@ The demo setup guide's commands give each `demo` environment the branch restrict
 ## Change log
 
 - v1 — 2026-10-30 — first version
+- v1 — 2026-10-30 — approved: PA-01 B (the product owner)

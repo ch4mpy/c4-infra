@@ -1,11 +1,11 @@
 # Spec: The Docker resources the suite's runs leave behind are never reclaimed
 
 - Intent: [0049](intent.md)
-- Status: draft
+- Status: approved
 - Version: 1
 - Risk: standard (no risk rule applies: the suite's harness and Docker housekeeping on a workstation; the demo host never runs it, IV-02; no secret, nothing exposed to the network; what another application or project uses is never removed, IV-01)
 - Policies applied: none (the project has none yet)
-- Approved: —
+- Approved: 2026-10-30, Jérôme Wacongne (product owner, also tech lead), in the drafting session; every point of attention decided
 
 ## Summary
 
@@ -98,7 +98,7 @@ Nothing labels an owner but the lock (`c4-infra.suite.*`), the probe (`c4-infra.
 - Options: **A** the time to live alone / **B** the time to live, plus: a resource labelled `<ns>.lock=<lock name>` (set by `docker_labels` when its run holds that lock) is over once another run holds that lock / **C** a liveness container per run, fed by its pipe as the lock is, the resource over once it's gone.
 - Recommendation: B: a killed run is reclaimed at the very next lock take, with no extra container; A stays for the runs without the lock. The label is new to the skills' contract: their spec needs a v2 (additive). C adds a container to every run, and to every test run alone, for what the lock already says.
 - Decides: PO
-- Decision: to decide
+- Decision: B (the product owner, 2026-10-30): the time to live, plus `<ns>.lock`; the skills' 0122 spec takes it in a v2
 
 ### PA-02: Which runs run the preflight
 
@@ -106,7 +106,7 @@ Nothing labels an owner but the lock (`c4-infra.suite.*`), the probe (`c4-infra.
 - Options: **A** every run, at its lock take / **B** only a run with a stand-in or a facts test / **C** only `--all`.
 - Recommendation: A: the reaping at each lock take is the skills' decision, and a quick run is the one most likely to follow a killed one; its cost (a few `docker` listings, one throwaway, the cache prune when over its bound) is measured at the plan's first step and recorded.
 - Decides: PO
-- Decision: to decide
+- Decision: A (the product owner, 2026-10-30): every run, at its lock take
 
 ### PA-03: The stand-in volumes' `keep` label
 
@@ -114,7 +114,7 @@ Nothing labels an owner but the lock (`c4-infra.suite.*`), the probe (`c4-infra.
 - Options: **A** `keep=<the clone>` (the directory above `git rev-parse --git-common-dir`, shared by its worktrees), and `stand_in_up` recreates once a stand-in volume of its own names that lacks the label (one slower first run: its images pulled again) / **B** `keep=<the checkout>` (`STAND_IN_ROOT`), the same adoption: removing a worktree that created the shared volume makes it an orphan / **C** the fixed names exempt, no label: an orphan only for a `STAND_IN_VOLUME` a caller names.
 - Recommendation: A: the volume serves the clone, not one worktree, and a single re-pull adopts the existing one; B reaps a volume the main checkout still uses; C leaves the intent's orphans (per-checkout volumes named by callers) to a rule the reaper can't check.
 - Decides: PO
-- Decision: to decide
+- Decision: A (the product owner, 2026-10-30): `keep=<the clone>`, the unlabelled stand-in volume recreated once
 
 ### PA-04: The tags no current test creates
 
@@ -122,7 +122,7 @@ Nothing labels an owner but the lock (`c4-infra.suite.*`), the probe (`c4-infra.
 - Options: **A** listed in the delivery's plan and removed once, with the PO's go, when no container uses them / **B** the reaper removes every unused tag of `c4-infra/keycloak` but the one `.env` names / **C** left to the Developer.
 - Recommendation: A: a one-time removal; B gives the reaper a rule on a repository a Developer may tag by hand.
 - Decides: PO
-- Decision: to decide
+- Decision: A (the product owner, 2026-10-30): removed once at delivery, with the product owner's go, when no container uses them
 
 ## Acceptance criteria
 
@@ -144,3 +144,4 @@ Nothing labels an owner but the lock (`c4-infra.suite.*`), the probe (`c4-infra.
 ## Change log
 
 - v1 — 2026-10-30 — first version
+- v1 — 2026-10-30 — approved: PA-01 B, PA-02 A, PA-03 A, PA-04 A (the product owner)

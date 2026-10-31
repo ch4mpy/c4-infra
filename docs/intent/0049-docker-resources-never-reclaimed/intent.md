@@ -8,7 +8,7 @@
   `docs/intent/0122-docker-resources-never-reclaimed/c4-infra-twin-intent.md`) and taken into c4-infra's
   batch by the product owner on 2026-10-30
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-30
 - Decided: 2026-10-30
 - Supersedes: —
