@@ -16,13 +16,15 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 source tests/lib/keycloak.sh
 
 BASE=https://host.docker.internal
 REGISTRATION=/auth/realms/master/clients-registrations/openid-connect
 PROBE=c4-infra.0013-rate-limit
-trap 'docker rm -f "$PROBE" > /dev/null 2>&1' EXIT
-docker rm -f "$PROBE" > /dev/null 2>&1
+trap 'docker rm -f -v "$PROBE" > /dev/null 2>&1' EXIT
+docker rm -f -v "$PROBE" > /dev/null 2>&1
 
 register() { # the status of one anonymous registration, from this workstation
   kc_curl -o /dev/null -w '%{http_code}' -X POST \
@@ -40,7 +42,7 @@ check "AC-14: the same address's other requests to Keycloak are answered ($disco
 # Another address: a container on c4-infra, reaching the proxy by its network address, under the
 # shared host's name
 proxy_address=$(docker inspect -f '{{(index .NetworkSettings.Networks "c4-infra").IPAddress}}' c4-infra.reverse-proxy | tr -d '\r')
-other=$(MSYS_NO_PATHCONV=1 docker run --rm --name "$PROBE" --network c4-infra --add-host "host.docker.internal:$proxy_address" \
+other=$(MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm --name "$PROBE" --network c4-infra --add-host "host.docker.internal:$proxy_address" \
   caddy:2.11.4-alpine wget -q -S -O /dev/null --no-check-certificate --header 'Content-Type: application/json' \
   --post-data '{"redirect_uris":["https://example.org/callback"]}' "$BASE$REGISTRATION" 2>&1 \
   | sed -n 's|^ *HTTP/[0-9.]* \([0-9]*\).*|\1|p' | tail -n 1)

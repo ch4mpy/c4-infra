@@ -17,6 +17,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 CADDY_IMAGE=c4-infra/reverse-proxy
 
@@ -28,7 +30,7 @@ trap 'rm -rf "$work"' EXIT
 adapt() { # <output> [docker run option…]: caddy adapt of the demo configuration, Faito's site in apps/
   local output=$1
   shift
-  MSYS_NO_PATHCONV=1 docker run --rm -e INFRA_ENV=demo -e INFRA_HOST=infra.c4-soft.com \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm -e INFRA_ENV=demo -e INFRA_HOST=infra.c4-soft.com \
     -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" "$@" \
     "$CADDY_IMAGE" caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > "$output" 2> "$output.err" \
     || { tail -n 5 "$output.err"; return 1; }

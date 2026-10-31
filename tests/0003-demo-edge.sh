@@ -16,6 +16,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 # the reverse proxy's image (compose.yml)
 CADDY_IMAGE=caddy:2.11.4-alpine
@@ -31,7 +33,7 @@ host_path() {
 
 work=$(mktemp -d)
 cleanup() {
-  docker rm -f $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
+  docker rm -f -v $(docker ps -aq -f "name=^$NAME-") > /dev/null 2>&1
   docker network rm "$NAME" > /dev/null 2>&1
   rm -rf "$work"
 }
@@ -47,30 +49,30 @@ mkdir -p caddy/html
 # compose.demo.yml writes it (taken by `docker run -e NAME` from this environment, never on a
 # command line)
 password=$(openssl rand -hex 12)
-MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
+MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run "${C4_LABELS[@]}" --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
 MP_UI_AUTH=demo:$MAILPIT_UI_PASSWORD_HASH
 export MP_UI_AUTH
 
-docker network create "$NAME" > /dev/null
+docker network create "${C4_LABELS[@]}" "$NAME" > /dev/null
 # the shared services, as echo upstreams under their service names
 for service in keycloak:8080 grafana-lgtm:3000 rabbitmq:15672; do
-  MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-${service%:*}" --network "$NAME" --network-alias "${service%:*}" \
     -e PORT="${service#*:}" -e STAND_IN_NAME="${service%:*}" \
     -v "$(host_path "$PWD/tests/fixtures/stand-in-upstream"):/stand-in:ro" \
     "$CADDY_IMAGE" caddy run --config /stand-in/http.caddy --adapter caddyfile > /dev/null
 done
 # Turu's MCP server, under its demo name (intent 0013), and Turu's site as register-app.sh generates it
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-turu-mcp" --network "$NAME" --network-alias turu.mcp \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-turu-mcp" --network "$NAME" --network-alias turu.mcp \
   -e PORT=9080 -e STAND_IN_NAME=turu-mcp -v "$(host_path "$PWD/tests/fixtures/0013"):/stand-in:ro" \
   "$CADDY_IMAGE" caddy run --config /stand-in/forwarded-upstream.caddy --adapter caddyfile > /dev/null
 bash routes.sh generate examples/routes/turu.routes turu demo > "$work/apps/turu.caddy"
 # Mailpit, the stack's image (compose.yml), under its web root as on the demo host
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-mailpit" --network "$NAME" --network-alias mailpit \
   -e MP_WEBROOT=/mailpit/ -e MP_UI_AUTH axllent/mailpit:v1.31.0 > /dev/null
 # the demo configuration as it is, under a wrapper that only swaps Let's Encrypt for Caddy's own CA;
 # Caddy has no Mailpit credential
 printf '{\n\tlocal_certs\n\tskip_install_trust\n}\n\nimport /etc/caddy/Caddyfile\n' > "$work/test/Caddyfile"
-MSYS_NO_PATHCONV=1 docker run -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
+MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME-caddy" --network "$NAME" -p "127.0.0.1:$PORT:443" \
   -e INFRA_ENV=demo -e INFRA_HOST="$HOST" \
   -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$work/apps"):/etc/caddy/apps:ro" \
   -v "$(host_path "$work/test"):/test:ro" \

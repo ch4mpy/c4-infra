@@ -31,6 +31,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 IMAGE=c4-infra/keycloak
 PREFIX=c4-infra.0009-facts
@@ -44,7 +46,7 @@ host_path() {
 
 umask 077
 work=$(mktemp -d)
-trap 'docker rm -f $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1; rm -rf "$work"' EXIT
+trap 'docker rm -f -v $(docker ps -aq -f "name=^$PREFIX-") > /dev/null 2>&1; rm -rf "$work"' EXIT
 
 KC_CLI_PASSWORD=$(openssl rand -hex 16)
 export KC_CLI_PASSWORD
@@ -53,7 +55,7 @@ export KC_CLI_PASSWORD
 start() {
   local args=(-d --name "$PREFIX-$1" --env-file "$(host_path "$2")")
   [ -z "${3:-}" ] || args+=(-v "$(host_path "$3"):/opt/keycloak/data/import:ro")
-  docker run "${args[@]}" "$IMAGE" start-dev --db=dev-file ${3:+--import-realm} > /dev/null
+  docker run "${C4_LABELS[@]}" "${args[@]}" "$IMAGE" start-dev --db=dev-file ${3:+--import-realm} > /dev/null
 }
 # <name>: ready within 240 s, or stopped (returns 1 either way when not ready)
 ready() {

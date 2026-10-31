@@ -24,6 +24,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 PREFIX=c4probe
 NETWORK=$PREFIX-net
@@ -84,7 +86,7 @@ public_ports() { # <container>
 
 # The demo host's model, with the two values that must start
 password=$(openssl rand -hex 12)
-MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
+MAILPIT_UI_PASSWORD_HASH=$(printf '%s\n' "$password" | docker run "${C4_LABELS[@]}" --rm -i "$CADDY_IMAGE" caddy hash-password | tr -d '\r')
 KC_IMAGE=c4-infra/keycloak
 PROXY_IMAGE=c4-infra/reverse-proxy
 export MAILPIT_UI_PASSWORD_HASH KC_IMAGE PROXY_IMAGE
@@ -93,7 +95,7 @@ docker compose -f compose.yml -f compose.demo.yml --env-file tests/fixtures/0003
 check "the demo host's model is read (compose.yml + compose.demo.yml, tests/fixtures/0003/demo.env)" test -s "$work/demo.json"
 check "its Keycloak is c4-infra/keycloak" test "$(jq -r '.services.keycloak.image' "$work/demo.json")" = c4-infra/keycloak
 
-docker network create --internal "$NETWORK" > /dev/null
+docker network create "${C4_LABELS[@]}" --internal "$NETWORK" > /dev/null
 # Starts <service> as the model says
 start() { # <service>
   local service=$1 json image args=() line
@@ -120,7 +122,7 @@ start() { # <service>
   while IFS= read -r line; do
     command+=("$line")
   done < <(jq -r '.command // [] | .[]' <<< "$json")
-  MSYS_NO_PATHCONV=1 docker run -d --name "$PREFIX-$service" --network "$NETWORK" --network-alias "$service" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$PREFIX-$service" --network "$NETWORK" --network-alias "$service" \
     "${args[@]}" "$image" "${command[@]}" > /dev/null
 }
 # compose's healthcheck of <service>, else its image's, run once in its container

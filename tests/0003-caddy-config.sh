@@ -9,6 +9,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/assert.sh
+source tests/lib/docker-preflight.sh
+mapfile -t C4_LABELS < <(docker_labels c4-infra)
 
 # the reverse proxy's image (compose.yml), built by up.sh: Caddy with the rate-limit module the Caddyfile uses (intent 0013)
 CADDY_IMAGE=c4-infra/reverse-proxy
@@ -25,7 +27,7 @@ trap 'rm -rf "$work"' EXIT
 validate() { # <apps dir> [docker run option…]
   local apps=$1
   shift
-  MSYS_NO_PATHCONV=1 docker run --rm "$@" \
+  MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" --rm "$@" \
     -v "$(host_path "$PWD/caddy"):/etc/caddy:ro" -v "$(host_path "$apps"):/etc/caddy/apps:ro" \
     "$CADDY_IMAGE" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -n 3
   return "${PIPESTATUS[0]}"
@@ -47,7 +49,7 @@ DEV=(-e INFRA_ENV=dev -e INFRA_HOST=host.docker.internal -v "$(host_path "$PWD/c
 # the demo host's .env holds Mailpit's hash, a bcrypt hash (here of a random password, read by caddy
 # on its stdin); Caddy no longer reads it since intent 0007 (Mailpit asks for its credentials
 # itself, MP_UI_AUTH), and its configuration validates with it set
-MAILPIT_UI_PASSWORD_HASH=$(openssl rand -hex 16 | docker run --rm -i "$CADDY_IMAGE" caddy hash-password)
+MAILPIT_UI_PASSWORD_HASH=$(openssl rand -hex 16 | docker run "${C4_LABELS[@]}" --rm -i "$CADDY_IMAGE" caddy hash-password)
 export MAILPIT_UI_PASSWORD_HASH
 DEMO=(-e INFRA_ENV=demo -e INFRA_HOST=infra.c4-soft.com -e MAILPIT_UI_PASSWORD_HASH)
 

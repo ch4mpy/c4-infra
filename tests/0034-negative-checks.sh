@@ -94,7 +94,7 @@ if [ -n "\${FAIL_DOCKER:-}" ]; then
 fi
 $(printf '%q' "$real_docker") "\$@"
 status=\$?
-if [ -n "\${CONNECT_FAITO:-}" ] && [ \$status -eq 0 ] && [[ "\$*" == "run -d --name $STANDIN "* ]]; then
+if [ -n "\${CONNECT_FAITO:-}" ] && [ \$status -eq 0 ] && [[ "\$*" == "run "*" -d --name $STANDIN "* ]]; then
   $(printf '%q' "$real_docker") network connect c4-infra.faito $STANDIN > /dev/null
 fi
 exit \$status

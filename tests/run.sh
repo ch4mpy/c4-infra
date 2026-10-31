@@ -15,10 +15,14 @@
 #
 # Every tracked script must be declared by a test: the run refuses one that isn't before any test.
 # One run at a time per Docker: the runs that wait take the lock in the order they arrived
-# (tests/lib/suite-lock.sh).
+# (tests/lib/suite-lock.sh). Once it holds the lock, before its first test, the run prints its id
+# (`docker preflight: run <id>`, the label of what its tests create) and runs Docker's preflight
+# (tests/lib/docker-preflight.sh): it removes what earlier runs left, then stops, exit 1, when Docker
+# lacks the disk or memory a run needs (C4_DOCKER_MIN_*; C4_DOCKER_PREFLIGHT=off skips it).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/lib/suite-lock.sh
+source tests/lib/docker-preflight.sh
 
 usage() {
   echo "Usage: $0 [--all] [--changed [<base>]]" >&2
@@ -322,7 +326,7 @@ in_lanes() {
 }
 
 remove_stand_in_hosts() {
-  [ ${#stand_in_hosts[@]} -eq 0 ] || docker rm -f "${stand_in_hosts[@]}" > /dev/null 2>&1
+  [ ${#stand_in_hosts[@]} -eq 0 ] || docker rm -f -v "${stand_in_hosts[@]}" > /dev/null 2>&1
 }
 
 alive() { # <pid…>: one of them still runs
@@ -373,6 +377,13 @@ lane_pids=()
 stand_in_hosts=()
 if [ ${#selected[@]} -gt 0 ]; then
   suite_lock_take || exit 1
+  export C4_DOCKER_LOCK=$SUITE_LOCK_NAME
+  echo "docker preflight: run $C4_INFRA_RUN"
+  if [ "${C4_DOCKER_PREFLIGHT:-}" = off ]; then
+    echo "docker preflight: off (C4_DOCKER_PREFLIGHT=off)"
+  else
+    docker_preflight --pins <(bash tests/docker-pins.sh) {SUITE_LOCK_FD}>&- || exit 1
+  fi
   run_start=$(micros)
   if has_stand_in; then
     in_lanes
