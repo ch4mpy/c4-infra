@@ -168,3 +168,9 @@ Bootstrap mode, one pass (the product owner's), on the batch branch in its workt
 | 0049 AC-03, AC-05, AC-07, AC-09 | OK | `0049-docker-preflight` `every check passed` (full run); the mutation's KO above |
 | 0049 AC-04, AC-06 | OK | `0049-docker-reap.stand-in` `every check passed` (full run, both reruns); the build cache's bound on the host (`5.056GB reclaimed (bound 5 GB)`) |
 | No regression | OK, combined | the full run's 86 of 89, the `--changed` rerun at 24509dd, `0033-limits-facts` alone; accepted by the product owner |
+
+### After deployment — 2026-10-31
+
+- Merged into `main` as c8d2429 (`merge(0047, 0048, 0049)`), pushed; deploy-demo run 41211235801 on c8d2429: `conclusion: success` (both jobs).
+- `https://infra.c4-soft.com/`: `200`, `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`, `X-Robots-Tag: noindex`; Tickee linked (`<h2><a href="https://tickee.c4-soft.com/">tickee</a></h2>`, no accounts file yet: its link alone), the simulated providers' users (`<li><code>alice</code></li>`), no line holding `password`, no `<script`; `/rabbitmq/` `404`; `https://tickee.c4-soft.com/` `302` to `/fr/`.
+- PA-04 of 0049, the product owner's go: `docker rmi c4-infra/keycloak:0013 c4-infra/keycloak:0012-dev c4-infra/keycloak:26.7`, no container using them, each `Untagged` and `Deleted`; `c4-infra/keycloak:latest` left.
