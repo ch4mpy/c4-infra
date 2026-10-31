@@ -1,7 +1,7 @@
 # Spec: tests/0049-docker-preflight.sh checks that the preflight reaped, never that it reaped before the tests
 
 - Intent: [0052](intent.md)
-- Status: draft
+- Status: approved (2026-10-31)
 - Version: 1
 - Risk: standard (no risk rule applies: tests only; the preflight, the stack and what a host exposes don't change)
 - Policies applied: none yet; standing constraints: CLAUDE.md "Repository layout" (bash and Git Bash) and "Verification" (`# covers:`, a change of `tests/lib/` runs every test, the suite's lock, the tests' Docker labels), 0049's RQ-10 and AC-07, 0051's RQ-04 (the window check proven on planted logs)
@@ -66,7 +66,7 @@ None.
 - Options: **A** reuse the window check's ordering: one function of the test (not `tests/lib/`) reads the first test's start (and the last end) from `order.log`, used by `cleaning_during_tests` and by the new check, which compares each reaper call's timestamp with it / **B** a separate timestamp comparison, the new check reading `order.log` on its own (a second copy of the first-start extraction) / **C** a sequence counter: the shim and the fake tests take the next number from a shared counter file instead of (or beside) the clock, so the order doesn't depend on `date +%s%N` (a change of the shim and of both fake tests, and a lock or atomic increment across lanes).
 - Recommendation: A: one reading of "the first test's start" for both AC-07 checks, so they can't drift apart; the clock is already what the window check trusts, the same machine writes both logs, and the shim logs before it runs the call; C fixes a clock problem nobody has seen, at the cost of a concurrency mechanism in a test.
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ### PA-02: Which reaper calls must precede the first test
 
@@ -74,7 +74,7 @@ None.
 - Options: **A** every logged reaper call is before the first test's start, and there is at least one / **B** the first reaper call is before the first test's start (a reap added during the tests, beside the preflight's, still passes).
 - Recommendation: A: it is what RQ-10 states, and it catches RQ-03's mutant (a reap during the tests added to the preflight's); no legitimate call of run E matches the reaper's pattern (`:88` is a `ps -q` without `-a`).
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ### PA-03: The real-run mutation
 
@@ -82,7 +82,7 @@ None.
 - Options: **A** planted checks in the test (RQ-02) and one real-run mutant at verification, a throwaway copy of the test whose run E fake holder test sources `tests/lib/docker-preflight.sh` and calls `docker_reap` (as 0051's AC-04 mutant, recorded in its plan's open questions) / **B** planted checks only.
 - Recommendation: A: it costs one run of the test (about 20 s) at verification, nothing in the suite, and shows the KO on the path the bug describes; B leaves the wiring between the check and run E's logs unproven.
 - Decides: PO
-- Decision: to decide
+- Decision: A — the PO, 2026-10-31
 
 ## Acceptance criteria
 
@@ -99,3 +99,4 @@ None.
 ## Change log
 
 - v1 — 2026-10-31 — first version
+- v1 approved — 2026-10-31 — PA-01 to PA-03 decided A by the PO, also tech lead (bootstrap mode)

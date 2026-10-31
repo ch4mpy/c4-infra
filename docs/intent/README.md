@@ -100,4 +100,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0048 | [Nothing tells a visitor which applications are deployed, nor which account to sign in with](0048-no-list-of-applications-and-accounts/intent.md) | change | delivered | 2026-10-30 | 2026-10-30 |
 | 0049 | [The Docker resources the suite's runs leave behind are never reclaimed](0049-docker-resources-never-reclaimed/intent.md) | bug | delivered | 2026-10-30 | 2026-10-30 |
 | 0051 | [tests/0049-docker-preflight.sh's docker shim never runs on Linux, so its AC-07 checks prove nothing there](0051-docker-preflight-test-shim-not-executable/intent.md) | bug | delivered | 2026-10-31 | 2026-10-31 |
-| 0052 | [tests/0049-docker-preflight.sh checks that the preflight reaped, never that it reaped before the tests](0052-docker-preflight-test-before-not-compared/intent.md) | bug | accepted | 2026-10-31 | 2026-10-31 |
+| 0052 | [tests/0049-docker-preflight.sh checks that the preflight reaped, never that it reaped before the tests](0052-docker-preflight-test-before-not-compared/intent.md) | bug | specified | 2026-10-31 | 2026-10-31 |

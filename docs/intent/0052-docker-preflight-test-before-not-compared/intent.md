@@ -5,7 +5,7 @@
 - Source: 0051's review (2026-10-31: 0051's `plan.md`, Verification — cc9770d, "Pre-existing findings";
   drafted at the product owner's request in the skills' batch session)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-10-31
 - Decided: 2026-10-31
 - Supersedes: —
