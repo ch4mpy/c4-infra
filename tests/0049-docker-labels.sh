@@ -2,15 +2,18 @@
 # 0049: what c4-infra's tests create on the host's Docker carries the labels of
 # tests/lib/docker-preflight.sh and goes with its volumes; read, nothing run:
 #
-#   - AC-02: every `docker run`, `create`, `build`, `network create`, `volume create` and `compose … up`
-#     of tests/*.sh and tests/lib/*.sh that runs on the host's Docker passes the labels (C4_LABELS,
-#     C4_KEEP_LABELS, docker_labels or docker_keep_labels on its command; for compose, the file names
-#     C4_INFRA_RUN in its labels), and every `docker rm` there has -v. Not read: comments, text in
-#     double quotes or after a ^ (messages, patterns), what runs in a stand-in (a line calling
-#     stand_in_exec, stand_in_ssh, on_host or in_stack, and the single-quoted script it opens), the 0049
-#     tests, and the suite's lock, which carries no run label (IV-01);
-#   - AC-08: the library sources nothing, calls no jq, and no line of it stops, restarts or resets
-#     Docker or compacts its disk image; the skills' contract: docker_labels(), docker_reap() and
+#   - AC-02: every `docker run`, `create`, `build`, `container run`, `container create`, `image build`,
+#     `buildx build`, `network create`, `volume create` and `compose … up|run|create` of tests/*.sh and
+#     tests/lib/*.sh that runs on the host's Docker passes the labels (C4_LABELS, C4_KEEP_LABELS,
+#     docker_labels or docker_keep_labels in that command, before its `;`, `|`, `&&` or `)`; in a script
+#     given to `bash -c`, among its arguments; for compose, the file names C4_INFRA_RUN in its labels);
+#     no `docker tag` there (a tag carries no label: `build -t` with the labels); every `docker rm`
+#     there has -v. Not read: comments, text in double quotes or after a ^ (messages, patterns), what
+#     runs in a stand-in (a line calling stand_in_exec, stand_in_ssh, on_host or in_stack, and the
+#     single-quoted script it opens), the 0049 tests, and the suite's lock, which carries no run label
+#     (IV-01);
+#   - AC-08: the library sources nothing, calls no jq, and no call of it (its messages aside) stops,
+#     restarts or resets Docker or compacts its disk image; the skills' contract: docker_labels(), docker_reap() and
 #     docker_preflight() defined at column 0, the three lines `^docker_(labels|reap|preflight)\(\)`
 #     matches, and docker_keep_labels();
 #   - IV-01: tests/lib/suite-lock.sh passes no run label;
@@ -47,23 +50,47 @@ function scan(s, state,    i, c, n) {
   }
   return state
 }
+# Where the command starting at <from> of <s> ends: its `;`, `|`, `&&` or `)`, outside quotes and
+# $( … ); the length of <s> plus one when it runs to the end
+function command_end(s, from,    i, c, n, state, depth, stack) {
+  state = 0
+  depth = 0
+  n = length(s)
+  for (i = from; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (state == 1) { if (c == "'") state = 0; continue }
+    if (c == "\\") { i++; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { stack[++depth] = state; state = 0; i++; continue }
+    if (state == 2) { if (c == "\"") state = 0; continue }
+    if (c == "'") state = 1
+    else if (c == "\"") state = 2
+    else if (c == ")" && depth > 0) state = stack[depth--]
+    else if (depth == 0 && (c == ";" || c == "|" || c == ")")) return i
+    else if (depth == 0 && c == "&" && substr(s, i + 1, 1) == "&") return i
+  }
+  return n + 1
+}
 function report(kind) { printf "%s:%d: %s: %s\n", FILENAME, start, kind, cmd }
-function check(s,    off, i, c, tail) {
+function check(s,    off, i, c, state, segment) {
   off = 0
   while ((i = index(substr(s, off + 1), "docker ")) > 0) {
     off += i
     c = off > 1 ? substr(s, off - 1, 1) : ""
     # the end of a word, a pattern (^), a path, a message, or a string assigned to be run elsewhere
     if (c ~ /[A-Za-z0-9_^\/.=-]/) continue
-    if (off > 1 && scan(substr(s, 1, off - 1), 0) == 2) continue
+    state = off > 1 ? scan(substr(s, 1, off - 1), 0) : 0
+    if (state == 2) continue
     if (c == "'" && substr(s, off - 2, 1) == "=") continue
-    tail = substr(s, off)
-    if (tail ~ /^docker compose .*[ \t](up|run)([ \t]|$)/) {
+    # a script given to bash -c gets its labels among its arguments, after its closing quote
+    segment = state == 1 ? substr(s, off) : substr(s, off, command_end(s, off + 7) - off)
+    if (segment ~ /^docker (image )?tag([ \t]|$)/) {
+      report("tag")
+    } else if (segment ~ /^docker compose .*[ \t](up|run|create)([ \t]|$)/) {
       if (!index(has_run, " " FILENAME " ")) report("unlabelled")
-    } else if (tail ~ /^docker (run|create|build|network create|volume create)([ \t]|$)/) {
-      if (tail !~ /C4_LABELS|C4_KEEP_LABELS|docker_labels|docker_keep_labels/) report("unlabelled")
+    } else if (segment ~ /^docker (run|create|build|container run|container create|image build|buildx build|network create|volume create)([ \t]|$)/) {
+      if (segment !~ /C4_LABELS|C4_KEEP_LABELS|docker_labels|docker_keep_labels/) report("unlabelled")
     }
-    if (tail ~ /^docker (container )?rm([ \t]|$)/ && tail !~ /^docker (container )?rm[ \t]+(-[A-Za-z]+[ \t]+)*-[A-Za-z]*v/) report("rm without -v")
+    if (segment ~ /^docker (container )?rm([ \t]|$)/ && segment !~ /^docker (container )?rm[ \t]+(-[A-Za-z]+[ \t]+)*-[A-Za-z]*v/) report("rm without -v")
   }
 }
 FNR == 1 { inside = 0; pending = "" }
@@ -95,14 +122,17 @@ found=$(mapfile -t files < <(scanned)
 
 check "AC-02: every creator on the host's Docker passes the labels" \
   eval '! grep ": unlabelled: " <<< "$found"'
+check "AC-02: no docker tag on the host's Docker" eval '! grep ": tag: " <<< "$found"'
 check "AC-02: every docker rm on the host's Docker has -v" \
   eval '! grep ": rm without -v: " <<< "$found"'
 
 check "AC-08: the library is there" test -f "$LIB"
 check "AC-08: it sources nothing" eval '! grep -nE "^[[:space:]]*(source|\.)[[:space:]]" "$LIB"'
 check "AC-08: it calls no jq" eval '! grep -nw jq "$LIB"'
-check "AC-08: nothing of it stops, restarts or resets Docker, nor compacts its disk" \
-  eval '! grep -niE "docker desktop (restart|stop|reset)|wsl(\.exe)? .*--shutdown|systemctl|Optimize-VHD|diskpart|compact vdisk|fstrim|qemu-img" "$LIB"'
+# the library without its comments and its double-quoted text (messages, which may name a human's command)
+lib_calls() { sed -E 's/"[^"]*"//g; s/(^|[[:space:]])#.*$//' "$LIB"; }
+check "AC-08: no call of it stops, restarts or resets Docker, nor compacts its disk" \
+  eval '! lib_calls | grep -niE "docker desktop (restart|stop|reset)|wsl(\.exe)? .*--shutdown|systemctl|Optimize-VHD|diskpart|compact vdisk|fstrim|qemu-img"'
 check "AC-08: the skills' check finds docker_labels(), docker_reap() and docker_preflight(), once each" \
   test "$(grep -cE '^docker_(labels|reap|preflight)\(\)' "$LIB" 2> /dev/null)" = 3
 check "AC-08: docker_keep_labels() is defined" grep -q '^docker_keep_labels()' "$LIB"

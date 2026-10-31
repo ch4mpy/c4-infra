@@ -15,7 +15,13 @@
 #   - AC-07: a run whose lanes run tests (--all, the fake stand-in test): no prune nor removal reaches
 #     Docker (a docker shim's log) between its first test's start and its last test's end;
 #   - AC-09: the host's memory and disk named as measured: under Git Bash (Docker Desktop on WSL2),
-#     MemFree and SwapFree, and the drive C:; on Linux, MemAvailable.
+#     MemFree and SwapFree, and the drive C:; on Linux, MemAvailable; the VM's disk read from df's line
+#     when docker first prints what a pull prints (run E's shim, on stderr);
+#   - AC-06, AC-09 (no Docker): a kept path is taken for gone only in this system's form, gone: under
+#     Git Bash a drive's (D:/…), which docker_keep_labels writes for a /d/… path; on Linux a /….
+# The floors are 0 but in AC-05's runs: a stand-in lane beside this test leaves Docker's VM less memory
+# than the default floor. A killed run of this test leaves resources of its own namespace, which no
+# preflight reaps: those of a pid no longer running are removed first.
 #
 #   bash tests/0049-docker-preflight.sh
 #
@@ -52,6 +58,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+earlier_runs_leftovers() { # names on stdin: those of an earlier run of this test whose pid is gone
+  local name pid
+  tr -d '\r' | tr ',' '\n' | while IFS= read -r name; do
+    case $name in
+      c4-test-0049-*) pid=${name#c4-test-0049-} ;;
+      c4-infra.suite-lock-0049-*) pid=${name#c4-infra.suite-lock-0049-} ;;
+      *) continue ;;
+    esac
+    pid=${pid%%[.-]*}
+    [[ $pid =~ ^[0-9]+$ ]] && [ "$pid" != $$ ] && ! kill -0 "$pid" 2> /dev/null && echo "$name"
+  done
+}
+docker ps -a --format '{{.Names}}' | earlier_runs_leftovers | xargs -r docker rm -f -v > /dev/null 2>&1
+docker network ls --format '{{.Name}}' | earlier_runs_leftovers | xargs -r docker network rm > /dev/null 2>&1
+docker volume ls --format '{{.Name}}' | earlier_runs_leftovers | xargs -r docker volume rm > /dev/null 2>&1
+NO_FLOORS=(C4_DOCKER_MIN_VM_DISK_GB=0 C4_DOCKER_MIN_HOST_DISK_GB=0 C4_DOCKER_MIN_VM_MEMORY_GIB=0 C4_DOCKER_MIN_HOST_MEMORY_GIB=0)
+
 mkdir -p "$repo/tests/lib" "$work/shim"
 cp tests/run.sh tests/docker-pins.sh "$repo/tests/" 2> /dev/null
 cp tests/lib/*.sh "$repo/tests/lib/"
@@ -87,19 +110,24 @@ echo "$RUN_ID start $(date +%s%N)" >> "$WORK/order.log"
 sleep 1
 echo "$RUN_ID end $(date +%s%N)" >> "$WORK/order.log"
 EOF
+# run E's docker: logs each call; a run of alpine:3 first prints what a pull prints (on stderr)
 cat > "$work/shim/docker" << EOF
 #!/usr/bin/env bash
 echo "\$(date +%s%N) \$*" >> "$work/docker.log"
+case " \$* " in
+  *" run "*" alpine:3 "*) printf '%s\n' "Unable to find image 'alpine:3' locally" "3: Pulling from library/alpine" >&2 ;;
+esac
 exec "$REAL_DOCKER" "\$@"
 EOF
 git -C "$repo" init -q -b main
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test add -A
 git -C "$repo" -c user.name=0049 -c user.email=0049@verif.test commit -q -m base
 
-suite() { # <run> <option…>: tests/run.sh of the repository, its output in $work/<run>.log, its status in $status
-  local run=$1
+suite() { # <run> <option…>: tests/run.sh of the repository, its output in $work/<run>.log, its status in $status; the floors 0 but in AC-05's runs (C, D)
+  local run=$1 floors=()
   shift
-  RUN_ID=$run timeout 300 bash "$repo/tests/run.sh" "$@" > "$work/$run.log" 2>&1
+  [[ $run == [CD] ]] || floors=("${NO_FLOORS[@]}")
+  env "${floors[@]}" RUN_ID="$run" timeout 300 bash "$repo/tests/run.sh" "$@" > "$work/$run.log" 2>&1
   status=$?
 }
 says() { # <run> <pattern>
@@ -137,11 +165,29 @@ labels_printed() {
 }
 check "docker_labels prints the label contract's arguments" labels_printed
 check "the run is set, and the same in a child process" eval '[ -n "$run" ] && grep -qxF "inner $run" <<< "$contract"'
-check "docker_keep_labels prints its two labels" grep -qxF "$NS.keep=/some/path" <<< "$contract"
+if command -v cygpath > /dev/null; then
+  check "docker_keep_labels prints its two labels, a /… path in its drive's form" \
+    grep -qxF "$NS.keep=$(cygpath -m /some/path)" <<< "$contract"
+else
+  check "docker_keep_labels prints its two labels" grep -qxF "$NS.keep=/some/path" <<< "$contract"
+fi
+
+# AC-06, AC-09: what this system takes for a kept path that is gone (no Docker)
+gone_here() { (source tests/lib/docker-preflight.sh && _docker_gone "$1"); }
+if command -v cygpath > /dev/null; then
+  check "AC-06 (Git Bash): a drive's path that is gone is gone" gone_here "$(cygpath -m "$work")/gone-0049"
+  check "AC-06 (Git Bash): a drive's path that exists is not" eval '! gone_here "$(cygpath -m "$PWD")"'
+  check "AC-06 (Git Bash): a /… path is another system's, never gone here" eval '! gone_here /nonexistent-0049'
+  check "AC-06 (Git Bash): /… even when it exists here" eval '! gone_here "$PWD"'
+else
+  check "AC-06 (Linux): a /… path that is gone is gone" gone_here "$work/gone-0049"
+  check "AC-06 (Linux): a /… path that exists is not" eval '! gone_here "$PWD"'
+  check "AC-06 (Linux): a drive's path is another system's, never gone here" eval '! gone_here D:/nonexistent-0049'
+fi
 
 # AC-03: a run killed with kill -9 while its test holds its resources, then the next run
 : > "$work/hold-A"
-RUN_ID=A bash "$repo/tests/run.sh" > "$work/A.log" 2>&1 &
+env "${NO_FLOORS[@]}" RUN_ID=A bash "$repo/tests/run.sh" > "$work/A.log" 2>&1 &
 echo $! > "$work/pid-A-run"
 for ((i = 0; i < 300; i++)); do
   [ -e "$work/created-A" ] && break
@@ -167,13 +213,13 @@ check "AC-03: nothing of that run is left" \
 # AC-09: the host's memory and disk, as measured here
 if command -v cygpath > /dev/null; then
   check "AC-09: the host's memory from MemFree and SwapFree (Git Bash)" \
-    says B "^docker preflight: host memory: [0-9.]+ GiB MemFree \+ [0-9.]+ GiB SwapFree \(floor 6\)$"
+    says B "^docker preflight: host memory: [0-9.]+ GiB MemFree \+ [0-9.]+ GiB SwapFree \(floor 0\)$"
   check "AC-09: the host's disk under Docker's disk image, on C:" \
-    says B "^docker preflight: host disk under Docker's disk image \(C:\): [0-9.]+ GB free \(floor 20\)$"
+    says B "^docker preflight: host disk under Docker's disk image \(C:\): [0-9.]+ GB free \(floor 0\)$"
 else
   check "AC-09: the host's memory from MemAvailable (Linux)" says B "^docker preflight: host memory: [0-9.]+ GiB MemAvailable"
 fi
-check "AC-09: Docker's VM measured" says B "^docker preflight: VM memory: [0-9.]+ GiB available \(floor 3\)$"
+check "AC-09: Docker's VM measured" says B "^docker preflight: VM memory: [0-9.]+ GiB available \(floor 0\)$"
 
 # AC-05: a floor above what is free, then the preflight off
 C4_DOCKER_MIN_VM_DISK_GB=1000000000 suite C
@@ -188,6 +234,8 @@ check "AC-05: with C4_DOCKER_PREFLIGHT=off, it starts and passes" \
 : > "$work/docker.log"
 PATH="$work/shim:$PATH" suite E --all
 check "AC-07: the run with lanes passes" test "$status" -eq 0
+check "AC-09: the VM's disk read from df's line, what a pull prints first aside" \
+  says E "^docker preflight: VM disk: [1-9][0-9.]* GB free \(floor 0\)$"
 check "AC-07: the shim saw the preflight's reaping, before the tests" grep -q " ps -a --filter label=$NS.run " "$work/docker.log"
 cleaning_during_tests() {
   awk -v from="$(awk '$1 == "E" && $2 == "start" { print $3 }' "$work/order.log" | LC_ALL=C sort -n | head -n 1)" \
