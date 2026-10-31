@@ -205,6 +205,24 @@ check "AC-07: the window's check fails on a prune in it" eval '! planted "50 ps 
 check "AC-07: the window's check fails on a log with no call in it" eval '! planted "50 ps -a --filter label=$NS.run"'
 check "AC-07: the window's check passes on a read in it" planted "150 ps -q --filter label=$NS.run"
 
+# AC-07: the reaping's check on planted logs (no Docker)
+reaped_before_tests() { # <order log> <docker log>: the reaper's calls, at least one, every one before the first test's start
+  grep -q " ps -a --filter label=$NS.run " "$2"
+}
+REAP="ps -a --filter label=$NS.run --format {{.ID}}"
+reap_planted() { # <docker log line>…: reaped_before_tests on the planted order log and these lines
+  printf '%s\n' "$@" > "$work/planted-docker.log"
+  reaped_before_tests "$work/planted-order.log" "$work/planted-docker.log"
+}
+check "AC-07: the reaping's check passes on a reap before the first test" reap_planted "50 $REAP"
+check "AC-07: the reaping's check fails on a reap after the first test's start" eval '! reap_planted "150 $REAP"'
+check "AC-07: the reaping's check fails on a reap after the last test's end" eval '! reap_planted "250 $REAP"'
+check "AC-07: the reaping's check fails on a reap during the tests beside one before" eval '! reap_planted "50 $REAP" "150 $REAP"'
+check "AC-07: the reaping's check fails on a log without it" eval '! reap_planted "50 ps -q --filter label=$NS.run"'
+printf '%s\n' "E end 200" > "$work/planted-no-start.log"
+check "AC-07: the reaping's check fails on an order log without a start" \
+  eval '! { printf "%s\n" "50 $REAP" > "$work/planted-docker.log" && reaped_before_tests "$work/planted-no-start.log" "$work/planted-docker.log"; }'
+
 # AC-03: a run killed with kill -9 while its test holds its resources, then the next run
 : > "$work/hold-A"
 env "${NO_FLOORS[@]}" RUN_ID=A bash "$repo/tests/run.sh" > "$work/A.log" 2>&1 &
@@ -265,7 +283,7 @@ PATH="$work/shim:$PATH" suite E --all
 check "AC-07: the run with lanes passes" test "$status" -eq 0
 check "AC-09: the VM's disk read from df's line, what a pull prints first aside" \
   says E "^docker preflight: VM disk: [1-9][0-9.]* GB free \(floor 0\)$"
-check "AC-07: the shim saw the preflight's reaping, before the tests" grep -q " ps -a --filter label=$NS.run " "$work/docker.log"
+check "AC-07: the shim saw the preflight's reaping, before the tests" reaped_before_tests "$work/order.log" "$work/docker.log"
 check "AC-07: no prune nor removal between the first test's start and the last test's end" \
   cleaning_during_tests "$work/order.log" "$work/docker.log"
 finish
