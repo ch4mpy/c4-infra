@@ -117,12 +117,16 @@ logs in as them.
 
 ## 6. GitHub environment `demo`
 
-In this repository (`ch4mpy/c4-infra`). `gh secret set` reads the value on its standard input,
-so nothing lands in the shell's history:
+In this repository (`ch4mpy/c4-infra`), restricted to `main`, the branch it deploys from (the
+environment's *Deployment branches*), so that a workflow run from another branch gets none of its
+secrets. `gh secret set` reads the value on its standard input, so nothing lands in the shell's
+history:
 
 ```bash
 R=ch4mpy/c4-infra
-gh api -X PUT repos/$R/environments/demo
+gh api -X PUT repos/$R/environments/demo \
+  -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/$R/environments/demo/deployment-branch-policies -f name=main
 gh secret set VPS_HOST --env demo -R $R --body '<vps-ip>'
 gh secret set VPS_SSH_KEY --env demo -R $R < c4-infra-demo
 gh secret set VPS_KNOWN_HOSTS --env demo -R $R < c4-infra-demo.known_hosts
@@ -131,6 +135,11 @@ for s in KC_ADMIN_PASSWORD KC_DB_PASSWORD KC_REGISTRATION_CLIENT_SECRET RABBITMQ
   gh secret set $s --env demo -R $R   # paste the value, then Enter
 done
 ```
+
+The restriction, read back: `gh api repos/$R/environments/demo --jq .deployment_branch_policy`
+gives `{"custom_branch_policies":true,"protected_branches":false}`, and
+`gh api repos/$R/environments/demo/deployment-branch-policies --jq '[.branch_policies[].name]'`
+gives `["main"]`.
 
 Optional variables: `INFRA_HOST` (defaults to `infra.c4-soft.com`) and `KC_ADMIN_USERNAME`
 (defaults to `admin`), e.g. `gh variable set INFRA_HOST --env demo -R $R --body infra.c4-soft.com`.
@@ -242,13 +251,17 @@ other: [README](../README.md), "Demo host"), once:
 
    ```bash
    A=ch4mpy/<app>
-   gh api -X PUT repos/$A/environments/demo
+   B=<the branch it deploys from>   # main, master…
+   gh api -X PUT repos/$A/environments/demo \
+     -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+   gh api -X POST repos/$A/environments/demo/deployment-branch-policies -f name=$B
    gh secret set VPS_HOST --env demo -R $A --body '<vps-ip>'
    gh secret set VPS_SSH_KEY --env demo -R $A < <app>-demo
    gh secret set VPS_KNOWN_HOSTS --env demo -R $A < c4-infra-demo.known_hosts
    ```
 
-   then delete the local copy of the private key (or keep it in the password manager).
+   then delete the local copy of the private key (or keep it in the password manager). The
+   restriction reads back as the stack's does (step 6), `["$B"]` for its branch.
 6. **Its workflow**: [migration.md](migration.md), "On the demo host" (its compose project on its
    own network `c4-infra.<app>` with unique container names, its routes file, the commands it runs
    as `<app>@<vps-ip>`).

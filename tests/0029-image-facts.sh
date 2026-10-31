@@ -112,6 +112,8 @@ for feature in $(features); do
 done
 other_features() { # [<server information file>]
   local file=${1:-$work/serverinfo.json} other
+  jq -e '.features | type == "array" and length > 0' < "$file" > /dev/null 2>&1 \
+    || { echo "no feature read from $file"; return 1; }
   other=$(jq -r '.features[] | select(.enabled and (.type == "PREVIEW" or .type == "EXPERIMENTAL")) | .name' \
     < "$file" | LC_ALL=C sort | LC_ALL=C comm -23 - <(features))
   [ -z "$other" ] || { echo "enabled, not described:"; printf '%s\n' "$other"; return 1; }

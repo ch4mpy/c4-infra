@@ -3,7 +3,7 @@
 # Keycloak's short form (a user federation's), is replaced by a new random one of the same form, the
 # same everywhere in that file, so that its references (roles' containerId, components' parentId,
 # users' federationLink and origin, storage ids f:<component>:...) still hold. A file holding an id of
-# another form (a readable one) is left as it was, the id named, and the script exits 1.
+# another form (a readable one), or that jq can't read, is left as it was, named, and the script exits 1.
 #
 #   new-realm-ids.sh <realm file>...
 #
@@ -22,9 +22,12 @@ storage="f:($uuid|$short):.+"
 
 refused=0
 for file in "$@"; do
-  # "id" : "<uuid>", then "username" : "<name>" on the next line: the export's layout for users
-  users=$(grep -A1 -E "^    \"id\" : \"$uuid\",$" "$file" | grep -B1 '"username"' \
-    | sed -n 's/.*"id" : "\(.*\)",/\1/p; s/.*"username" : "\(.*\)",/\1/p' | paste - - || true)
+  if ! users=$(jq -r '.users[]? | [.id, .username] | @tsv' < "$file"); then
+    echo "$file: left as it was: not JSON that jq can read" >&2
+    refused=1
+    continue
+  fi
+  users=${users//$'\r'/}
   # every entity's id, in Keycloak's layout ("id" : …) or jq's ("id": …)
   keyed=$(grep -oE '"(id|_id|internalId)" *: *"[^"]*"' "$file" | sed -E 's/.*: *"(.*)"$/\1/' | LC_ALL=C sort -u || true)
   others=$(grep -vxE "$uuid|$short|$storage" <<< "$keyed" | grep . || true)

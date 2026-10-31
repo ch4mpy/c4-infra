@@ -1,7 +1,6 @@
 # 0007 fixture (tests/0007-compose-check.stand-in.sh): a service that builds and tags its image with
 # Hurura'a's name (what compose names Hurura'a's built gateway): root's compose would replace that image
-# in the shared Docker daemon, for Hurura'a's next up to run; sudo c4-app up refuses it before any
-# container starts (review round 2, 2026-10-22)
+# in the shared Docker daemon, for Hurura'a's next up to run; sudo c4-app up refuses it because it builds, as every build since intent 0011, before any container starts
 services:
   gateway:
     container_name: faito.gateway
