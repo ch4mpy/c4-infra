@@ -233,7 +233,36 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     `c4-infra.rabbitmq`), after a leading `*.`, case ignored and a final dot removed; and one
     holding a realm attribute `client-policies.*`, where Keycloak stores the profiles and policies,
     out of that check. The check reads the domain's name, not what it resolves to: a public name
-    pointed at an internal address passes, and would let Keycloak fetch from it;
+    pointed at an internal address passes, and would let Keycloak fetch from it. Until the upgrade
+    to Keycloak 27.0, the stack lives with that:
+    - an accepted risk (intent 0054), on both environments, in dev and on the demo host: an
+      unauthenticated client can make Keycloak fetch an address on the host's private networks (the
+      stack's and the applications' containers, the host itself, a cloud metadata endpoint) by
+      naming a client metadata document on a trusted domain, a permitted one, that resolves to it.
+      The product owner accepted that risk on 2026-11-01, until the upgrade to Keycloak 27.0, whose
+      intent narrows it and is to be taken up end of January or early February 2027 (Keycloak
+      27.0's release is planned for 29 January 2027). A realm that opts into `cimd` takes that risk;
+    - what the fetch reaches: every fetch is HTTPS (the registration refuses
+      `cimd-allow-http-scheme`) and Keycloak verifies the server's certificate against its
+      truststore (the JVM's public authorities, and in dev the local CA, `KC_TRUSTSTORE_PATHS` in
+      [`compose.dev.yml`](compose.dev.yml)), so at a private address the fetch is a blind TCP/TLS
+      probe: the client doesn't see the response, and the outcome, an error or the consent screen,
+      tells it whether something answered there. A request is served only by an HTTPS service whose
+      certificate is valid for the trusted name and trusted by Keycloak; the plain-HTTP services
+      inside (a cloud metadata endpoint, the Docker networks' services: Keycloak's `8080`, Mailpit,
+      RabbitMQ's and Grafana LGTM's ports) receive at most a connection attempt, a TLS handshake
+      they don't speak, never an HTTP request;
+    - the precaution, which costs nothing: trust exact host names, or a wildcard only over a zone
+      whose DNS the realm's owner alone controls, and publish no record under it (a wildcard, a
+      CNAME) resolving to a private, loopback or link-local address; never trust a wildcard-DNS
+      service (`*.nip.io`, `*.sslip.io`, `*.localtest.me`) or a shared-hosting suffix
+      (`*.github.io`, `*.vercel.app`, `*.ngrok-free.app`), under which anyone publishes such a
+      record;
+    - after the upgrade to Keycloak 27.0, its realm setting `cimd-allow-private-use-addresses` off
+      refuses a metadata document at a private address: the risk narrows, it doesn't close. The other
+      URLs a client presents (`jwks_uri`, `sector_identifier_uri`, `request_uris`, a `request_uri`
+      parameter) and DNS rebinding between Keycloak's check and its fetch stay a residual risk,
+      followed upstream;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
@@ -541,7 +570,12 @@ then, pulling it needs a GitHub login with `read:packages`.
   [`keycloak-import/simulated-*-realm.json`](keycloak-import/) with `INFRA_HOST` set to its own host
   (the files name it), and points its realm's providers there; Mailpit and the registration
   account, the stack's; the brute-force settings its export doesn't hold, which `register-app.sh`
-  fills with the stack's (intent 0041), not in a test's import of it.
+  fills with the stack's (intent 0041), not in a test's import of it. The published image carries
+  no refusal of private addresses (intent 0054): until Keycloak 27.x nothing refuses a client
+  metadata document fetched from one, and from 27.x the refusal is the realm's, the
+  `client-id-metadata-document` executor's `cimd-allow-private-use-addresses` off, which a test has
+  only through its own import of the realm. An application's test of a fetch from a private
+  address proves nothing of the stack.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
   refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak
@@ -803,7 +837,10 @@ What answers an application's containers on `c4-infra.<app>`, besides its own co
 other application's containers, and Keycloak's database, are on networks it doesn't join (intent
 0007; checked by `tests/0007-isolation.stand-in.sh` from an application's container, and by
 `tests/0007-listeners.sh` for each image as configured). In dev, the same, plus RabbitMQ's
-management UI (15672) and Mailpit without credentials.
+management UI (15672) and Mailpit without credentials. One exception, accepted until the
+upgrade to Keycloak 27.0: an unauthenticated client can make Keycloak fetch an address on these
+networks through a client metadata document (intent 0054, in
+[What an application provides](#what-an-application-provides), beside the `cimd` checks).
 
 | Service | Port | What answers | Why |
 | --- | --- | --- | --- |

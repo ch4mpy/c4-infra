@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (poc-immo-pf 0021, `CimdIT`)
 - Spec needed: yes
-- Status: accepted
+- Status: delivered (2026-11-01)
 - Opened: 2026-10-31
 - Decided: 2026-10-31
 - Supersedes: —
