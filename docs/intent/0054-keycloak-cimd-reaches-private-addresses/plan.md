@@ -91,3 +91,5 @@ ok - (AC-12) a copy at 27.0.0 still stating the risk is refused, naming 0054
 ok - (AC-12) a copy at 26.8.1 stating the risk passes
 2 check(s) failed
 ```
+
+- Deployment: deploy-demo run 41332441692 (https://github.com/ch4mpy/c4-infra/actions/runs/41332441692) on 44e040e → `success`. poc-immo-pf told to review its `CimdIT` (PA-04); its realm already trusts exact hosts only.
