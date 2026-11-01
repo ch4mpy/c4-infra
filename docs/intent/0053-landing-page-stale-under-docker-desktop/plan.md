@@ -121,3 +121,5 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
 - 2026-10-31, step 5, the verifier's KO on AC-05: no test asserted the demo page's mode and owner, and `tests/0003-demo-edge.sh` writes a page of its own, never through `register-app.sh`; `tests/0048-accounts.stand-in.sh` now checks, after the deployment, mode 644 and the owner the registrations left, and the Proof names it alone.
 
 ## Verification
+
+- Deployment: deploy-demo run 41267847226 (https://github.com/ch4mpy/c4-infra/actions/runs/41267847226) on af4725d → `success`; `https://infra.c4-soft.com/` answers 200 with the page of this form (`<title>c4-infra</title>`, `noindex`, Tickee's section). AC-02 (Windows) left to the product owner there.
