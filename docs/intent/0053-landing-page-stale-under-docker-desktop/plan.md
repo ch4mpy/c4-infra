@@ -39,7 +39,33 @@ Steps 1 to 6 on the Linux workstation, in a worktree of the branch; the stack-de
 2. **The facts** — skill: none — check: `bash tests/0053-mount-facts.sh` on the Linux workstation, its `fact:` lines and verdict into *Deviations* (and on the Windows workstation later, AC-02's session). (a) fresh → go on; (a) stale → stop, a deviation for the PO (PA-01). Commit `test(0053): the facts of a page replaced under the proxy's bind mount`.
 3. **The writers' test** — skill: none — check: `bash tests/0053-index-writers.sh` green on today's writer (the rename already keeps one page: it guards RQ-02 through the change). Commit `test(0053): two writers of the landing page leave one whole page`.
 4. **The fix** — skill: none — check: `bash -n register-app.sh`; `bash tests/0053-index-writers.sh` green; from the main checkout detached at the commit, `bash tests/0048-landing-page.sh` three times in a row, each `every check passed` (the PO's three); `bash tests/run.sh --changed origin/main` → `verification passed`. Commit `fix(0053): the landing page is written in place, under a lock`.
-5. **Verification** — `/sdlc-verify 0053` (bootstrap: the bugs pass, one fix round; standard risk): its run `bash tests/run.sh --changed --all` from the main checkout detached at the head (the stand-in tests for AC-05, the facts test, 0048-landing-page a fourth time); the mutation check: 0048-landing-page KO at step 1's commit is step 1's; the verifier; the evidence block into `## Verification`, naming the machine. Commit `plan: verification of 0053`.
+5. **Verification** — `/sdlc-verify 0053` (bootstrap: the bugs pass, one fix round; standard risk): its run `bash tests/run.sh --changed --all` from the main checkout detached at the head (the stand-in tests for AC-05, the facts test, 0048-landing-page a fourth time); the mutation check: 0048-landing-page KO at step 1's commit is step 1's; the verifier; the evidence block into `## Verification
+
+### Verification — afd0acd
+
+Bootstrap mode (intent home's `Mode` line): no PR, no stage label, gates decided in this session; the release gate does not hold pushes to `main`.
+
+- Verification command: `bash tests/run.sh --changed --all` (`TMPDIR` under `/home`, `C4_DOCKER_REAP=labelled`, from the main checkout detached at the commit) → `FAILED: tests/0006-bootstrap-admin-replaced.stand-in.sh tests/0002-accounts.stand-in.sh` (34 of 36; the first, the stand-in's dockerd not started in 60 s; the second, `KO - it leaves no temporary configuration in /tmp`, intermittent per 0050's delivery) (2026-10-31), at b18154a
+- Rerun after the fixes: `bash tests/run.sh --changed b18154a --all` → `verification passed (--changed: 36 of 92 tests)`, both tests above green, at 97952ce; then `bash tests/0048-accounts.stand-in.sh` → `every check passed`, at afd0acd (the AC-05 proof added after the verifier)
+- Durations: lock —, bugs review 7m26s @16:18, security review —, fix round 0m00s @16:37 (prepared in the branch's worktree while the run ran, landed after it), run 18m37s @16:18, reruns 18m05s (first verdict —) @16:38, verifier 8m45s @16:56; total 46m21s (16:18–17:05)
+- Risk tier: standard
+- Reviews: bootstrap mode: 1 round, on 3a1d641..b18154a (`/home/jerome/workspaces/c4-infra`, detached at b18154a); bugs: covered 3a1d641..b18154a, 3 Important fixed, 7 details: 6 fixed, 1 answered
+  - Answered: a failed `cat` into `index.html` leaves the page truncated until the next write: the price of writing in place (PA-02 A) (register-app.sh, `write_index`)
+  - Comments read on the range: the lock's header and the in-place write's reason (Docker Desktop's bind mount), no comment saying what the code does
+- Mutation check (bug): `tests/0048-landing-page.sh` red before the fix: step 1's output at 09480d3 (`KO - AC-10: shows it`, `KO - AC-04: lists no account`, `2 check(s) failed`); 13d6232 runs the same writer (`git diff --stat 09480d3 13d6232 -- register-app.sh` empty); not runnable from a worktree (the proxy serves the main checkout's `caddy/html`). `tests/0053-index-writers.sh` of HEAD: `3 check(s) failed` at b18154a, `5 check(s) failed` at 13d6232
+- Verifier: 3/5 criteria OK, AC-05 KO (mode and owner unproven), fixed in afd0acd and green; AC-02 not verifiable here
+- Not verifiable here: AC-02: Git Bash on the Windows workstation, for the product owner there after delivery
+- Files outside the plan: `spec.md` (the spec itself); `docs/intent/README.md` named in Files, changed at delivery
+- Pre-existing findings (not fixed, out of scope): none
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-01 | OK | `bash tests/0048-landing-page.sh` three times at 97952ce from the main checkout: `every check passed` each (29 s, 31 s, 30 s); green in the rerun |
+| AC-02 | not verifiable here | Windows workstation, after delivery |
+| AC-03 | OK | `tests/0053-index-writers.sh` in the rerun at 97952ce: `every check passed` (21.8 s) |
+| AC-04 | OK | `tests/0053-mount-facts.sh` in the rerun: `fact: (r) rename fresh at once: no, 5 of 5 stale`, `fact: (a) in place fresh at once: yes`, `every check passed` |
+| AC-05 | OK | `bash tests/0048-accounts.stand-in.sh` at afd0acd: `ok - AC-05: the page mode 644, owned as the registrations left it (644 c4-infra:c4-infra)`, `every check passed` |
+`, naming the machine. Commit `plan: verification of 0053`.
 6. **Delivery** — `/sdlc-ship 0053`: `delivered`, `merge(0053): …` into `main`, pushed; deploy-demo follows (`register-app.sh` is deployed): its run green, then `https://infra.c4-soft.com/` 200 with Tickee's link (0048's check after deployment). HANDOVER's entry moves to the delivered list. AC-02 (Windows) is asked of the Windows session after delivery: `bash tests/0048-landing-page.sh` and `bash tests/0053-mount-facts.sh` there, recorded under *After deployment*; a KO is a bug intent.
 
 This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's entry (steps 1 to 6 above, the prerequisites, the frozen test, PA-01's stop), commits `plan: …` and pushes the branch. No code here.
