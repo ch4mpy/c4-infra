@@ -60,7 +60,7 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
 | AC-02 | automated test, Windows, after delivery | `tests/0048-landing-page.sh` on the Windows workstation |
 | AC-03 | automated test | `tests/0053-index-writers.sh` |
 | AC-04 | automated test (facts), Linux and Windows | `tests/0053-mount-facts.sh`, its `fact:` lines in *Deviations* |
-| AC-05 | automated tests (stand-in) | `tests/0048-accounts.stand-in.sh`, `tests/0003-demo-edge.sh` in step 5's run; deploy-demo's check |
+| AC-05 | automated test (stand-in) | `tests/0048-accounts.stand-in.sh` (the page fresh after a deployment, mode 644, owned as the registrations left it) in step 5's run; deploy-demo's check |
 
 ## Deviations
 
@@ -92,5 +92,6 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
 - 2026-10-31, step 4: `bash tests/run.sh --changed origin/main` **not run**: the tests the change selects include `tests/0005-themes.sh` (its `INFRA_ENV=demo` part restarts the dev Keycloak) and `tests/0006-account.sh` (it runs Faito's `deploy-dev.sh`, which runs `up.sh`), and the shared stack mustn't be restarted while another project's agent uses it (the PO, 2026-10-31). It runs with step 5, in the quiet window.
 - 2026-10-31: step 4's `bash tests/run.sh --changed origin/main`, steps 5 (`/sdlc-verify 0053`, its `bash tests/run.sh --changed --all`) and 6 (delivery) wait for a quiet window on the Linux workstation's Docker, another project's agent using the shared dev stack (the PO, 2026-10-31). Steps 1 to 4 ran without restarting any shared service.
 - 2026-10-31, step 5, the review round (3 Important, 7 details): the lock is taken before the page is built, not only around the copy (a page built before another registration would drop it); a lock older than 60 s is removed under a second lock, `.index.lock.takeover`, so that two waiting writers can't both take it over, and a killed writer's takeover lock older than 60 s is removed too; the wait is 90 s, longer than the 60 s after which a lock is stale; the lock's release can't fail the script; the page being built is removed on exit. `tests/0053-index-writers.sh` gains the checks of these (red on b18154a: the page built once the lock is held, the takeover left to its holder, a stale takeover lock removed), and its waiting writer is judged after twice the time a page takes to build. `tests/0053-mount-facts.sh` keeps its `mktemp` directory and says when its proxy doesn't start. `docs/intent/HANDOVER.md` updated. A failed `cat` into `index.html` still leaves the page truncated until the next write: the price of writing in place (PA-02 A).
+- 2026-10-31, step 5, the verifier's KO on AC-05: no test asserted the demo page's mode and owner, and `tests/0003-demo-edge.sh` writes a page of its own, never through `register-app.sh`; `tests/0048-accounts.stand-in.sh` now checks, after the deployment, mode 644 and the owner the registrations left, and the Proof names it alone.
 
 ## Verification
