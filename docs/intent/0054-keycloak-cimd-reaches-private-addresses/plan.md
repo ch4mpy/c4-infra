@@ -54,6 +54,29 @@ Not changed (AC-11): `keycloak/`, `keycloak-image.properties`, `register-app.sh`
 
 ## Verification
 
+### Verification — 76601d0
+
+Bootstrap mode (intent home's `Mode` line): no PR, no stage label, gates decided in this session; the release gate does not hold pushes to `main`.
+
+- Verification command: `bash tests/run.sh --changed origin/main --all` (from the worktree, `TMPDIR` under `/home`, `C4_DOCKER_REAP=labelled`) at 0f2ae33 → `FAILED: tests/0004-registry.sh` (the worktree has no `.env`: `INFRA_ENV ''`, environment); the first attempt stopped at the preflight, host memory 5.4 GiB under its floor of 6 (2026-11-01)
+- Rerun after the fixes: `bash tests/run.sh --changed origin/main --all` from the main checkout detached at 76601d0 → `verification passed (--changed: 9 of 93 tests)`
+- Durations: not computed — the session's phases file refused its second `end run` ("run ends without a start", the improvement log's P-58); run about 1 min, bugs review 7m28s, security review 1m36s, fix round 3m43s, rerun 8 s, verifier 2m08s
+- Risk tier: high (authentication; what a host exposes to the network)
+- Reviews: bootstrap mode: 1 round, on f9d7f1e..0f2ae33 (`/home/jerome/workspaces/c4-infra-0054`); bugs (xhigh): covered f9d7f1e..0f2ae33, 1 Important fixed (AC-10 against RQ-10 after the upgrade: AC-09/AC-10 bounded to Keycloak < 27, the PO lifting the test's freeze), 9 details: 7 fixed (README wording, the test's marker, terms, message and self-checks), 2 answered (the shared docs-test helper and 0004's `.env`: out of scope); security: covered f9d7f1e..0f2ae33, 1 Important fixed (the free precaution: exact names or zones the realm's owner controls, never wildcard-DNS or shared-hosting suffixes), 2 details fixed (the reach exactly: HTTPS, a blind probe; the residual risk after 27.0)
+  - Pre-existing: `register-app.sh`'s RQ-17 accepts wildcard-DNS and shared-hosting suffixes as trusted domains → `~/.claude`'s improvement log P-66, for the PO or the Keycloak 27 upgrade's intent
+- Mutation check: HEAD's `tests/0054-docs.sh` against the README of f9d7f1e: `KO - (AC-09)`, `KO - (AC-10)`, `2 check(s) failed` (exit 1); with `KC_VERSION=27.0.0` and the note kept: `KO - (RQ-10) … 0054: Keycloak's major version is 27 and README still holds 'accepted risk (intent 0054)' … owes …`
+- Verifier: 4/4 criteria OK (AC-09, AC-10, AC-11, AC-12; RQ-10 through AC-12), 0 KO; its details (README wording on `cimd-allow-http-scheme`, AMQP not HTTP, the AC-09 setting-name check) left for the upgrade's intent, which rewrites those notes
+- Not verifiable here: none
+- Files outside the plan: none
+- Pre-existing findings: P-66 above
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| AC-09 | OK | `ok - (AC-09) README's tests section says the published image carries no refusal of private addresses`; skipped at 27 |
+| AC-10 | OK | `ok - (AC-10) README states the accepted risk in the cimd checks' item` (20 terms) |
+| AC-11 | OK | `git diff --name-only origin/main...HEAD -- keycloak/ keycloak-image.properties` empty; 0029 `every check passed` |
+| AC-12 | OK | the four `ok - (AC-12)` lines; live check at 27.0.0 refused naming 0054 and what is owed |
+
 <!-- the evidence block of /sdlc-verify 0054 -->
 
 Step 1, before README changes (AC-12: the test guards the change), `bash tests/0054-docs.sh`, exit 1:
