@@ -1,6 +1,6 @@
 # Plan: Keycloak fetches a client's metadata document from a private address when a trusted domain resolves to one
 
-- Spec: [v3](spec.md) (approved 2026-11-01: PA-01 B, PA-02 A, PA-03 B, PA-04 A, PA-05 A moot)
+- Spec: [v4](spec.md) (approved 2026-11-01: PA-01 B, PA-02 A, PA-03 B, PA-04 A, PA-05 A moot; v4, the review round's decisions)
 - Status: approved
 - Branch: `0054-keycloak-cimd-reaches-private-addresses`
 - Approved: 2026-11-01, Jérôme Wacongne (engineer and tech lead, recorded once; the plan's one choice, where the 27.x work goes, decided by him and relayed by the coordinating session)
@@ -50,6 +50,7 @@ Not changed (AC-11): `keycloak/`, `keycloak-image.properties`, `register-app.sh`
 <!-- filled during implementation: date — what — why — impact on files or proof -->
 
 - 2026-11-01 — step 1's terms: beyond the plan's examples, `trusted domain` and `end of January or early February 2027` for RQ-09, `proves nothing of the stack` for RQ-08 — AC-09 and AC-10 name them — none on files or proof.
+- 2026-11-01 — the review round (bootstrap: one round): the product owner lifts the freeze on `tests/0054-docs.sh` (decision 1) — spec v4 bounds AC-09 and AC-10 to Keycloak below 27, and the review's details asked a stronger test — `tests/0054-docs.sh` rewritten: AC-09 and AC-10 skipped from 27, RQ-10 anchored on the marker `accepted risk (intent 0054)` anywhere in README, AC-10 read in the `cimd` checks' item only with every term AC-10 lists, the refusal checked for what the upgrade owes, AC-12 on a copy without the note (passes) then with the marker inserted (refused), and README as it is at 26.8.1; README's note reworded (decision 2), its nested list kept tight, and the isolation section points to it. Proof unchanged in shape: the same test.
 
 ## Verification
 
