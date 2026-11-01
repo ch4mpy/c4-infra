@@ -4,7 +4,7 @@
 - Kind: bug
 - Source: conversation (2026-10-31, the full run of 0050's merge `87acaf4` on the product owner's Linux workstation; skills' improvement log P-24)
 - Spec needed: yes
-- Status: planned
+- Status: delivered (2026-10-31)
 - Opened: 2026-10-31
 - Decided: 2026-10-31
 - Supersedes: —
