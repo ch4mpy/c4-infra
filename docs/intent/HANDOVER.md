@@ -9,6 +9,7 @@ Where the intents stand, for whoever resumes the work, here or on another workst
 
 ## Next
 
+- **Upcoming, end of January / early February 2027: the Keycloak 27.0 upgrade intent** (the product owner, 2026-11-01; Keycloak 27.0's release is planned for 29 January 2027). It carries 0054's deferred work: `cimd-allow-private-use-addresses` off in the stack's realms, RQ-17 refusing an export that sets it on, a facts test on a throwaway Keycloak 27. Until then 0054's risk is accepted (Keycloak 26.8.1's CIMD fetch can reach private addresses through a trusted domain).
 - **0019** and **0025** delivered (2026-10-28).
 - **0026 to 0031** delivered on 2026-10-28, as one batch (the product owner's decision): planned together; 0026 and 0027 implemented by two agents in worktrees, each on its own stand-in host; one review round per intent; one `bash tests/run.sh --all` on the integration commit 205b8eb, `verification passed` (72 tests, 1764 s), the milestone before the push; the verifiers' documentation fixes rerun at 13474a8 (`--changed 205b8eb --all`, 8 tests); merged into `main` in the batch's order (0031, 0030, 0028, 0026, 0027, 0029). Each `plan.md` holds its evidence.
 - 0026 to 0031 pushed and deployed (deploy-demo run 40755169273 on 4bae619); 0029's steps 7 to 9 done (the package public, the anonymous checks); its last check passed at deploy-demo run 40808682088 (the tag step skipped, the same digest twice): 0029 complete. `/etc/cron.d/c4-apps-backup` is written by the first application's `vps-bootstrap.sh`.
