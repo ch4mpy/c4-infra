@@ -1,13 +1,13 @@
 # Plan: Keycloak fetches a client's metadata document from a private address when a trusted domain resolves to one
 
-- Spec: [v2](spec.md) (approved 2026-11-01: PA-01 B, PA-02 A, PA-03 B, PA-04 A, PA-05 A moot)
+- Spec: [v3](spec.md) (approved 2026-11-01: PA-01 B, PA-02 A, PA-03 B, PA-04 A, PA-05 A moot)
 - Status: approved
 - Branch: `0054-keycloak-cimd-reaches-private-addresses`
 - Approved: 2026-11-01, Jérôme Wacongne (engineer and tech lead, recorded once; the plan's one choice, where the 27.x work goes, decided by him and relayed by the coordinating session)
 
 ## Context
 
-The spec v2 accepts the risk until the upgrade to Keycloak 27.x (PA-01 B): this intent changes no behaviour of the stack, it writes the accepted risk and the published image's note in README and makes the suite hold them. The work at 27.0.0 (the realms' `cimd-allow-private-use-addresses` off, RQ-17 refusing an export that sets it on, its throwaway Keycloak 27 facts test, README's residual risks) belongs to the Keycloak upgrade's own intent (the product owner, 2026-11-01; spec, "Out of scope and residual risk"); RQ-10's tripwire makes the suite remind that intent of it.
+The spec v3 accepts the risk until the upgrade to Keycloak 27.x (PA-01 B): this intent changes no behaviour of the stack, it writes the accepted risk and the published image's note in README and makes the suite hold them. The work at 27.0.0 (the realms' `cimd-allow-private-use-addresses` off, RQ-17 refusing an export that sets it on, its throwaway Keycloak 27 facts test, README's residual risks) belongs to the Keycloak upgrade's own intent, to be taken up end of January or early February 2027, Keycloak 27.0's release being planned for 29 January 2027 (the product owner, 2026-11-01; spec, "Out of scope and residual risk"); RQ-10's tripwire makes the suite remind that intent of it.
 
 Steps commit as `fix(0054): step <N>, <what>` (a bug intent). Docs and one light shell test only: nothing heavy runs.
 
@@ -24,7 +24,7 @@ Not changed (AC-11): `keycloak/`, `keycloak-image.properties`, `register-app.sh`
 
 ## Order of work
 
-1. **Failing test**: `tests/0054-docs.sh`, its terms fixed here (e.g. for RQ-09 `accepted risk`, `unauthenticated client`, `private networks`, `dev and on the demo host`, `2026-11-01`, `Keycloak 27`; for RQ-08 `carries no refusal of private addresses`, `cimd-allow-private-use-addresses`), each read in its own section (`sed -n '/^### What an application provides/,/^### /p'`). Committed alone, `test(0054): README states no accepted risk nor the published image's note`, then frozen (`.claude/frozen-tests.local`) — skill: none — check: `bash tests/0054-docs.sh` fails on the AC-09 and AC-10 checks (the README lacks the notes) and passes the tripwire's self-checks.
+1. **Failing test**: `tests/0054-docs.sh`, its terms fixed here (e.g. for RQ-09 `accepted risk`, `unauthenticated client`, `private networks`, `dev and on the demo host`, `2026-11-01`, `Keycloak 27.0`, `29 January 2027`; for RQ-08 `carries no refusal of private addresses`, `cimd-allow-private-use-addresses`), each read in its own section (`sed -n '/^### What an application provides/,/^### /p'`). Committed alone, `test(0054): README states no accepted risk nor the published image's note`, then frozen (`.claude/frozen-tests.local`) — skill: none — check: `bash tests/0054-docs.sh` fails on the AC-09 and AC-10 checks (the README lacks the notes) and passes the tripwire's self-checks.
 2. **README notes**: the two passages of *Files*, worded from RQ-08 and RQ-09, in README's register (plain sentences, no intent jargon but the intent's number) — skill: none — check: `bash tests/0054-docs.sh` and `bash tests/run.sh --changed` (the README's other readers: `0004-registry`, `0016-no-real-provider`, `0027-docs`, `0029-description`, `0032-demo-github-only`, `0033-docs`; no facts nor stand-in test covers README) — commit `fix(0054): step 2, README states the accepted risk and the published image's note`.
 3. **Verification**: `/sdlc-verify 0054` (bootstrap: one round; high risk: bugs and security passes), its evidence block into `## Verification`, commit `plan: verification of 0054`, push.
 4. **Delivery**: `/sdlc-ship 0054`; tell poc-immo-pf its `CimdIT` private-address case is theirs to review (PA-04 A), as a row of its intent home or a message to its session, not a change of its code.
