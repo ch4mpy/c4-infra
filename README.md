@@ -233,7 +233,18 @@ A new application takes the number `bash registry.sh next` prints, and adds its 
     `c4-infra.rabbitmq`), after a leading `*.`, case ignored and a final dot removed; and one
     holding a realm attribute `client-policies.*`, where Keycloak stores the profiles and policies,
     out of that check. The check reads the domain's name, not what it resolves to: a public name
-    pointed at an internal address passes, and would let Keycloak fetch from it;
+    pointed at an internal address passes, and would let Keycloak fetch from it.
+
+    Until the upgrade to Keycloak 27.0, the stack lives with that as an accepted risk (intent 0054):
+    on both environments, in dev and on the demo host, an unauthenticated client can make Keycloak
+    fetch an address on the host's private networks (the stack's and the applications' containers,
+    the host itself, a cloud metadata endpoint) by naming a client metadata document on a trusted
+    domain, a permitted one, that resolves to it. Keycloak's `GET` reaches any HTTP service
+    listening there; the client doesn't see the response, but the outcome, an error or the consent
+    screen, tells it whether the address answered a valid document. The product owner accepted
+    that risk on 2026-11-01, until the upgrade to Keycloak 27.0, whose intent closes it and is to be
+    taken up end of January or early February 2027 (Keycloak 27.0's release is planned for
+    29 January 2027). A realm that opts into `cimd` takes that risk;
 - its themes, if any, `keycloak/themes/<theme>/`, passed to `register-app.sh --themes`. In dev,
   Keycloak caches no theme: a theme change shows on reload once the registration has been run again
   (`deploy-dev.sh`, or `register-app.sh --themes`), and Keycloak isn't restarted. On the demo host
@@ -541,7 +552,12 @@ then, pulling it needs a GitHub login with `read:packages`.
   [`keycloak-import/simulated-*-realm.json`](keycloak-import/) with `INFRA_HOST` set to its own host
   (the files name it), and points its realm's providers there; Mailpit and the registration
   account, the stack's; the brute-force settings its export doesn't hold, which `register-app.sh`
-  fills with the stack's (intent 0041), not in a test's import of it.
+  fills with the stack's (intent 0041), not in a test's import of it. The published image carries
+  no refusal of private addresses (intent 0054): until Keycloak 27.x nothing refuses a client
+  metadata document fetched from one, and from 27.x the refusal is the realm's, the
+  `client-id-metadata-document` executor's `cimd-allow-private-use-addresses` off, which a test has
+  only through its own import of the realm. An application's test of a fetch from a private
+  address proves nothing of the stack.
 - **A change** of the stack's Keycloak shows in the description (an application's check of its pin
   fails), and the changelog below says what it asks of an application: `tests/0029-description.sh`
   refuses a change of `keycloak/` without its entry. A version change also changes the Keycloak
