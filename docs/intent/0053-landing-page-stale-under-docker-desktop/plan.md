@@ -123,3 +123,4 @@ This session (Windows): writes `plan.md`, sets 0053 `planned`, writes HANDOVER's
 ## Verification
 
 - Deployment: deploy-demo run 41267847226 (https://github.com/ch4mpy/c4-infra/actions/runs/41267847226) on af4725d → `success`; `https://infra.c4-soft.com/` answers 200 with the page of this form (`<title>c4-infra</title>`, `noindex`, Tickee's section). AC-02 (Windows) left to the product owner there.
+- AC-02 on the Windows workstation (Git Bash, `main` at f9d7f1e or later), by the product owner, 2026-11-01: `bash tests/0048-landing-page.sh` → `ok - AC-10: shows it`, `ok - AC-04: lists no account`, `every check passed`, `exit=0`. AC-02 OK. `bash tests/0053-mount-facts.sh` → `fact: (r) rename fresh at once: yes`, `fact: (a) in place fresh at once: yes`, `every check passed`, `exit=0`: on Windows a renamed page is served fresh too, so the stale rename was the Linux workstation's alone, and the in-place write serves both.

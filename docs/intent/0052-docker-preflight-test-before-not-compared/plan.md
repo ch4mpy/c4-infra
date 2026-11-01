@@ -79,3 +79,5 @@ Machine: the product owner's Linux workstation (Ubuntu 26.04.1 LTS, Docker 29.x)
 | AC-05 | OK | `bash -n` exit 0; both `--changed` runs `verification passed`, `run.sh exit 0`; `git diff 8912d88 -- tests/0049-docker-preflight.sh`: six check labels added, none removed, the first reaping check kept under its label, `# covers:` unchanged; the window check's three planted checks ok |
 
 - Deployment: deploy-demo run 41232734143 on 3579d8b (the merge), `success` (both jobs: images, VPS); nothing the demo host runs changed, no check after deployment in this plan.
+
+- AC-02 on the Windows workstation (Git Bash, `main`), by the product owner, 2026-11-01: `bash tests/0049-docker-preflight.sh` → the six `ok - AC-07: the reaping's check …` lines, `ok - AC-07: the shim saw the preflight's reaping, before the tests`, `every check passed`, `exit=0` (the `Killed` line is AC-03's run A, killed on purpose). AC-02 OK.
