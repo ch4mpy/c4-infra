@@ -123,3 +123,4 @@ AC-01 to AC-08 (v1: the stack's refusal, its scope, rebinding, redirects, what K
 - v1 — 2026-11-01 — first version, left `draft` for the PO's decisions on PA-01 to PA-05
 - v2 — 2026-11-01 — the PO's decisions: PA-01 B (wait for 27.0.0, risk accepted until then), PA-02 A (implied by PA-01 B; its work moves to the Keycloak upgrade's own intent), PA-03 B (the metadata document only, the rest residual risk), PA-04 A, PA-05 A (moot); RQ-01 to RQ-06 and AC-01 to AC-08 withdrawn, RQ-08 rewritten, RQ-09 and RQ-10 added, AC-09 rewritten, AC-10 to AC-12 added; approved
 - v3 — 2026-11-01 — the PO's note: the upgrade's intent is taken up end of January or early February 2027 (Keycloak 27.0's release planned for 29 January 2027), the accepted risk lasting until then; the date written in RQ-09, AC-10 and the pointer to the upgrade's intent; approved
+- RQ-10 kept by the PO, 2026-11-01
