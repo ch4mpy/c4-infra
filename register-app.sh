@@ -79,10 +79,18 @@ own() { # <path>…
 RABBITMQ=c4-infra.rabbitmq
 
 # What a registration leaves behind, removed on exit whatever happens: the admin CLI's session in
-# the Keycloak container, RabbitMQ's working directory
+# the Keycloak container, RabbitMQ's working directory, the landing page's lock and the page being built
 kc_session=""
 work=""
+index_lock=""
+index_page=""
 cleanup() {
+  if [ -n "$index_page" ]; then
+    rm -f "$index_page"
+  fi
+  if [ -n "$index_lock" ]; then
+    rmdir "$index_lock" 2> /dev/null || true
+  fi
   if [ -n "$kc_session" ]; then
     docker exec "$KEYCLOAK" rm -f "$kc_session" > /dev/null 2>&1 || true
   fi
@@ -168,14 +176,49 @@ accounts_section() { # <snapshot>
   echo '</ul>'
 }
 
+# Whether the file or directory $1 was last changed more than a minute ago.
+older_than_a_minute() {
+  [ -n "$(find "$1" -maxdepth 0 -mmin +1 2> /dev/null)" ]
+}
+
+# Takes the landing page's lock, caddy/html/.index.lock (mkdir: atomic under Git Bash too, which has
+# no flock), into index_lock, retrying for 90 s. A lock older than 60 s, a killed writer's, is removed
+# under a second lock, .index.lock.takeover, so that two waiting writers can't both take it over.
+# Returns 1, saying which lock, when it can't be taken.
+take_index_lock() {
+  local lock=$INFRA_DIR/caddy/html/.index.lock attempt
+  local takeover=$lock.takeover
+  for ((attempt = 0; attempt < 450; attempt++)); do
+    if mkdir "$lock" 2> /dev/null; then
+      index_lock=$lock
+      return 0
+    fi
+    if older_than_a_minute "$lock" && mkdir "$takeover" 2> /dev/null; then
+      if older_than_a_minute "$lock"; then
+        rmdir "$lock" 2> /dev/null || true
+      fi
+      rmdir "$takeover" 2> /dev/null || true
+    elif older_than_a_minute "$takeover"; then
+      rmdir "$takeover" 2> /dev/null || true
+    fi
+    sleep 0.2
+  done
+  echo "The landing page's lock $lock wasn't free for 90 s: another registration or a deployment is writing the page (or remove that directory if none is); the page wasn't written." >&2
+  return 1
+}
+
 # The landing page (intent 0048): in dev the shared services; each registered application, linked to
 # its host name in this environment (registry.txt), with its accounts; the simulated providers' users.
 # No script, nothing to fetch: Caddy serves it with a policy that allows neither (caddy/Caddyfile).
 write_index() {
-  local site name host realm user password page
+  local site name host realm user password
   mkdir -p "$INFRA_DIR/caddy/html"
-  # a name of its own: two registrations, or a registration and a deployment, may write the page at once
-  page=$(mktemp "$INFRA_DIR/caddy/html/.index.XXXXXX")
+  # Built under a name of its own, then copied into index.html: a file renamed over it stays unseen
+  # through Docker Desktop's bind mount on Linux (tests/0053-mount-facts.sh). Both under the lock: two
+  # registrations, or a registration and a deployment, may write the page at once, and a page built
+  # before the other's registration would drop it
+  take_index_lock || return 1
+  index_page=$(mktemp "$INFRA_DIR/caddy/html/.index.XXXXXX")
   {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
     echo '<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">'
@@ -209,9 +252,13 @@ write_index() {
       echo '</ul></section>'
     done
     echo '</body></html>'
-  } > "$page"
-  chmod 644 "$page"
-  mv "$page" "$INFRA_DIR/caddy/html/index.html"
+  } > "$index_page"
+  cat "$index_page" > "$INFRA_DIR/caddy/html/index.html"
+  chmod 644 "$INFRA_DIR/caddy/html/index.html"
+  rm -f "$index_page"
+  index_page=""
+  rmdir "$index_lock" 2> /dev/null || true
+  index_lock=""
   own "$INFRA_DIR/caddy/html"
 }
 

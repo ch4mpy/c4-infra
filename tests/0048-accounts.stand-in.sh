@@ -12,7 +12,7 @@
 #   - AC-08: an accounts file naming a user the realm doesn't have stops the registration, naming it,
 #     the page and the passwords unchanged;
 #   - AC-05: a page of an older form, then the stack deployed again with no registration: the page has
-#     this form.
+#     this form, mode 644, owned as the registrations left it (0053's AC-05).
 #
 #   bash tests/0048-accounts.stand-in.sh      (bash tests/run.sh --all runs it)
 #
@@ -103,6 +103,7 @@ answer_lacks() { # <text>
   ! grep -qF -- "$1" "$work/answer" || { echo "answer holds it:"; grep -F -- "$1" "$work/answer"; return 1; }
 }
 page_sum() { stand_in_exec sha256sum "$PAGE" | tr -d '\r'; }
+page_mode() { stand_in_exec stat -c '%a %U:%G' "$PAGE" | tr -d '\r'; }
 
 check "the stand-in host starts" stand_in_up
 check "the applications' image is loaded" stand_in_load_image "$STAND_IN_CADDY_IMAGE"
@@ -162,6 +163,7 @@ check "AC-08: after the refused registration, exit 0" accounts_of faito accounts
 check "AC-08: the passwords unchanged" cmp -s "$work/accounts-3" "$work/accounts-4"
 
 # AC-05
+mode_before=$(page_mode)
 stand_in_exec sh -c 'printf "<p>an older form</p>\n" > "$1"' sh "$PAGE"
 redeploy_stack() { # the upload rsynced again as c4-infra, as stand_in_accounts does, then demo/deploy.sh
   stand_in_exec bash -c 'cd "$1" && rsync -az -e "$2" ./ c4-infra@127.0.0.1:~/c4-infra/' \
@@ -173,4 +175,6 @@ check "AC-05: the stack deployed again, no registration" redeploy_stack
 fetch /
 check "AC-05: the page has this form again" answer_holds '<meta name="robots" content="noindex">'
 check "AC-05: with Faito's accounts as its last registration read them" answer_holds '<li><code>ann</code> [managers]</li>'
+check "AC-05: the page mode 644, owned as the registrations left it ($mode_before)" \
+  eval '[ "$(page_mode)" = "$mode_before" ] && [ "${mode_before%% *}" = 644 ] || { echo "now: $(page_mode)"; false; }'
 finish
