@@ -49,6 +49,21 @@ Not changed (AC-11): `keycloak/`, `keycloak-image.properties`, `register-app.sh`
 
 <!-- filled during implementation: date — what — why — impact on files or proof -->
 
+- 2026-11-01 — step 1's terms: beyond the plan's examples, `trusted domain` and `end of January or early February 2027` for RQ-09, `proves nothing of the stack` for RQ-08 — AC-09 and AC-10 name them — none on files or proof.
+
 ## Verification
 
 <!-- the evidence block of /sdlc-verify 0054 -->
+
+Step 1, before README changes (AC-12: the test guards the change), `bash tests/0054-docs.sh`, exit 1:
+
+```
+KO - (AC-09) README's tests section says the published image carries no refusal of private addresses
+     'Keycloak in an application's tests' doesn't name 'carries no refusal of private addresses' 'cimd-allow-private-use-addresses' 'proves nothing of the stack'
+KO - (AC-10) README states the accepted risk beside the cimd checks
+     'What an application provides' doesn't name 'accepted risk' 'trusted domain' 'private networks' 'dev and on the demo host' '2026-11-01' 'Keycloak 27.0' 'end of January or early February 2027' '29 January 2027'
+ok - (RQ-10) README states no accepted risk once Keycloak is 27 or later
+ok - (AC-12) a copy at 27.0.0 still stating the risk is refused, naming 0054
+ok - (AC-12) a copy at 26.8.1 stating the risk passes
+2 check(s) failed
+```
