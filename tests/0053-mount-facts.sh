@@ -29,13 +29,10 @@ PAGES=5
 
 host_path() { if command -v cygpath > /dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
+remove_proxy() { docker rm -f -v "$NAME" > /dev/null 2>&1; }
+remove_proxy
 work=$(mktemp -d)
-cleanup() {
-  docker rm -f -v "$NAME" > /dev/null 2>&1
-  rm -rf "$work"
-}
-trap cleanup EXIT
-cleanup
+trap 'remove_proxy; rm -rf "$work"' EXIT
 mkdir -p "$work/caddy/html"
 cat > "$work/caddy/Caddyfile" <<'EOF'
 {
@@ -57,8 +54,11 @@ page() { # <marker>: a page of a few kB, as the landing page, that names its mar
 page start > "$work/caddy/html/index.html"
 chmod 644 "$work/caddy/html/index.html"
 
-MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME" -v "$(host_path "$work/caddy"):/etc/caddy:ro" \
-  "$PROXY_IMAGE" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
+if ! MSYS_NO_PATHCONV=1 docker run "${C4_LABELS[@]}" -d --name "$NAME" -v "$(host_path "$work/caddy"):/etc/caddy:ro" \
+  "$PROXY_IMAGE" caddy run --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null; then
+  check "the throwaway proxy starts ($PROXY_IMAGE)" false
+  finish
+fi
 
 served() { MSYS_NO_PATHCONV=1 docker exec "$NAME" wget -qO- http://127.0.0.1:8080/ 2> /dev/null; }
 mounted() { MSYS_NO_PATHCONV=1 docker exec "$NAME" cat /etc/caddy/html/index.html 2> /dev/null; }
