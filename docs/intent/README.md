@@ -104,3 +104,4 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
 | 0052 | [tests/0049-docker-preflight.sh checks that the preflight reaped, never that it reaped before the tests](0052-docker-preflight-test-before-not-compared/intent.md) | bug | delivered | 2026-10-31 | 2026-10-31 |
 | 0053 | [On the Linux workstation, the landing page keeps showing what an earlier registration wrote](0053-landing-page-stale-under-docker-desktop/intent.md) | bug | delivered | 2026-10-31 | 2026-10-31 |
 | 0054 | [Keycloak fetches a client's metadata document from a private address when a trusted domain resolves to one](0054-keycloak-cimd-reaches-private-addresses/intent.md) | bug | delivered | 2026-10-31 | 2026-10-31 |
+| 0055 | [A Developer's workstation can't be a Mac: up.sh stops on host.docker.internal, then on BSD sed, then on bash 3.2](0055-stack-does-not-run-on-macos/intent.md) | change | accepted | 2026-11-03 | 2026-11-03 |
