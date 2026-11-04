@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-11-03, `bash up.sh` on the product owner's Mac `mc-ch4mp`: macOS 26.5 / Darwin 25.5.0, Apple Silicon, Docker Desktop 29.9.2)
 - Spec needed: yes
-- Status: accepted
+- Status: specified
 - Opened: 2026-11-03
 - Decided: 2026-11-03
 - Supersedes: —
