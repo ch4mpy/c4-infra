@@ -64,7 +64,8 @@ Closing, not a code step: `/sdlc-verify 0056` (bootstrap mode: one round, the bu
 
 ## Deviations
 
-<!-- filled during implementation: date — what — why — impact on files or proof -->
+- 2026-11-05 — **the gate's files were inert, and its MCP path uncovered** (the review's two Important findings). `.claude/release-commands` and `.claude/protected-paths` are read by nothing on their own: no `.claude/settings.json` wired `release-gate.sh` and `protect-paths.sh` for this project (only `shell-guard.sh` is wired account-wide), so a push landing on the delivery branch would have run; and the file carried no `deny-tool` rule, so a forge's MCP tool (`mcp__github__merge_pull_request`, `mcp__gitlab__accept_merge_request`, `create_ref ref=refs/tags/…`, `run_workflow`) passed while its shell equivalent was denied. Step 1's proof could catch neither, because it fed the hook a payload by hand instead of exercising it. Fixed by writing `.claude/settings.json` with the reference's wiring (`PreToolUse` only: protect-paths and freeze-tests on the edit tools, release-gate and commit-guard on `Bash|PowerShell|Monitor` and on `mcp__.*`), appending the reference's 34 `deny-tool` / `command-tool` rules, and replacing the two `never` lines with the reference's single glob, which protects `settings.json` too. Those three paths are the ones this change declares protected: the product owner authorised the edit in this session. Impact: `.claude/settings.json` added to *Files*, and outcome 3's proof gains a live probe — the pull-request merge command, asked for its help only, denied by the hook in this session — beside the hand-fed ones.
+- 2026-11-05 — **`tests/0022-lanes.sh:153` failed in the full run**: it calls `--changed` in its own throwaway repository, which had no delivery branch, so step 3's new refusal fired. Its fixture now creates `develop` and `refs/remotes/origin/develop`, as 0017's does. Impact: `tests/0022-lanes.sh` added to *Files*.
 
 ## Verification
 

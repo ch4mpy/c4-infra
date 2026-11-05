@@ -173,7 +173,7 @@ echo '# changed' >> "$repo/b.sh"
 git_ commit -q -am 'b.sh changed'
 suite committed.log --changed
 check "AC-02: b.sh committed since origin/develop: the test declaring it" ran_exactly committed.log "0002-beta"
-# 0056: with no base, --changed compares to the delivery branch: origin/develop, then the local develop
+# 0056: the default base, the remote ref preferred, the local branch as fallback, then neither
 git_ branch -q -f develop HEAD
 suite prefer-remote.log --changed
 check "0056: origin/develop is the base, not the local develop" ran_exactly prefer-remote.log "0002-beta"

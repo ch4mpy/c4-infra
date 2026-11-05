@@ -89,6 +89,9 @@ echo true > "$repo/b.sh"
 git_ init -q -b main
 git_ add -A
 git_ commit -q -m base
+# 0056: --changed's default base is the delivery branch, so the repository has one from the start
+git_ branch -q develop main
+git_ update-ref refs/remotes/origin/develop refs/heads/develop
 git_ worktree add -q --detach "$other" main
 durations=$(git -C "$repo" rev-parse --absolute-git-dir)/c4-infra-test-durations
 
