@@ -6,12 +6,13 @@
 #
 #   bash tests/run.sh [--all] [--changed [<base>]]
 #
-#   --changed  only the tests the changed files concern (committed since <base>, origin/main or main
-#              by default, staged, unstaged and untracked), as their `# covers:` lines declare them
-#              (paths, a trailing / for a directory, or globs); a test is concerned by its own file
-#              too. A change to tests/run.sh, tests/lib/ or a file no test declares runs every test
-#              the run would run without --changed; the intent home's files (docs/intent/) concern
-#              none. For intermediate checks: the full run stays the proof of a change.
+#   --changed  only the tests the changed files concern (committed since <base>, the delivery branch
+#              origin/develop or the local develop by default, staged, unstaged and untracked), as
+#              their `# covers:` lines declare them (paths, a trailing / for a directory, or globs);
+#              a test is concerned by its own file too. A change to tests/run.sh, tests/lib/ or a
+#              file no test declares runs every test the run would run without --changed; the intent
+#              home's files (docs/intent/) concern none. For intermediate checks: the full run stays
+#              the proof of a change.
 #
 # Every tracked script must be declared by a test: the run refuses one that isn't before any test.
 # One run at a time per Docker: the runs that wait take the lock in the order they arrived
@@ -102,8 +103,12 @@ every=true
 files=
 if $changed; then
   if [ -z "$base" ]; then
-    base=origin/main
-    git rev-parse -q --verify "$base^{commit}" > /dev/null || base=main
+    base=origin/develop
+    git rev-parse -q --verify "$base^{commit}" > /dev/null || base=develop
+    git rev-parse -q --verify "$base^{commit}" > /dev/null || {
+      echo "--changed: neither origin/develop nor develop resolves, so no delivery branch to compare with: name the base, as in bash tests/run.sh --changed <base>" >&2
+      exit 1
+    }
   fi
   committed=$(git diff --name-only "$base...HEAD") || usage
   files=$( {

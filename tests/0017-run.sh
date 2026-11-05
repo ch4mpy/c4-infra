@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 0017: tests/run.sh's durations, selection, coverage check and lock (AC-01 to AC-06, AC-08, PA-02),
+# 0017: tests/run.sh's durations, selection, coverage check, default base (0056) and lock (AC-01 to
+# AC-06, AC-08, PA-02),
 # on a throwaway git repository: a copy of tests/run.sh and tests/lib/, the scripts a.sh, b.sh, c.sh
 # and dir/d.sh, and four fake tests that log their start and end and sleep a little: 0001-alpha
 # (covers a.sh, 0.9 s), 0002-beta (b.sh dir/, 0.3 s), 0003-gamma-facts (c.sh glob/*.conf, 0.6 s),
@@ -72,6 +73,10 @@ echo a > "$repo/glob/a.conf"
 git_ init -q -b main
 git_ add -A
 git_ commit -q -m base
+# 0056: --changed's default base is the delivery branch, so the repository has one from the start
+delivery=$(git_ rev-parse main)
+git_ branch -q develop "$delivery"
+git_ update-ref refs/remotes/origin/develop "$delivery"
 
 suite() { # <log> <option…>: tests/run.sh in the repository, its status in $status
   local log=$1
@@ -167,7 +172,22 @@ git_ switch -q -c work
 echo '# changed' >> "$repo/b.sh"
 git_ commit -q -am 'b.sh changed'
 suite committed.log --changed
-check "AC-02: b.sh committed since main: the test declaring it" ran_exactly committed.log "0002-beta"
+check "AC-02: b.sh committed since origin/develop: the test declaring it" ran_exactly committed.log "0002-beta"
+# 0056: with no base, --changed compares to the delivery branch: origin/develop, then the local develop
+git_ branch -q -f develop HEAD
+suite prefer-remote.log --changed
+check "0056: origin/develop is the base, not the local develop" ran_exactly prefer-remote.log "0002-beta"
+git_ update-ref -d refs/remotes/origin/develop
+git_ branch -q -f develop "$delivery"
+suite local-develop.log --changed
+check "0056: without origin/develop, the local develop is the base" ran_exactly local-develop.log "0002-beta"
+git_ branch -q -D develop
+suite no-delivery.log --changed
+check "0056: with neither, the run stops" test "$status" -ne 0
+check "0056: naming the refs it tried" grep -qF "neither origin/develop nor develop" "$work/no-delivery.log"
+check "0056: before any test" test -z "$(ran no-delivery.log)"
+git_ branch -q develop "$delivery"
+git_ update-ref refs/remotes/origin/develop "$delivery"
 suite base.log --changed HEAD
 check "AC-02: with HEAD as the base, nothing runs" ran_exactly base.log ""
 check "AC-02: and every test says why" skipped_for base.log 0001-alpha "not concerned by the change"
