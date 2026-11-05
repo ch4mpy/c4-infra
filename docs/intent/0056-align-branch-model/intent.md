@@ -4,7 +4,7 @@
 - Kind: change
 - Source: conversation (2026-11-05, the shared skills and hooks re-read at the start of the session: their new branch model)
 - Spec needed: no (product owner, 2026-11-05: a configuration alignment that decides no observable contract)
-- Status: accepted
+- Status: planned
 - Opened: 2026-11-05
 - Decided: 2026-11-05
 - Supersedes: —
