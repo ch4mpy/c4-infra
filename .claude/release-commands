@@ -16,3 +16,38 @@ deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?([[:space:]]+[^|;&]*)?[[:space:]]+(workfl
 deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?[[:space:]].*/(dispatches|rerun)([^[:alnum:]_]|$)  # starting a workflow run through the API is the human's: deploy-demo publishes the Keycloak and proxy images
 deny (^|[^[:alnum:]_.-])(docker|podman)["']?([[:space:]]+[^|;&]*)?[[:space:]](image[[:space:]]+)?push([[:space:]]|$)  # publishing an image is the human's
 deny (^|[^[:alnum:]_.-])(docker|podman)["']?[[:space:]].*--push  # publishing an image is the human's
+# the same decisions on the MCP path: a forge's or a shell's tool call, whatever the server
+deny-tool merge_pull_request  # merging a pull request is the human's
+deny-tool pull_request_review_write|create_pull_request_review|create_and_submit_pull_request_review|submit_pending_pull_request_review event=APPROVE  # approving a pull request is the human's
+deny-tool accept_merge_request  # merging a merge request is the human's
+deny-tool create_tag|create_release  # a version tag is the human's
+deny-tool create_ref ref=refs/tags/.*  # a version tag is the human's
+deny-tool save_merge_request_review method=approve  # approving a merge request is the human's
+deny-tool push_files|create_or_update_file|delete_file|add_commit branch=<base>  # pushing to <base> is the human's
+deny-tool actions_run_trigger method=run_workflow|rerun_workflow_run|rerun_failed_jobs  # starting a workflow run is the human's
+deny-tool run_workflow|rerun_workflow_run|rerun_failed_jobs  # starting a workflow run is the human's
+deny-tool save_pipeline !pipeline_id  # starting a pipeline is the human's
+deny-tool save_pipeline action=retry  # starting a pipeline is the human's
+deny-tool manage_pipeline  # starting a pipeline is the human's
+deny-tool glab_.* flags.message=(.*\\n)?[[:blank:]]*["']?/(merge|approve|submit_review[[:blank:]]+approve|tag)(([[:space:]"']|\\n).*)?  # merging, approving or tagging through a quick action is the human's
+deny-tool glab_.* flags.description=(.*\\n)?[[:blank:]]*["']?/(merge|approve|submit_review[[:blank:]]+approve|tag)(([[:space:]"']|\\n).*)?  # merging, approving or tagging through a quick action is the human's
+deny-tool glab_api args=.*(/(merge|approve)([^[:alnum:]_].*)?|mergeRequestAccept.*)  # merging or approving through the API is the human's
+deny-tool glab_api flags.field=.*mergeRequestAccept.*  # merging or approving through the API is the human's
+deny-tool glab_api flags.raw_field=.*mergeRequestAccept.*  # merging or approving through the API is the human's
+deny-tool glab_api flags.raw-field=.*mergeRequestAccept.*  # merging or approving through the API is the human's
+deny-tool glab_mr_merge  # merging a merge request is the human's
+deny-tool glab_mr_approve  # approving a merge request is the human's
+deny-tool glab_release_(create|upload|delete)  # releasing is the human's
+deny-tool glab_mr_create flags.auto_merge=true  # merging a merge request is the human's
+deny-tool glab_mr_create flags.auto-merge=true  # merging a merge request is the human's
+deny-tool glab_ci_(run|run-trig|trigger|retry)|glab_schedule_run  # starting a pipeline is the human's
+deny-tool glab_repo_publish_catalog  # publishing to the CI/CD catalog is the human's
+deny-tool glab_packages_upload  # publishing a package is the human's
+deny-tool glab_api args=.*/catalog/publish([^[:alnum:]_].*)?  # publishing to the CI/CD catalog is the human's
+command-tool execute_terminal_command command  # JetBrains IDEs: the terminal's directory is not the call's
+command-tool start_process command  # Desktop Commander
+command-tool interact_with_process input  # Desktop Commander: input to a running process, judged on its own
+command-tool execute_shell_command command dir=cwd  # Serena
+command-tool Bash|PowerShell command  # Claude Code served over MCP
+command-tool shell_execute command stdin dir=directory  # mcp-shell-server
+command-tool run_process|runProcess command_line argv stdin  # mcp-server-commands

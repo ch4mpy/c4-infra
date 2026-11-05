@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Git pre-merge-commit hook of the project (core.hooksPath = .githooks): git runs it before the commit
+# of a merge without conflict (git merge, git pull), where it runs no pre-commit. On a merge made under
+# the agent (CLAUDE_CODE_CHILD_SESSION set, as Claude Code sets it in its tools' commands and not in an
+# IDE's terminal) it runs pre-commit: the protected-paths check, then the secret scan, on what the
+# other side brings. The Developer's merges are not checked.
+# Exit status: 0, the merge goes on; 1, it is refused (git stops before the commit, keeping the merge
+# in progress: git merge --abort restores the branch).
+[ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ] || exit 0
+GITHOOKS_CALLER=pre-merge-commit exec bash "$(dirname "$0")/pre-commit"

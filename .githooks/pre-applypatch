@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Git pre-applypatch hook of the project (core.hooksPath = .githooks): git runs it after git am applied
+# a patch and before it commits it, where it runs no pre-commit. On a patch applied under the agent
+# (CLAUDE_CODE_CHILD_SESSION set, as Claude Code sets it in its tools' commands and not in an IDE's
+# terminal) it runs pre-commit: the protected-paths check, then the secret scan, on the patch's files.
+# The Developer's git am is not checked.
+# Exit status: 0, the patch is committed; 1, it is refused (git am stops with the patch applied to the
+# index: git am --abort restores the branch, git am --skip leaves this patch out).
+[ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ] || exit 0
+GITHOOKS_CALLER=pre-applypatch exec bash "$(dirname "$0")/pre-commit"

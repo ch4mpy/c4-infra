@@ -1,0 +1,9 @@
+# The secret scan's rules: gitleaks's defaults. .githooks/pre-commit reads this file from the commit's index, never from the working tree; only the Developer changes it (a broad allowance, an [[allowlists]] entry with its description, goes here by their hand only).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The SHA-256 of Keycloak's published admin API description, recorded by create-spring-rest-api, never a secret"
+paths = ['''^backend/openapi/in/keycloak-admin-api\.properties$''']
+regexTarget = "line"
+regexes = ['''^ADMIN_API_SHA256=[0-9a-f]{64}$''']

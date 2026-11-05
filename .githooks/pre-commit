@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# Git pre-commit hook of the project (core.hooksPath = .githooks): the secret scan. It refuses a
+# commit whose added or changed lines hold a secret gitleaks recognises (a private key, a token in a
+# known format...), or that adds a key or keystore file by its name (the list of the backend's jar
+# check: *.key, *.p12, *.jks, id_rsa...), whatever wrote the file. Unchanged lines and deleted files
+# are not judged. The refusal names each finding's file, line and rule, never its value.
+#
+# It reads, from the commit's own index (git show :<path>, which follows GIT_INDEX_FILE, so that
+# `commit -a` and `commit <path>` read theirs), never from the working tree:
+#   .githooks/gitleaks.toml     the rules (gitleaks's defaults); a broad allowance goes there, by the Developer only
+#   .githooks/secret-allowlist  one allowed finding per entry, its fingerprint <path>:<rule id>:<line>,
+#                               the line right above it a '# <reason>'; only the Developer writes it
+#
+# First, on a commit made under the agent (CLAUDE_CODE_CHILD_SESSION set, as Claude Code sets it in its
+# tools' commands and not in an IDE's terminal), it runs ~/.claude/hooks/protect-paths-commit.sh: a
+# commit that adds, changes, deletes or renames a path .claude/protected-paths guards (the pipeline,
+# .githooks/, the agent's guardrails…) is refused, naming each path with its rule, whatever wrote the
+# file; that script missing, or any exit status of it but 0, refuses the commit. The Developer's
+# commits never read ~/.claude.
+#
+# It also refuses:
+#   - a .gitleaksignore at the root, tracked or not: gitleaks reads it from the working tree;
+#   - a machine without gitleaks MIN_GITLEAKS or later on the PATH (gitleaks or gitleaks.exe), naming the install;
+#   - a scan that fails (any gitleaks exit status but 0 and 3): never taken as a clean scan.
+# Known limits: a binary file (by its content or a 'binary' attribute) is not scanned, unless its
+# name is on the list; a commit that runs no hook (--no-verify, cherry-pick, revert, rebase,
+# commit-tree) is not scanned: Claude Code's commit-guard hook denies the agent's, except rebase and
+# commit-tree.
+# Nothing leaves the machine: gitleaks verifies no finding with a provider.
+# Exit status: 0, the commit goes on; 1, it is refused (the reason on standard error).
+set -u
+
+MIN_GITLEAKS=8.30.1
+KEY_FILE_NAMES='*.key *.p12 *.pkcs12 *.pfx *.jks *.keystore *.truststore *.password.txt password.txt *.jceks *.bks *.p8 *.pk8 *.ppk id_rsa id_dsa id_ecdsa id_ecdsa_sk id_ed25519 id_ed25519_sk'
+RELEASE=https://github.com/gitleaks/gitleaks/releases/tag/v$MIN_GITLEAKS
+
+# refuse <line>...: prints the lines on standard error and refuses the commit.
+refuse() {
+  printf '%s\n' "$@" >&2
+  exit 1
+}
+
+# The diff gitleaks parses has git's default form, whatever the user's configuration: a colored or
+# unprefixed diff parses to nothing, and the scan would pass silently.
+pin_diff_format() {
+  local n=${GIT_CONFIG_COUNT:-0} kv
+  case "$n" in '' | *[!0-9]*) n=0 ;; esac
+  for kv in color.ui=never color.diff=never diff.noprefix=false diff.mnemonicPrefix=false \
+    diff.relative=false diff.srcPrefix=a/ diff.dstPrefix=b/; do
+    export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
+    n=$((n + 1))
+  done
+  export GIT_CONFIG_COUNT=$n
+}
+
+# native_path <path>: the path as the native gitleaks.exe reads it under Git Bash.
+native_path() {
+  if command -v cygpath > /dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi
+}
+
+root=$(git rev-parse --show-toplevel) || refuse "Secret scan: commit refused, not inside a work tree."
+cd "$root" || refuse "Secret scan: commit refused, cannot enter $root."
+
+# commit_kind: merge when this commit concludes a merge, patch when it applies a patch (git am), else nothing
+commit_kind() {
+  if [ "${GITHOOKS_CALLER:-}" = pre-merge-commit ] || git rev-parse -q --verify MERGE_HEAD > /dev/null 2>&1; then
+    echo merge
+  elif [ "${GITHOOKS_CALLER:-}" = pre-applypatch ] || [ -e "$(git rev-parse --git-path rebase-apply)/applying" ]; then
+    echo patch
+  fi
+}
+
+if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ]; then
+  check="$HOME/.claude/hooks/protect-paths-commit.sh"
+  [ -f "$check" ] || refuse "Protected paths: the agent's commits are judged by ~/.claude/hooks/protect-paths-commit.sh, missing here: update ~/.claude, or the Developer commits."
+  bash "$check" || exit 1
+fi
+pin_diff_format
+
+[ ! -e .gitleaksignore ] || refuse "Secret scan: commit refused, a .gitleaksignore is at the root of the project." \
+  "gitleaks reads it from the working tree, so it would let a finding through without any commit." \
+  "Remove it: an allowed finding goes into .githooks/secret-allowlist, under its '# <reason>' line, by the Developer."
+
+install="Install gitleaks $MIN_GITLEAKS or later:
+  - Linux: from $RELEASE, download gitleaks_${MIN_GITLEAKS}_linux_x64.tar.gz and gitleaks_${MIN_GITLEAKS}_checksums.txt,
+    run 'sha256sum --check --ignore-missing gitleaks_${MIN_GITLEAKS}_checksums.txt', then
+    'tar -xzf gitleaks_${MIN_GITLEAKS}_linux_x64.tar.gz gitleaks && mv gitleaks ~/.local/bin/' (apt's package is too old);
+  - Windows: 'winget install --id Gitleaks.Gitleaks -e' (or 'scoop install gitleaks'), then reopen the terminal and the IDE."
+gitleaks=$(command -v gitleaks || command -v gitleaks.exe) \
+  || refuse "Secret scan: commit refused, gitleaks is not on the PATH." "$install"
+version=$("$gitleaks" version 2> /dev/null | tr -d '\r' | head -n 1)
+version=${version#v}
+case "$version" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) refuse "Secret scan: commit refused, '$gitleaks version' gives '$version', not a version: gitleaks $MIN_GITLEAKS or later is needed." "$install" ;;
+esac
+[ "$(printf '%s\n%s\n' "$MIN_GITLEAKS" "$version" | sort -V | head -n 1)" = "$MIN_GITLEAKS" ] \
+  || refuse "Secret scan: commit refused, gitleaks $version is older than $MIN_GITLEAKS, the minimum." "$install"
+
+tmp=$(mktemp -d) || refuse "Secret scan: commit refused, mktemp failed."
+trap 'rm -rf -- "$tmp"' EXIT
+chmod 700 "$tmp"
+for f in gitleaks.toml secret-allowlist; do
+  git show ":.githooks/$f" 2> /dev/null | tr -d '\r' > "$tmp/$f"
+  [ "${PIPESTATUS[0]}" -eq 0 ] || refuse "Secret scan: commit refused, .githooks/$f is not in the commit's index: add .githooks/ to the commit."
+done
+
+declare -A reasons=()
+n=0
+previous=''
+while IFS= read -r line || [ -n "$line" ]; do
+  n=$((n + 1))
+  case "$line" in
+    '' | '#'*) previous=$line; continue ;;
+  esac
+  [[ $line =~ ^[^:[:space:]][^:]*:[A-Za-z0-9_.-]+:[0-9]+$ ]] \
+    || refuse "Secret scan: commit refused, .githooks/secret-allowlist:$n is not '<path>:<rule id>:<line>': $line"
+  reason=${previous#'#'}
+  reason=${reason#"${reason%%[![:space:]]*}"}
+  [[ $previous == '#'* && -n $reason ]] \
+    || refuse "Secret scan: commit refused, .githooks/secret-allowlist:$n has no '# <reason>' line right above it: $line"
+  reasons[$line]=$reason
+  previous=$line
+done < "$tmp/secret-allowlist"
+
+allowed=()
+refused=()
+# judge <fingerprint> <shown>: an allowed finding is printed with its reason, any other refuses the commit.
+judge() {
+  if [ -n "${reasons[$1]+x}" ]; then
+    allowed+=("allowed: $2  (${reasons[$1]})")
+  else
+    refused+=("  $2  fingerprint: $1")
+  fi
+}
+
+shopt -s nocasematch
+read -ra key_names <<< "$KEY_FILE_NAMES"
+while IFS= read -r -d '' path; do
+  name=${path##*/}
+  for pattern in "${key_names[@]}"; do
+    # shellcheck disable=SC2053 # the names are glob patterns
+    if [[ $name == $pattern ]]; then
+      judge "$path:key-or-keystore-file:0" "$path  key-or-keystore-file  (by its name)"
+      break
+    fi
+  done
+done < <(git diff --cached --name-only --diff-filter=ACMR --no-ext-diff -z)
+shopt -u nocasematch
+
+printf '%s\n' '{{ range . }}{{ .Fingerprint }}	{{ .File }}	{{ .StartLine }}	{{ .RuleID }}' '{{ end }}' > "$tmp/report.tmpl"
+"$gitleaks" git --pre-commit --staged --redact --ignore-gitleaks-allow --no-banner --no-color --log-level warn --exit-code 3 --config "$(native_path "$tmp/gitleaks.toml")" --report-format template --report-template "$(native_path "$tmp/report.tmpl")" --report-path - . > "$tmp/report" 2> "$tmp/stderr"
+status=$?
+case "$status" in
+  0 | 3) ;;
+  *) refuse "Secret scan: commit refused, the scan failed (gitleaks exited $status), so nothing says this commit is clean:" \
+    "$(tr -d '\r' < "$tmp/stderr" | sed 's/\x1b\[[0-9;]*m//g')" ;;
+esac
+while IFS=$'\t' read -r fingerprint file start rule; do
+  [ -n "$fingerprint" ] || continue
+  judge "$fingerprint" "$file:$start  $rule  REDACTED"
+done < <(tr -d '\r' < "$tmp/report")
+
+[ "${#allowed[@]}" -eq 0 ] || printf '%s\n' "${allowed[@]}" >&2
+[ "${#refused[@]}" -eq 0 ] && exit 0
+abort=()
+if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ]; then
+  case "$(commit_kind)" in
+    merge) abort=("  - this commit concludes a merge: run git merge --abort; the Developer merges from their own terminal or IDE;") ;;
+    patch) abort=("  - this commit applies a patch (git am): run git am --abort; the Developer applies it from their own terminal or IDE;") ;;
+  esac
+fi
+refuse "Secret scan: commit refused, ${#refused[@]} finding(s), values redacted:" "${refused[@]}" \
+  "What to do:" "${abort[@]+"${abort[@]}"}" \
+  "  - a secret: move the value to .env or secrets/ (git-ignored) and refer to it by a variable; unstage a key file: git rm --cached <file>;" \
+  "  - a false positive: the Developer adds a '# <reason>' line, then the finding's fingerprint (printed above) on the next line, to .githooks/secret-allowlist, and commits that file themselves;" \
+  "  - a secret already pushed must be revoked and replaced: rewriting the history is not enough."
