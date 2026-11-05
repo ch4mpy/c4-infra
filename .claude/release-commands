@@ -1,0 +1,18 @@
+# The release commands the agent hands to the human instead of running (~/.claude/hooks/release-gate.sh
+# reads this file, one rule per line):
+#   release <branch> / delivery <branch>  the release and the delivery branch. In both modes, a push to
+#     either, a merge or a pull landing on either (but its own update), a version tag and a forced push
+#     to bootstrap are denied: they move only through a merged pull request, and a tag is the human's.
+#   deny <extended regex matched against the command>  # <reason>
+# origin is github.com (git remote get-url origin): glab has no rule here.
+release main  # the release branch: it moves only through a merged pull request from develop, then a tag the human sets
+delivery develop  # the delivery branch: it moves only through a merged pull request from bootstrap
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?([[:space:]]+[^|;&]*)?[[:space:]]+pr[[:space:]]+merge  # merging a pull request is the human's
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?([[:space:]]+[^|;&]*)?[[:space:]]+pr[[:space:]]+review([[:space:]]+[^|;&]*)?[[:space:]](-a|--approve)([[:space:]]|$)  # approving a pull request is the human's
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?[[:space:]]+api[[:space:]].*(/merge|/reviews|mergePullRequest)  # merging or reviewing through the API is the human's
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?[[:space:]]+release[[:space:]]+(create|upload|edit|delete)  # releasing is the human's
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?[[:space:]]+api[[:space:]].*(refs/tags|/repository/tags)  # a version tag is the human's, through the API too
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?([[:space:]]+[^|;&]*)?[[:space:]]+(workflow([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+["']?run|run([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+["']?rerun)["']?([[:space:]]|$)  # starting a workflow run is the human's: deploy-demo publishes the Keycloak and proxy images
+deny (^|[^[:alnum:]_.-])gh(\.exe)?["']?[[:space:]].*/(dispatches|rerun)([^[:alnum:]_]|$)  # starting a workflow run through the API is the human's: deploy-demo publishes the Keycloak and proxy images
+deny (^|[^[:alnum:]_.-])(docker|podman)["']?([[:space:]]+[^|;&]*)?[[:space:]](image[[:space:]]+)?push([[:space:]]|$)  # publishing an image is the human's
+deny (^|[^[:alnum:]_.-])(docker|podman)["']?[[:space:]].*--push  # publishing an image is the human's

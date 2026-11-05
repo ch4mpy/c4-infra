@@ -1,0 +1,7 @@
+# The paths the agent neither creates nor modifies (~/.claude/hooks/protect-paths.sh reads this file,
+# one rule per line):
+#   <mode> <glob>  # <reason>
+#   never     the path is neither created nor modified
+#   existing  an existing path is not modified, a new one may be created
+never .claude/release-commands  # the release gate's rules, which say what the agent may not run: the Developer changes them
+never .claude/protected-paths  # this list: the Developer changes it
