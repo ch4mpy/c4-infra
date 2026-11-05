@@ -4,9 +4,9 @@ Stage 1 (Plan) of the [AI-native SDLC](https://claude.com/resources/articles/the
 
 One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md` (Stage 2) and `plan.md` (Stage 3). An accepted intent is never rewritten: a changed need is a new intent that supersedes it.
 
-**One branch per intent.** A change lives on a single branch, `NNNN-<slug>`, with a single draft PR, from its draft to its delivery: intent, spec, plan and code are committed on it, and it reaches the base branch once, merged by a human just before deployment. Each gate leaves a status commit, a PR comment naming the decider, and moves the PR's label (`stage:intent` → `stage:spec` → `stage:plan` → `stage:build` → `stage:review`). The index below lists what reached the base branch; **work in progress is the open PRs with a `stage:*` label, plus the intents of the index that are `accepted`, `specified` or `planned` without a PR** (bootstrap mode, below).
+**One branch per intent.** A change lives on a single branch, `NNNN-<slug>`, with a single draft PR, from its draft to its delivery: intent, spec, plan and code are committed on it, and it reaches the delivery branch once, merged by a human just before deployment. Each gate leaves a status commit, a PR comment naming the decider, and moves the PR's label (`stage:intent` → `stage:spec` → `stage:plan` → `stage:build` → `stage:review`). The index below lists what reached the delivery branch; **work in progress is the open PRs with a `stage:*` label, plus the intents of the index that are `accepted`, `specified` or `planned` without a PR** (bootstrap mode, below).
 
-**Bootstrap mode.** Until the project's first production release, the `Mode` line of the project context can say `bootstrap`: one person decides everything, so the skills drop the team ceremony and keep every rule that makes the code good. An intent is written already accepted, its spec is approved in the session that drafts it once read and its points of attention decided, the plan stays an explicit step in plan mode, and the work lands on the base branch without a PR (a branch only when another intent is in progress); a change is verified once, its evidence kept in `plan.md`, pushes are not confirmed, and the release gate does not hold pushes to the base branch. Each intent keeps the mode it started in (its `Mode` field). The first production release (`/sdlc-ship`) sets the line to `normal`; the product owner may edit it by hand; the agent never sets it to `bootstrap`, except when it creates the intent home, with the product owner's confirmation.
+**Bootstrap mode.** Until the project's first production release, the `Mode` line of the project context can say `bootstrap`: one person decides everything, so the skills drop the team ceremony and keep every rule that makes the code good. An intent is written already accepted, its spec is approved in the session that drafts it once read and its points of attention decided, the plan stays an explicit step in plan mode, and the work lives on the branch `bootstrap`, with no PR per intent (a branch `NNNN-<slug>` cut from it only when another intent is worked in parallel, merged back into `bootstrap` once verified, the one local merge the agent runs); a change is verified once, its evidence kept in `plan.md`, and pushes of `bootstrap` are not confirmed. `bootstrap` reaches the delivery branch by one pull request a human merges, and the release gate denies, in both modes, a push, a merge or a pull landing on the release or the delivery branch, and a version tag (`.claude/release-commands`). Each intent keeps the mode it started in (its `Mode` field). The first production release (`/sdlc-ship`) sets the line to `normal`; the product owner may edit it by hand; the agent never sets it to `bootstrap`, except when it creates the intent home, with the product owner's confirmation.
 
 ## Project context
 
@@ -20,7 +20,8 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
   - **Demo visitor**: anyone using an application on the public demo host.
 - Modules / systems: shared stack (`compose.yml` with `compose.dev.yml` or `compose.demo.yml`, `up.sh`, `env.sh`), reverse proxy (`caddy/`, `routes.sh`), demo host (`demo/`: `c4-app`, `deploy.sh`, `vps-bootstrap.sh`), registration (`register-app.sh`, `registration-account.sh`, `networks.sh`, `export-realm.sh`, `new-realm-ids.sh`), registry (`registry.txt`, `registry.sh`), certificates (`certs/`), deployment workflow (`.github/workflows/`)
 - Standing constraints: the design section of [README.md](../../README.md); the decision that created this stack, [Faito's decision 0001](https://github.com/ch4mpy/faito/blob/main/docs/decisions/0001-infra-partagee.md) (one origin per application, Keycloak on PostgreSQL, `infra.c4-soft.com`)
-- Base branch: main
+- Release branch: main
+- Delivery branch: develop
 - Mode: bootstrap (c4-infra is never a production environment: the product owner, 2026-10-30)
 - Product owner(s): Jérôme Wacongne (also tech lead)
 - Intent template: [_intent-template.md](_intent-template.md)
@@ -36,7 +37,7 @@ One folder per change, numbered: `NNNN-<slug>/` holds `intent.md`, then `spec.md
   | --- | --- | --- |
   | proposed | proposed | Stage 1, when the intent's PR is opened |
   | accepted | accepted | the product owner (status commit, PR comment, label `stage:spec` or `stage:plan`) |
-  | rejected | rejected | the product owner (PR closed, never on the base branch) |
+  | rejected | rejected | the product owner (PR closed, never on the delivery branch) |
   | specified | specified | Stage 2, once `spec.md` is approved |
   | planned | planned | Stage 3, once `plan.md` is approved |
   | delivered | delivered | Stage 5, just before the merge that deploys it |
