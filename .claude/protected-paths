@@ -3,5 +3,5 @@
 #   <mode> <glob>  # <reason>
 #   never     the path is neither created nor modified
 #   existing  an existing path is not modified, a new one may be created
-never .claude/@(settings*.json|protected-paths|release-commands)  # the agent's guardrails: the human changes them
+never .claude/@(settings*.json|protected-paths|release-commands|formatters|guard-differences)  # the agent's guardrails: the human changes them
 never .githooks/**  # the secret scan, its rules and its allowances: the Developer changes them

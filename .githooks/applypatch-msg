@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git applypatch-msg hook of the project (core.hooksPath = .githooks): git am runs it on each patch's message,
+# whoever applies it, before the patch is committed (git am runs no commit-msg). It runs commit-msg: the pipeline's
+# subject check on the patch's subject.
+# Exit status: 0, the patch goes on; 1, it is refused (git am stops: git am --abort restores the branch).
+GITHOOKS_CALLER=applypatch-msg exec bash "$(dirname "$0")/commit-msg" "$1"
